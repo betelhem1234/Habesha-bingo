@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SERVICE_ID="srv-da8p9v4s728c73bsblmg"
+SERVICE_ID="${RENDER_SERVICE_ID:-srv-db0kfiad0e5s73c1f690}"
 RENDER_BIN="$(command -v render || echo "${HOME}/bin/render")"
 
 export RENDER_API_KEY="${RENDER_API_KEY:-$(cat "${HOME}/.render/api-key" 2>/dev/null || true)}"
@@ -12,9 +12,9 @@ fi
 
 render() { "${RENDER_BIN}" "$@"; }
 
-EXPECTED_BOT_PREFIX="8761631255"
-EXPECTED_BOT_NAME="@BetysNewGamebot"
-APP_URL="https://play-with-me-b19n.onrender.com"
+EXPECTED_BOT_PREFIX="8942533525"
+EXPECTED_BOT_NAME="@PlayMyBingoBot"
+APP_URL="${RENDER_APP_URL:-https://habesha-bingo-17p0.onrender.com}"
 
 current_bot_prefix() {
   curl -s --max-time 15 \
@@ -47,7 +47,7 @@ Usage: ./deploy.sh [--clean] [message...]
   --clean   force a clear-cache deploy (skips the build cache)
   message   commit message for the push (default: "Deploy <timestamp>")
 
-Verifies Render's BOT_TOKEN is @BetysNewGamebot (8761631255) before
+Verifies Render's BOT_TOKEN is @PlayMyBingoBot (8942533525) before
 deploying, and aborts otherwise.
 EOF
       exit 0
