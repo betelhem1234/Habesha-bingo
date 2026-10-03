@@ -1,0 +1,13 @@
+[Unit]
+Description=Play With Me cloudflared quick tunnel (auto-restart)
+After=network-online.target
+
+[Service]
+Type=simple
+ExecStart=/home/etech/.gemini/antigravity/scratch/play-with-me/cloudflared-linux-amd64 tunnel --url http://localhost:3000 --protocol auto --logfile /home/etech/.gemini/antigravity/scratch/play-with-me/tunnel.log --no-autoupdate
+Restart=always
+RestartSec=3
+KillSignal=SIGTERM
+
+[Install]
+WantedBy=default.target

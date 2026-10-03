@@ -1,0 +1,24 @@
+node_modules
+
+# Keep environment variables out of version control
+.env
+
+# Local deploy/secrets tooling
+cloudflared-linux-amd64
+tunnel.log
+*.log
+
+# Agent worktrees (not part of the app)
+.claude/
+.windsurf/
+.agents/
+.opencode/
+
+# Prisma generated client
+/src/generated/prisma
+
+# Uploaded deposit proof screenshots
+/src/uploads
+
+# Stray SQL scratch file
+SELECT id, type, amount, status FROM "TransactionRequest";

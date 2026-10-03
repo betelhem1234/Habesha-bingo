@@ -1,0 +1,9 @@
+[Unit]
+Description=Sync bingo bot URL every 30s
+
+[Timer]
+OnBootSec=5s
+OnUnitActiveSec=30s
+
+[Install]
+WantedBy=timers.target

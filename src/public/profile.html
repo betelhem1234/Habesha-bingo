@@ -1,0 +1,387 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Profile - Habesha Bingo</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="/translations.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #e8d5f5;
+            min-height: 100vh;
+            color: #2d1436;
+            padding-bottom: 80px;
+        }
+
+        /* ─── Top App Header ─── */
+        .app-bar {
+            width: 100%;
+            background: #6a0dad;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            color: white;
+            box-shadow: 0 2px 8px rgba(106,13,173,0.25);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .back-btn {
+            background: rgba(255,255,255,0.18);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            font-size: 1.1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.1s;
+        }
+        .back-btn:active { transform: scale(0.92); }
+        .app-title {
+            font-size: 1.15rem;
+            font-weight: 800;
+            letter-spacing: 0.3px;
+        }
+
+        /* ─── Main Container ─── */
+        .content {
+            max-width: 440px;
+            margin: 0 auto;
+            padding: 16px 14px 20px;
+        }
+
+        /* ─── Avatar Card ─── */
+        .avatar-card {
+            background: #fff;
+            border-radius: 18px;
+            padding: 20px 16px;
+            text-align: center;
+            box-shadow: 0 2px 12px rgba(106,13,173,0.08);
+            margin-bottom: 14px;
+        }
+        .avatar {
+            width: 82px;
+            height: 82px;
+            border-radius: 50%;
+            margin: 0 auto 10px;
+            background: linear-gradient(135deg, #7b1fa2, #9c27b0);
+            color: #ffffff;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-size: 2.2rem;
+            font-weight: 900;
+            box-shadow: 0 4px 16px rgba(123,31,162,0.3);
+        }
+        .avatar-card .name {
+            font-size: 1.25rem;
+            font-weight: 900;
+            color: #2d1436;
+        }
+        .avatar-card .handle {
+            font-size: 0.88rem;
+            color: #7b1fa2;
+            font-weight: 700;
+            margin-top: 2px;
+        }
+        .badge {
+            display: inline-block;
+            margin-top: 8px;
+            background: #eafaf1;
+            border: 1px solid #2ecc40;
+            color: #27ae60;
+            padding: 4px 14px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 800;
+        }
+
+        /* ─── Stats Row ─── */
+        .stats-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 8px;
+            margin-bottom: 14px;
+        }
+        .stat-card {
+            background: #fff;
+            border-radius: 16px;
+            padding: 12px 6px;
+            text-align: center;
+            box-shadow: 0 2px 10px rgba(106,13,173,0.06);
+        }
+        .stat-card .val {
+            font-size: 1.25rem;
+            font-weight: 900;
+        }
+        .stat-card.c-balance .val { color: #27ae60; }
+        .stat-card.c-refs .val { color: #7b1fa2; }
+        .stat-card.c-games .val { color: #f39c12; }
+        .stat-card .lbl {
+            font-size: 0.65rem;
+            color: #777;
+            font-weight: 800;
+            margin-top: 3px;
+            letter-spacing: 0.5px;
+        }
+
+        /* ─── Info Panel ─── */
+        .panel {
+            background: #fff;
+            border-radius: 18px;
+            padding: 6px 16px;
+            box-shadow: 0 2px 10px rgba(106,13,173,0.06);
+            margin-bottom: 14px;
+        }
+        .info-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 12px 0;
+            border-bottom: 1px solid #f2e9f7;
+            font-size: 0.88rem;
+        }
+        .info-row:last-child { border-bottom: none; }
+        .info-row .k { color: #666; font-weight: 700; }
+        .info-row .v { color: #2d1436; font-weight: 800; }
+
+        /* ─── Referral Panel ─── */
+        .referral-panel {
+            background: #fff;
+            border: 1.5px solid #d4b8ee;
+            border-radius: 18px;
+            padding: 16px;
+            box-shadow: 0 2px 12px rgba(106,13,173,0.08);
+            margin-bottom: 14px;
+        }
+        .referral-panel .title {
+            font-size: 0.82rem;
+            font-weight: 900;
+            color: #6a0dad;
+            margin-bottom: 8px;
+            letter-spacing: 0.8px;
+        }
+        .ref-link {
+            background: #f7effa;
+            border: 1px dashed #b580d1;
+            border-radius: 10px;
+            padding: 10px 12px;
+            font-size: 0.78rem;
+            font-weight: 700;
+            color: #4a0080;
+            word-break: break-all;
+            margin-bottom: 10px;
+            user-select: all;
+        }
+        .copy-btn {
+            width: 100%;
+            background: linear-gradient(135deg, #7b1fa2, #9c27b0);
+            border: none;
+            color: white;
+            padding: 12px;
+            border-radius: 30px;
+            font-weight: 900;
+            cursor: pointer;
+            font-size: 0.9rem;
+            box-shadow: 0 4px 14px rgba(123,31,162,0.25);
+            transition: transform 0.1s;
+        }
+        .copy-btn:active { transform: scale(0.97); }
+
+        /* ─── Unified Bottom Nav (4 Items) ─── */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 440px;
+            background: #fff;
+            border-top: 1px solid #e0d0f0;
+            display: flex;
+            justify-content: space-around;
+            padding: 8px 0 12px;
+            z-index: 95;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.04);
+        }
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: #888;
+            cursor: pointer;
+            flex: 1;
+            text-align: center;
+        }
+        .nav-item.active {
+            color: #7b1fa2;
+            font-weight: 800;
+        }
+        .nav-icon {
+            font-size: 1.25rem;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ─── Top App Bar ─── -->
+    <div class="app-bar">
+        <div class="header-left">
+            <button class="back-btn" onclick="goBack()">←</button>
+            <span class="app-title" data-i18n="page_profile">👤 My Profile</span>
+        </div>
+    </div>
+
+    <!-- ─── Main Content ─── -->
+    <div class="content">
+        <div class="avatar-card">
+            <div class="avatar" id="avatar">?</div>
+            <div class="name" id="pname">Loading...</div>
+            <div class="handle" id="phandle"></div>
+            <div><span class="badge" id="pbonus">🎁 Bonus: 0.00</span></div>
+        </div>
+
+        <div class="stats-row">
+            <div class="stat-card c-balance">
+                <div class="val" id="stat-balance">0.00</div>
+                <div class="lbl" data-i18n="balance">BALANCE</div>
+            </div>
+            <div class="stat-card c-refs">
+                <div class="val" id="stat-refs">0</div>
+                <div class="lbl" data-i18n="referrals">REFERRALS</div>
+            </div>
+            <div class="stat-card c-games">
+                <div class="val" id="stat-games">0</div>
+                <div class="lbl" data-i18n="games_played">GAMES</div>
+            </div>
+        </div>
+
+        <div class="panel">
+            <div class="info-row"><span class="k" data-i18n="tg_id">🪪 Telegram ID</span><span class="v" id="pid">—</span></div>
+            <div class="info-row"><span class="k" data-i18n="phone">📱 Phone</span><span class="v" id="pphone">Not registered</span></div>
+            <div class="info-row"><span class="k" data-i18n="joined">📅 Joined</span><span class="v" id="pjoined">—</span></div>
+            <div class="info-row"><span class="k" data-i18n="referred_by">🤝 Referred by</span><span class="v" id="preferred">—</span></div>
+        </div>
+
+        <div class="referral-panel">
+            <div class="title" data-i18n="ref_link_title">🔗 YOUR REFERRAL LINK</div>
+            <div class="ref-link" id="ref-link">Loading...</div>
+            <button class="copy-btn" onclick="copyLink()" data-i18n="copy_link">📋 Copy Link</button>
+        </div>
+    </div>
+
+    <!-- ─── 4-Tab Bottom Nav ─── -->
+    <div class="bottom-nav">
+        <div class="nav-item" onclick="go('index')" id="nav-game">
+            <span class="nav-icon">🎮</span>
+            <span data-i18n="nav_games">Game</span>
+        </div>
+        <div class="nav-item" onclick="go('history')" id="nav-history">
+            <span class="nav-icon">🕒</span>
+            <span data-i18n="nav_history">History</span>
+        </div>
+        <div class="nav-item" onclick="go('wallet')" id="nav-wallet">
+            <span class="nav-icon">💼</span>
+            <span data-i18n="nav_wallet">Wallet</span>
+        </div>
+        <div class="nav-item active" id="nav-profile">
+            <span class="nav-icon">👤</span>
+            <span data-i18n="nav_profile">Profile</span>
+        </div>
+    </div>
+
+    <script>
+        if (window.Telegram?.WebApp) { Telegram.WebApp.ready(); Telegram.WebApp.expand(); }
+        const params = new URLSearchParams(window.location.search);
+        const userId = params.get('userId') || window.Telegram?.WebApp?.initDataUnsafe?.user?.id || '0';
+        const API_BASE = window.location.origin + '/api';
+
+        function go(page) {
+            window.location.href = `/${page}.html?userId=${userId}`;
+        }
+
+        function goBack() {
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                go('index');
+            }
+        }
+
+        function initials(p) {
+            const f = (p.firstName || '').trim();
+            const l = (p.lastName || '').trim();
+            return ((f[0] || '') + (l[0] || '')).toUpperCase() || '?';
+        }
+
+        async function load() {
+            try {
+                const [profRes, histRes] = await Promise.all([
+                    fetch(`${API_BASE}/profile/${userId}`),
+                    fetch(`${API_BASE}/history/${userId}`)
+                ]);
+                const p = await profRes.json();
+                if (p.error) throw new Error(p.error);
+                const history = await histRes.json();
+
+                document.getElementById('avatar').textContent = initials(p);
+                const full = [p.firstName, p.lastName].filter(Boolean).join(' ') || 'Player';
+                document.getElementById('pname').textContent = full;
+                document.getElementById('phandle').textContent = p.username ? '@' + p.username : '';
+                document.getElementById('pbonus').textContent = `🎁 Bonus: ${parseFloat(p.bonus || 0).toFixed(2)}`;
+                document.getElementById('stat-balance').textContent = parseFloat(p.balance || 0).toFixed(2);
+                document.getElementById('stat-refs').textContent = p.referrals || 0;
+                document.getElementById('stat-games').textContent = history.length || 0;
+                document.getElementById('pid').textContent = p.id;
+                document.getElementById('pphone').textContent = p.phone || 'Not registered';
+                document.getElementById('pjoined').textContent = new Date(p.createdAt).toLocaleDateString();
+                document.getElementById('preferred').textContent = p.referredBy ? `User ${p.referredBy}` : '—';
+
+                const botName = window.Telegram?.WebApp?.initDataUnsafe?.user?.username;
+                const link = `https://t.me/${botName || 'PlayMyBingoBot'}?start=${p.id}`;
+                document.getElementById('ref-link').textContent = link;
+            } catch (e) {
+                document.getElementById('pname').textContent = 'Player Profile';
+                console.error(e);
+            }
+        }
+
+        function copyLink() {
+            const text = document.getElementById('ref-link').textContent;
+            if (navigator.clipboard?.writeText) {
+                navigator.clipboard.writeText(text);
+            } else {
+                const ta = document.createElement('textarea');
+                ta.value = text;
+                document.body.appendChild(ta);
+                ta.select();
+                document.execCommand('copy');
+                document.body.removeChild(ta);
+            }
+            if (window.Telegram?.WebApp?.HapticFeedback) {
+                Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+            }
+            alert('Referral link copied to clipboard!');
+        }
+
+        load();
+        setInterval(load, 5000);
+    </script>
+</body>
+</html>

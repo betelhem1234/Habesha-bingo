@@ -1,0 +1,104 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Admin Dashboard Stats</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+    <style>
+        .back-link { margin-bottom: 14px; display: inline-block; }
+        .stat-card.good { border-color: rgba(34,255,136,0.5); }
+        .stat-card.bad { border-color: rgba(255,77,77,0.5); }
+        .stat-card.warn { border-color: rgba(245,166,35,0.5); }
+        .growth-up { color: var(--green); }
+        .growth-down { color: var(--red); }
+        .kv-row { display: flex; justify-content: space-between; padding: 8px 4px; border-bottom: 1px solid rgba(255,255,255,0.08); }
+        .kv-row span:first-child { color: rgba(255,255,255,0.6); }
+        .refresh-row { display: flex; gap: 10px; align-items: center; margin-top: 14px; }
+        #updated-at { color: rgba(255,255,255,0.5); font-size: 12px; }
+    </style>
+</head>
+<body>
+    <div class="glass-container">
+        <header>
+            <h1><span class="gradient-text">Dashboard</span> Stats</h1>
+            <div class="status-indicator"><span class="pulse"></span> <span id="updated-at">Loading…</span></div>
+        </header>
+        <a href="/" class="btn-primary back-link" style="text-decoration:none;">⬅️ Back to Admin Panel</a>
+        <main>
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <h3>Total Users</h3>
+                    <p class="stat-value" id="s-users">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>User Growth (7d)</h3>
+                    <p class="stat-value" id="s-growth">0%</p>
+                    <p style="color:rgba(255,255,255,0.5); font-size:12px;" id="s-growth-detail">new vs last week</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Deposits</h3>
+                    <p class="stat-value"><span id="s-deposits">0</span> <span class="currency">Birr</span></p>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Withdrawals</h3>
+                    <p class="stat-value"><span id="s-withdrawals">0</span> <span class="currency">Birr</span></p>
+                </div>
+            </section>
+
+            <section class="stats-grid">
+                <div class="stat-card" id="card-net">
+                    <h3>Net (Deposits − Wdr)</h3>
+                    <p class="stat-value"><span id="s-net">0</span> <span class="currency">Birr</span></p>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Player Balance</h3>
+                    <p class="stat-value"><span id="s-balance">0</span> <span class="currency">Birr</span></p>
+                </div>
+                <div class="stat-card warn">
+                    <h3>Pending Requests</h3>
+                    <p class="stat-value" id="s-pending">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Approved Count</h3>
+                    <p class="stat-value" id="s-approved">0</p>
+                </div>
+            </section>
+
+            <section class="users-section">
+                <h2>Request Breakdown</h2>
+                <div class="table-container">
+                    <table>
+                        <thead><tr><th>Type</th><th>Pending</th><th>Approved</th><th>Rejected</th></tr></thead>
+                        <tbody>
+                            <tr><td>Deposit</td><td id="b-dep-pending">0</td><td id="b-dep-approved">0</td><td id="b-dep-rejected">0</td></tr>
+                            <tr><td>Withdrawal</td><td id="b-wdr-pending">0</td><td id="b-wdr-approved">0</td><td id="b-wdr-rejected">0</td></tr>
+                        </tbody>
+                    </table>
+                </div>
+            <section class="users-section" style="margin-top: 24px;">
+                <h2>📣 Broadcast Message to Players</h2>
+                <div style="background: rgba(255,255,255,0.05); padding: 18px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); margin-top: 10px;">
+                    <div style="margin-bottom: 14px;">
+                        <label style="display:block; margin-bottom: 6px; font-weight:600; font-size: 14px;">🖼 Image / Banner URL (Optional):</label>
+                        <input type="text" id="bc-image" placeholder="https://example.com/promo-banner.jpg" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size: 14px; box-sizing: border-box;">
+                    </div>
+                    <div style="margin-bottom: 14px;">
+                        <label style="display:block; margin-bottom: 6px; font-weight:600; font-size: 14px;">📝 Caption / Description:</label>
+                        <textarea id="bc-text" rows="4" placeholder="🔥 HABESHA BINGO 🔥&#10;እየተዝናኑ ያሸንፉ" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-family:inherit; font-size: 14px; box-sizing: border-box;"></textarea>
+                    </div>
+                    <button class="btn-primary" id="btn-broadcast" style="margin:0; width:100%; padding: 12px; font-size: 15px;">🚀 Send Broadcast to All Players</button>
+                    <div id="bc-status" style="margin-top: 12px; font-size: 14px; font-weight: 600;"></div>
+                </div>
+            </section>
+
+            <div class="refresh-row">
+                <button class="btn-primary" id="btn-refresh" style="margin:0;">🔄 Refresh</button>
+                <span id="refreshing" style="color:var(--gold); display:none;">Refreshing…</span>
+            </div>
+        </main>
+    </div>
+    <script src="app-stats.js"></script>
+</body>
+</html>

@@ -1,0 +1,9 @@
+.git
+node_modules
+.env
+*.log
+cloudflared-linux-amd64
+src/uploads
+src/generated
+tests
+deploy

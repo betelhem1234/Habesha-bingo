@@ -1,0 +1,15 @@
+[Unit]
+Description=Play With Me Bot
+After=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/home/etech/.gemini/antigravity/scratch/play-with-me
+ExecStart=/home/etech/.gemini/antigravity/scratch/play-with-me/node_modules/.bin/tsx src/bot.ts
+Restart=always
+RestartSec=3
+StandardOutput=append:/home/etech/.gemini/antigravity/scratch/play-with-me/bot_full.log
+StandardError=append:/home/etech/.gemini/antigravity/scratch/play-with-me/bot_full.log
+
+[Install]
+WantedBy=default.target

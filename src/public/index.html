@@ -1,0 +1,393 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>Habesha Bingo</title>
+<script src="https://telegram.org/js/telegram-web-app.js"></script>
+<style>
+  * {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    -webkit-tap-highlight-color: transparent;
+  }
+  body {
+    font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+    background: #dcd0ea;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 100%;
+    max-width: 440px;
+    margin: 0 auto;
+    color: #2c1b4d;
+    padding-bottom: 75px;
+    position: relative;
+    user-select: none;
+  }
+
+  /* ─── Top App Header ─── */
+  .app-header {
+    width: 100%;
+    background: #1e1a38;
+    color: #fff;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 6px 14px;
+    font-size: 0.95rem;
+    font-weight: 800;
+  }
+  .app-header-left {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    cursor: pointer;
+  }
+  .app-header-left .close-icon {
+    font-size: 1.1rem;
+    font-weight: 700;
+  }
+  .app-header-title {
+    font-size: 0.95rem;
+    font-weight: 800;
+    letter-spacing: 0.3px;
+  }
+  .app-header-right {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    color: #ccc;
+    font-size: 1rem;
+  }
+
+  /* ─── Main Content Area ─── */
+  .content-container {
+    width: 100%;
+    padding: 20px 18px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+  }
+
+  /* ─── Welcome Card ─── */
+  .welcome-card {
+    width: 100%;
+    background: radial-gradient(circle at 18% 25%, #881b9a 0%, transparent 60%), linear-gradient(135deg, #5b1069 0%, #3e0749 100%);
+    border-radius: 24px;
+    padding: 24px 16px;
+    text-align: center;
+    box-shadow: 0 6px 20px rgba(74, 13, 92, 0.28);
+    margin-bottom: 18px;
+  }
+  .welcome-line {
+    color: #ffffff;
+    font-weight: 900;
+    line-height: 1.25;
+    letter-spacing: 0.2px;
+  }
+  .welcome-line.large {
+    font-size: 1.7rem;
+  }
+  .welcome-line.medium {
+    font-size: 1.45rem;
+    font-weight: 800;
+    margin: 2px 0;
+  }
+
+  /* ─── Balance Pill ─── */
+  .balance-pill {
+    background: #4a155c;
+    border-radius: 999px;
+    padding: 7px 20px;
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    color: #ffffff;
+    cursor: pointer;
+    box-shadow: 0 3px 10px rgba(74, 21, 92, 0.22);
+    margin-bottom: 22px;
+    transition: transform 0.1s;
+  }
+  .balance-pill:active {
+    transform: scale(0.96);
+  }
+  .balance-wallet-icon {
+    font-size: 1.05rem;
+  }
+  .balance-text {
+    font-size: 0.95rem;
+    font-weight: 800;
+    letter-spacing: 1px;
+    min-width: 50px;
+    text-align: center;
+  }
+  .balance-eye-icon {
+    font-size: 1.05rem;
+    cursor: pointer;
+    opacity: 0.9;
+  }
+
+  /* ─── Choose Your Stake Card ─── */
+  .stake-card {
+    width: 100%;
+    background: rgba(255, 255, 255, 0.35);
+    border: 2px solid #7d268d;
+    border-radius: 26px;
+    padding: 22px 16px 26px;
+    box-shadow: 0 4px 16px rgba(125, 38, 141, 0.12);
+  }
+  .stake-card-title {
+    text-align: center;
+    color: #4a0d5c;
+    font-size: 1.25rem;
+    font-weight: 900;
+    margin-bottom: 20px;
+    letter-spacing: 0.2px;
+  }
+
+  /* ─── Play Stake Buttons ─── */
+  .stake-btn {
+    width: 100%;
+    height: 60px;
+    border: none;
+    border-radius: 999px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 5px 24px 5px 6px;
+    cursor: pointer;
+    color: #ffffff;
+    transition: transform 0.12s, box-shadow 0.12s;
+    text-decoration: none;
+  }
+  .stake-btn:active {
+    transform: scale(0.97);
+  }
+
+  .stake-btn-green {
+    background: linear-gradient(90deg, #10935b, #0d784a);
+    box-shadow: 0 5px 16px rgba(16, 147, 91, 0.3);
+    margin-bottom: 16px;
+  }
+  .stake-btn-orange {
+    background: linear-gradient(90deg, #e67d22, #cf6310);
+    box-shadow: 0 5px 16px rgba(222, 114, 24, 0.3);
+  }
+
+  .stake-btn-bubble {
+    background: rgba(255, 255, 255, 0.25);
+    border-radius: 999px;
+    padding: 10px 26px;
+    font-weight: 800;
+    font-size: 1.22rem;
+    color: #ffffff;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+  .stake-btn-label {
+    font-weight: 900;
+    font-size: 1.5rem;
+    letter-spacing: 0.5px;
+    margin-right: 14px;
+    text-shadow: 0 1px 3px rgba(0, 0, 0, 0.2);
+  }
+
+  /* ─── Bottom Navigation Bar ─── */
+  .bottom-nav-bar {
+    position: fixed;
+    bottom: 0;
+    left: 0;
+    right: 0;
+    max-width: 440px;
+    margin: 0 auto;
+    height: 65px;
+    background: #dcd0ea;
+    border-top: 1px solid #c9b3e8;
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 4px 10px 6px;
+    z-index: 100;
+  }
+  .nav-item {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    text-decoration: none;
+    color: #634b80;
+    font-size: 0.72rem;
+    font-weight: 700;
+    cursor: pointer;
+    flex: 1;
+    transition: transform 0.1s;
+  }
+  .nav-item:active {
+    transform: scale(0.92);
+  }
+  .nav-item .nav-icon {
+    font-size: 1.25rem;
+    margin-bottom: 2px;
+  }
+  .nav-item.active {
+    color: #ffffff;
+  }
+  .nav-item.active .nav-pill {
+    background: #5e1261;
+    border-radius: 999px;
+    padding: 5px 22px;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    box-shadow: 0 3px 8px rgba(94, 18, 97, 0.3);
+  }
+  .nav-item.active .nav-icon {
+    color: #ffffff;
+  }
+</style>
+</head>
+<body>
+
+  <!-- Top App Header -->
+  <div class="app-header">
+    <div class="app-header-left" onclick="closeApp()">
+      <span class="close-icon">✕</span>
+      <span class="app-header-title">Habesha Bingo</span>
+    </div>
+    <div class="app-header-right">
+      <span>⌵</span>
+      <span>⋮</span>
+    </div>
+  </div>
+
+  <div class="content-container">
+    <!-- Welcome to Habesha Bingo Card -->
+    <div class="welcome-card">
+      <div class="welcome-line large">Welcome</div>
+      <div class="welcome-line medium">to</div>
+      <div class="welcome-line large">Habesha Bingo</div>
+    </div>
+
+    <!-- Balance Pill -->
+    <div class="balance-pill" onclick="toggleBalance()">
+      <span class="balance-wallet-icon">💼</span>
+      <span class="balance-text" id="balance-display">••••••</span>
+      <span class="balance-eye-icon" id="eye-icon">👁️</span>
+    </div>
+
+    <!-- Choose Your Stake Container -->
+    <div class="stake-card">
+      <h2 class="stake-card-title">Choose Your Stake</h2>
+
+      <!-- 10 № 1 Green Play Button -->
+      <button class="stake-btn stake-btn-green" onclick="playRoom('10', '1')">
+        <div class="stake-btn-bubble">Play</div>
+        <div class="stake-btn-label">10 № 1</div>
+      </button>
+
+      <!-- 10 № 2 Orange Play Button -->
+      <button class="stake-btn stake-btn-orange" onclick="playRoom('10', '2')">
+        <div class="stake-btn-bubble">Play</div>
+        <div class="stake-btn-label">10 № 2</div>
+      </button>
+    </div>
+  </div>
+
+  <!-- Bottom Navigation Bar -->
+  <div class="bottom-nav-bar">
+    <div class="nav-item active">
+      <div class="nav-pill">
+        <span class="nav-icon">🎮</span>
+        <span>Game</span>
+      </div>
+    </div>
+    <a class="nav-item" id="nav-history" href="/history.html">
+      <span class="nav-icon">🕒</span>
+      <span>History</span>
+    </a>
+    <a class="nav-item" id="nav-wallet" href="/wallet.html">
+      <span class="nav-icon">💼</span>
+      <span>Wallet</span>
+    </a>
+    <a class="nav-item" id="nav-profile" href="/profile.html">
+      <span class="nav-icon">👤</span>
+      <span>Profile</span>
+    </a>
+  </div>
+
+<script>
+  if (window.Telegram?.WebApp) {
+    Telegram.WebApp.ready();
+    Telegram.WebApp.expand();
+  }
+
+  const params = new URLSearchParams(window.location.search);
+  let userId = params.get('userId');
+  if (!userId && window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
+    userId = String(Telegram.WebApp.initDataUnsafe.user.id);
+  }
+
+  // Setup navigation links
+  if (userId) {
+    document.getElementById('nav-history').href = `/history.html?userId=${userId}`;
+    document.getElementById('nav-wallet').href = `/wallet.html?userId=${userId}`;
+    document.getElementById('nav-profile').href = `/profile.html?userId=${userId}`;
+  }
+
+  let realBalance = '0.00';
+  let isBalanceShown = false;
+
+  async function fetchBalance() {
+    if (!userId) return;
+    try {
+      const res = await fetch(`/api/profile/${userId}`);
+      if (!res.ok) return;
+      const data = await res.json();
+      const bal = data.balance !== undefined ? Number(data.balance) : (data.user && data.user.balance !== undefined ? Number(data.user.balance) : 0);
+      const bon = data.bonus !== undefined ? Number(data.bonus) : (data.user && data.user.bonus !== undefined ? Number(data.user.bonus) : 0);
+      const total = bal + bon;
+      realBalance = total.toFixed(2);
+      if (isBalanceShown) {
+        document.getElementById('balance-display').textContent = `${realBalance} Birr`;
+      }
+    } catch (e) {}
+  }
+
+  function toggleBalance() {
+    isBalanceShown = !isBalanceShown;
+    const display = document.getElementById('balance-display');
+    const eye = document.getElementById('eye-icon');
+    if (isBalanceShown) {
+      display.textContent = `${realBalance} Birr`;
+      eye.textContent = '🙈';
+    } else {
+      display.textContent = '••••••';
+      eye.textContent = '👁️';
+    }
+  }
+
+  function playRoom(bet, room) {
+    if (!userId) {
+      alert("User ID missing. Please open from Telegram.");
+      return;
+    }
+    const cb = `&v=${Date.now()}`;
+    window.location.href = `/boards.html?userId=${userId}&bet=${bet}&room=${room}${cb}`;
+  }
+
+  function closeApp() {
+    if (window.Telegram?.WebApp?.close) {
+      Telegram.WebApp.close();
+    } else {
+      window.history.back();
+    }
+  }
+
+  fetchBalance();
+</script>
+</body>
+</html>

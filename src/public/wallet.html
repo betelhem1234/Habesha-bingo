@@ -1,0 +1,335 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Wallet - Habesha Bingo</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="/translations.js"></script>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #e8d5f5;
+            min-height: 100vh;
+            color: #2d1436;
+            padding-bottom: 80px;
+        }
+
+        /* ─── Top App Header ─── */
+        .app-bar {
+            width: 100%;
+            background: #6a0dad;
+            display: flex;
+            align-items: center;
+            justify-content: space-between;
+            padding: 12px 16px;
+            color: white;
+            box-shadow: 0 2px 8px rgba(106,13,173,0.25);
+            position: sticky;
+            top: 0;
+            z-index: 50;
+        }
+        .header-left {
+            display: flex;
+            align-items: center;
+            gap: 12px;
+        }
+        .back-btn {
+            background: rgba(255,255,255,0.18);
+            border: 1px solid rgba(255,255,255,0.3);
+            color: white;
+            width: 34px;
+            height: 34px;
+            border-radius: 50%;
+            font-size: 1.1rem;
+            cursor: pointer;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            transition: transform 0.1s;
+        }
+        .back-btn:active { transform: scale(0.92); }
+        .app-title {
+            font-size: 1.15rem;
+            font-weight: 800;
+            letter-spacing: 0.3px;
+        }
+
+        /* ─── Main Container ─── */
+        .content {
+            max-width: 440px;
+            margin: 0 auto;
+            padding: 16px 14px 20px;
+        }
+
+        /* ─── Balance Card ─── */
+        .balance-card {
+            background: #fff;
+            border-radius: 20px;
+            padding: 22px 16px;
+            text-align: center;
+            margin-bottom: 14px;
+            box-shadow: 0 2px 12px rgba(106,13,173,0.08);
+            border: 1.5px solid #dcd0ea;
+        }
+        .balance-card .lbl {
+            font-size: 0.75rem;
+            font-weight: 800;
+            letter-spacing: 1.5px;
+            color: #777;
+        }
+        .balance-card .val {
+            font-size: 2.3rem;
+            font-weight: 900;
+            margin-top: 4px;
+            color: #6a0dad;
+        }
+        .balance-card .sub {
+            margin-top: 8px;
+        }
+        .bonus-chip {
+            display: inline-block;
+            background: #eafaf1;
+            border: 1px solid #2ecc40;
+            color: #27ae60;
+            padding: 4px 14px;
+            border-radius: 20px;
+            font-size: 0.78rem;
+            font-weight: 800;
+        }
+
+        /* ─── Action Buttons ─── */
+        .actions {
+            display: grid;
+            grid-template-columns: 1fr 1fr;
+            gap: 10px;
+            margin-bottom: 14px;
+        }
+        .btn {
+            border: none;
+            padding: 14px;
+            border-radius: 30px;
+            font-size: 0.95rem;
+            font-weight: 800;
+            cursor: pointer;
+            letter-spacing: 0.3px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            gap: 6px;
+            transition: transform 0.1s;
+        }
+        .btn:active { transform: scale(0.97); }
+        .btn.deposit {
+            background: #2ecc40;
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(46,204,64,0.25);
+        }
+        .btn.withdraw {
+            background: linear-gradient(135deg, #7b1fa2, #9c27b0);
+            color: #fff;
+            box-shadow: 0 4px 12px rgba(123,31,162,0.25);
+        }
+
+        /* ─── Info Panels ─── */
+        .panel {
+            background: #fff;
+            border-radius: 18px;
+            padding: 16px;
+            margin-bottom: 14px;
+            box-shadow: 0 2px 10px rgba(106,13,173,0.06);
+        }
+        .panel-title {
+            font-size: 0.82rem;
+            font-weight: 900;
+            color: #6a0dad;
+            margin-bottom: 10px;
+            letter-spacing: 0.8px;
+        }
+        .tip {
+            font-size: 0.84rem;
+            line-height: 1.5;
+            color: #555;
+            padding: 6px 0;
+        }
+        .tip b { color: #2d1436; }
+        .tip.divider {
+            border-top: 1px solid #f2e9f7;
+            margin-top: 6px;
+            padding-top: 10px;
+        }
+
+        /* ─── Recent Activity ─── */
+        .hist-row {
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            padding: 10px 0;
+            border-bottom: 1px solid #f2e9f7;
+            font-size: 0.88rem;
+        }
+        .hist-row:last-child { border-bottom: none; }
+        .empty {
+            text-align: center;
+            color: #888;
+            font-size: 0.82rem;
+            padding: 14px 0;
+        }
+
+        /* ─── Unified Bottom Nav (4 Items) ─── */
+        .bottom-nav {
+            position: fixed;
+            bottom: 0;
+            left: 50%;
+            transform: translateX(-50%);
+            width: 100%;
+            max-width: 440px;
+            background: #fff;
+            border-top: 1px solid #e0d0f0;
+            display: flex;
+            justify-content: space-around;
+            padding: 8px 0 12px;
+            z-index: 95;
+            box-shadow: 0 -2px 10px rgba(0,0,0,0.04);
+        }
+        .nav-item {
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            gap: 2px;
+            font-size: 0.65rem;
+            font-weight: 700;
+            color: #888;
+            cursor: pointer;
+            flex: 1;
+            text-align: center;
+        }
+        .nav-item.active {
+            color: #7b1fa2;
+            font-weight: 800;
+        }
+        .nav-icon {
+            font-size: 1.25rem;
+        }
+    </style>
+</head>
+<body>
+
+    <!-- ─── Top App Bar ─── -->
+    <div class="app-bar">
+        <div class="header-left">
+            <button class="back-btn" onclick="goBack()">←</button>
+            <span class="app-title" data-i18n="page_wallet">💼 My Wallet</span>
+        </div>
+    </div>
+
+    <!-- ─── Main Content ─── -->
+    <div class="content">
+        <div class="balance-card">
+            <div class="lbl" data-i18n="main_balance">MAIN BALANCE</div>
+            <div class="val" id="balance">0.00</div>
+            <div class="sub"><span class="bonus-chip" id="bonus">🎁 Bonus: 0.00</span></div>
+        </div>
+
+        <div class="actions">
+            <button class="btn deposit" onclick="window.location.href='/deposit.html?userId='+userId" data-i18n="btn_deposit">💳 Deposit</button>
+            <button class="btn withdraw" onclick="window.location.href='/withdraw.html?userId='+userId" data-i18n="btn_withdraw">⬆️ Withdraw</button>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title" data-i18n="how_deposit">ℹ️ HOW DEPOSIT WORKS</div>
+            <div class="tip" data-i18n="deposit_tip1">Click <b>Deposit</b>, select your preferred bank account, send the money, then enter the amount and upload your payment screenshot.</div>
+            <div class="tip" data-i18n="deposit_tip2">The admin will quickly verify and approve it. Your balance will be credited right away.</div>
+            <div class="tip divider" data-i18n="deposit_tip3">To withdraw, tap <b>Withdraw</b>, enter the amount and your Telebirr / CBE account. Funds will be transferred once approved.</div>
+        </div>
+
+        <div class="panel">
+            <div class="panel-title" data-i18n="recent_activity">🕒 RECENT ACTIVITY</div>
+            <div id="activity-list"><div class="empty">Loading...</div></div>
+        </div>
+    </div>
+
+    <!-- ─── 4-Tab Bottom Nav ─── -->
+    <div class="bottom-nav">
+        <div class="nav-item" onclick="go('index')" id="nav-game">
+            <span class="nav-icon">🎮</span>
+            <span data-i18n="nav_games">Game</span>
+        </div>
+        <div class="nav-item" onclick="go('history')" id="nav-history">
+            <span class="nav-icon">🕒</span>
+            <span data-i18n="nav_history">History</span>
+        </div>
+        <div class="nav-item active" id="nav-wallet">
+            <span class="nav-icon">💼</span>
+            <span data-i18n="nav_wallet">Wallet</span>
+        </div>
+        <div class="nav-item" onclick="go('profile')" id="nav-profile">
+            <span class="nav-icon">👤</span>
+            <span data-i18n="nav_profile">Profile</span>
+        </div>
+    </div>
+
+    <script>
+        if (window.Telegram?.WebApp) { Telegram.WebApp.ready(); Telegram.WebApp.expand(); }
+        const params = new URLSearchParams(window.location.search);
+        const userId = params.get('userId') || window.Telegram?.WebApp?.initDataUnsafe?.user?.id || '0';
+        const API_BASE = window.location.origin + '/api';
+
+        function go(page) {
+            window.location.href = `/${page}.html?userId=${userId}`;
+        }
+
+        function goBack() {
+            if (window.history.length > 1) {
+                window.history.back();
+            } else {
+                go('index');
+            }
+        }
+
+        function timeAgo(iso) {
+            const diff = Math.floor((Date.now() - new Date(iso).getTime()) / 1000);
+            if (diff < 60) return 'just now';
+            if (diff < 3600) return `${Math.floor(diff/60)}m ago`;
+            if (diff < 86400) return `${Math.floor(diff/3600)}h ago`;
+            return `${Math.floor(diff/86400)}d ago`;
+        }
+
+        async function load() {
+            try {
+                const [lobRes, histRes] = await Promise.all([
+                    fetch(`${API_BASE}/lobby/${userId}`),
+                    fetch(`${API_BASE}/history/${userId}`)
+                ]);
+                const lob = await lobRes.json();
+                const history = await histRes.json();
+
+                document.getElementById('balance').textContent = parseFloat(lob.balance || 0).toFixed(2);
+                document.getElementById('bonus').textContent = `🎁 Bonus: ${parseFloat(lob.bonus || 0).toFixed(2)}`;
+
+                const el = document.getElementById('activity-list');
+                if (!history.length) {
+                    el.innerHTML = '<div class="empty">No activity yet</div>';
+                    return;
+                }
+                el.innerHTML = history.slice(0, 10).map(h => {
+                    const isWin = h.result === 'WON';
+                    const delta = h.payout > 0 ? `+${h.payout}` : `-${h.bet}`;
+                    const color = isWin ? '#27ae60' : '#e74c3c';
+                    return `
+                    <div class="hist-row">
+                        <span style="font-weight:700;">🎯 Bingo Game <small style="color:#888; margin-left:4px; font-weight:normal;">${timeAgo(h.createdAt)}</small></span>
+                        <span style="font-weight:900; color:${color};">${delta} Birr</span>
+                    </div>`;
+                }).join('');
+            } catch (e) {
+                console.error(e);
+            }
+        }
+
+        load();
+        setInterval(load, 5000);
+    </script>
+</body>
+</html>

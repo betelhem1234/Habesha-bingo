@@ -1,0 +1,94 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+}
+
+model User {
+  id             BigInt   @id
+  username       String?
+  firstName      String?
+  lastName       String?
+  phone          String?  @unique
+  balance        Decimal  @default(0.0)
+  bonus          Decimal  @default(0.0)
+
+  level          Int      @default(1)
+  xp             Int      @default(0)
+  rating         Int      @default(1000)
+  wins           Int      @default(0)
+  losses         Int      @default(0)
+  gamesPlayed    Int      @default(0)
+  winStreak      Int      @default(0)
+  avatar         String?
+  banned         Boolean  @default(false)
+
+  referredById   BigInt?  
+  referredBy     User?    @relation("Referrals", fields: [referredById], references: [id])
+  referrals      User[]   @relation("Referrals")
+
+  history        GameHistory[]
+  transactions   TransactionRequest[]
+
+  createdAt      DateTime @default(now())
+  updatedAt      DateTime @updatedAt
+}
+
+model TransactionRequest {
+  id        Int      @id @default(autoincrement())
+  userId    BigInt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  type      String   // 'deposit' | 'withdraw'
+  amount    Decimal
+  phone     String?
+  proof     String?  // uploaded screenshot/payment proof for deposits
+  status    String   @default("PENDING") // PENDING | APPROVED | REJECTED
+  account   PaymentAccount? @relation(fields: [accountId], references: [id])
+  accountId Int?
+  bankName  String?
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@index([status])
+}
+
+model PaymentAccount {
+  id            Int      @id @default(autoincrement())
+  bankName      String   // e.g. 'Telebirr', 'CBE', 'Awash'
+  accountNumber String
+  accountName   String?
+  isActive      Boolean  @default(true)
+  createdAt     DateTime @default(now())
+
+  requests      TransactionRequest[]
+
+  @@index([isActive])
+}
+
+model GameHistory {
+  id        Int      @id @default(autoincrement())
+  userId    BigInt
+  user      User     @relation(fields: [userId], references: [id], onDelete: Cascade)
+  gameType  String   // 'bingo'
+  bet       Decimal?
+  payout    Decimal?
+  result    String   // 'WON' | 'LOST' | 'NO_WINNER'
+  createdAt DateTime @default(now())
+
+  @@index([userId])
+}
+
+model HouseIncome {
+  id             Int      @id @default(autoincrement())
+  gameType       String   // 'bingo'
+  playerCount    Int
+  totalCollected Decimal
+  winnerPayout   Decimal
+  houseProfit    Decimal
+  winnerId       BigInt?
+  createdAt      DateTime @default(now())
+  
+  @@index([createdAt])
+}

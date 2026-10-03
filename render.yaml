@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: pwm-bot
+    runtime: docker
+    repo: https://github.com/betelhem1234/play-with-me
+    plan: free
+    dockerfilePath: ./Dockerfile
+    healthCheckPath: /
+    autoDeploy: true
+    envVars:
+      - key: BOT_TOKEN
+        sync: false
+      - key: DATABASE_URL
+        sync: false
+      - key: ADMIN_USER_ID
+        sync: false
+      - key: BINGO_APP_URL
+        sync: false

@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Bingo Admin Panel</title>
+    <link rel="stylesheet" href="style.css">
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;800&display=swap" rel="stylesheet">
+</head>
+<body>
+    <div class="glass-container">
+        <header>
+            <h1><span class="gradient-text">Bingo</span> Admin</h1>
+            <div class="status-indicator">
+                <span class="pulse"></span> Live Connection
+            </div>
+            <a href="/admin-stats.html" class="btn-primary" style="margin-top:10px; text-decoration:none;">📊 Dashboard Stats</a>
+        </header>
+
+        <main>
+            <section class="stats-grid">
+                <div class="stat-card">
+                    <h3>Total Users</h3>
+                    <p class="stat-value" id="stat-users">0</p>
+                </div>
+                <div class="stat-card">
+                    <h3>Total Balance</h3>
+                    <p class="stat-value"><span id="stat-balance">0</span> <span class="currency">Birr</span></p>
+                </div>
+                <div class="stat-card">
+                    <h3>Active Players</h3>
+                    <p class="stat-value" id="stat-players">0</p>
+                </div>
+                <div class="stat-card game-control">
+                    <h3>Game State</h3>
+                    <p class="stat-value" id="stat-state">WAITING</p>
+                    <button id="btn-start" class="btn-primary">Force Start Game</button>
+                </div>
+            </section>
+
+            <section class="users-section">
+                <h2>Top Users</h2>
+                <div class="table-container">
+                    <table id="users-table">
+                        <thead>
+                            <tr>
+                                <th>ID</th>
+                                <th>Username</th>
+                                <th>Name</th>
+                                <th>Balance (Birr)</th>
+                                <th>Referrals</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+
+            <section class="users-section">
+                <h2>Deposit / Withdraw Requests</h2>
+                <div class="req-filter" style="margin-bottom: 12px; display:flex; gap:8px;">
+                    <button class="btn-primary" id="filter-pending" style="margin:0;">Pending</button>
+                    <button class="btn-primary" id="filter-approved" style="margin:0;">Approved</button>
+                    <button class="btn-primary" id="filter-rejected" style="margin:0;">Rejected</button>
+                    <button class="btn-primary" id="filter-all" style="margin:0;">All</button>
+                </div>
+                <div class="table-container">
+                    <table id="req-table">
+                        <thead>
+                            <tr>
+                                <th>#</th>
+                                <th>User</th>
+                                <th>Type</th>
+                                <th>Amount</th>
+                                <th>Phone</th>
+                                <th>Status</th>
+                                <th>Balance</th>
+                                <th>Time</th>
+                                <th>Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>
+                            <!-- Populated by JS -->
+                        </tbody>
+                    </table>
+                </div>
+            </section>
+        </main>
+    </div>
+    
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="app.js"></script>
+</body>
+</html>

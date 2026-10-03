@@ -1,0 +1,7 @@
+[Unit]
+Description=Play With Me tunnel sync
+After=network-online.target
+
+[Service]
+Type=oneshot
+ExecStart=/home/etech/.gemini/antigravity/scratch/play-with-me/deploy/sync-url.sh

@@ -1,0 +1,339 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+    <title>Deposit</title>
+    <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;700;800;900&display=swap" rel="stylesheet">
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
+        body {
+            font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+            background: #e8d5f5;
+            min-height: 100vh; color: #2d1436;
+            padding: 0 0 40px;
+        }
+        .header {
+            width: 100%; background: #6a0dad;
+            display: flex; align-items: center; gap: 12px;
+            padding: 12px 16px; color: white;
+            box-shadow: 0 2px 8px rgba(106,13,173,0.25);
+            position: sticky; top: 0; z-index: 50;
+        }
+        .back-btn {
+            background: rgba(255,255,255,0.18); border: 1px solid rgba(255,255,255,0.3);
+            color: white; width: 34px; height: 34px; border-radius: 50%;
+            font-size: 1.1rem; cursor: pointer; display: flex; align-items: center; justify-content: center;
+        }
+        .header h1 {
+            font-size: 1.2rem; font-weight: 800; color: #fff;
+        }
+        .container {
+            max-width: 440px; margin: 0 auto; padding: 16px 14px;
+        }
+        .balance-card {
+            background: #fff; border: 1.5px solid #dcd0ea;
+            border-radius: 18px; padding: 18px; text-align: center; margin-bottom: 14px;
+            box-shadow: 0 2px 10px rgba(106,13,173,0.06);
+        }
+        .balance-card .lbl { font-size: 0.75rem; font-weight: 800; letter-spacing: 1.5px; color: #777; }
+        .balance-card .val {
+            font-size: 2rem; font-weight: 900; margin-top: 4px;
+            color: #6a0dad;
+        }
+        .form-card {
+            background: #fff; border-radius: 18px; padding: 18px; margin-bottom: 14px;
+            box-shadow: 0 2px 10px rgba(106,13,173,0.06);
+        }
+        .field-lbl { font-size: 0.78rem; font-weight: 800; color: #6a0dad; margin-bottom: 8px; letter-spacing: 0.5px; }
+        .amount-input {
+            width: 100%; background: #f8f3fc;
+            border: 1.5px solid #d4b8ee; border-radius: 12px;
+            padding: 14px; font-size: 1.6rem; font-weight: 900; color: #2d1436;
+            text-align: center; font-family: inherit; outline: none;
+        }
+        .amount-input:focus { border-color: #7b1fa2; box-shadow: 0 0 10px rgba(123,31,162,0.2); }
+        .qty-row { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; margin: 12px 0; }
+        .qty {
+            background: #f4ecf9; border: 1px solid #d4b8ee;
+            color: #6a0dad; padding: 10px; border-radius: 10px; font-weight: 900; cursor: pointer; font-size: 0.9rem;
+        }
+        .qty:active { background: #e8d5f5; }
+        .bank-grid { display: grid; grid-template-columns: repeat(2, 1fr); gap: 12px; margin: 10px 0; }
+        .b-card {
+            background: #fdfbff; border-radius: 12px; overflow: hidden;
+            cursor: pointer; border: 2px solid #e0d0f0; transition: all 0.2s; position: relative;
+        }
+        .b-card.selected { border-color: #7b1fa2; box-shadow: 0 0 12px rgba(123,31,162,0.3); }
+        .b-card .b-top {
+            background: #ffffff; height: 60px; display: flex; align-items: center; justify-content: center; padding: 10px;
+        }
+        .b-card .b-top span { font-size: 1.1rem; color: #2d1436; font-weight: 900; }
+        .b-card .b-bot {
+            background: #f0e4f7; text-align: center; padding: 8px; font-size: 0.8rem; font-weight: 800; color: #5e1261;
+        }
+        .b-badge {
+            position: absolute; top: 0; right: 0; background: #e74c3c; color: white;
+            font-size: 0.6rem; font-weight: 900; padding: 2px 8px; border-bottom-left-radius: 8px;
+        }
+        .account-box {
+            background: #f7effa;
+            border: 1.5px dashed #9c27b0; border-radius: 14px;
+            padding: 14px; margin-bottom: 14px; text-align: center; display: none;
+        }
+        .account-box .abank { font-size: 0.8rem; font-weight: 800; color: #6a0dad; letter-spacing: 1px; }
+        .account-box .anum { font-size: 1.35rem; font-weight: 900; letter-spacing: 1px; margin-top: 6px; color: #2d1436; }
+        .account-box .aholder { font-size: 0.82rem; font-weight: 800; color: #666; margin-top: 4px; }
+        .account-box .copy {
+            margin-top: 10px; background: #7b1fa2; border: none;
+            color: white; border-radius: 20px; padding: 8px 18px; font-weight: 800; cursor: pointer; font-size: 0.82rem;
+        }
+        .file-wrap { margin-top: 12px; }
+        .file-input {
+            width: 100%; background: #f8f3fc;
+            border: 1.5px dashed #d4b8ee; border-radius: 12px;
+            padding: 14px; color: #555; font-size: 0.85rem;
+        }
+        .file-input.has-file { border-color: #27ae60; color: #27ae60; font-weight: 800; }
+        .proof-preview { margin-top: 10px; border-radius: 10px; max-height: 200px; width: 100%; object-fit: contain; display: none; }
+        .submit {
+            width: 100%; background: #2ecc40; border: none;
+            padding: 16px; border-radius: 50px; font-size: 1.05rem; font-weight: 900;
+            color: #fff; cursor: pointer; box-shadow: 0 4px 14px rgba(46,204,64,0.3);
+            margin-top: 12px;
+        }
+        .submit:disabled { opacity: 0.5; cursor: not-allowed; }
+        .msg {
+            padding: 12px; border-radius: 12px; font-size: 0.85rem; font-weight: 800;
+            margin-bottom: 14px; display: none;
+        }
+        .msg.ok { display: block; background: #eafaf1; border: 1px solid #2ecc40; color: #27ae60; }
+        .msg.err { display: block; background: #fdeeee; border: 1px solid #e74c3c; color: #e74c3c; }
+        .pending-card {
+            background: #fff; border-radius: 18px; padding: 16px; display: none;
+            box-shadow: 0 2px 10px rgba(106,13,173,0.06);
+        }
+        .pending-card .title { font-size: 0.82rem; font-weight: 900; color: #6a0dad; margin-bottom: 8px; }
+        .p-row {
+            display: flex; justify-content: space-between; align-items: center;
+            padding: 10px 0; border-bottom: 1px solid #f2e9f7; font-size: 0.85rem;
+        }
+        .p-row:last-child { border-bottom: none; }
+        .status-pending { color: #f39c12; font-weight: 800; }
+        .status-approved { color: #27ae60; font-weight: 800; }
+        .status-rejected { color: #e74c3c; font-weight: 800; }
+    </style>
+</head>
+<body>
+    <div class="header">
+        <button class="back-btn" onclick="history.back()">←</button>
+        <h1>💳 Deposit</h1>
+    </div>
+
+    <div class="container">
+        <div class="balance-card">
+            <div class="lbl">YOUR BALANCE</div>
+            <div class="val" id="balance">0.00</div>
+        </div>
+
+    <div class="msg" id="msg"></div>
+
+    <div class="form-card">
+        <div class="field-lbl" id="bank-lbl">1️⃣ CHOOSE BANK / PAYMENT METHOD</div>
+        <div id="bank-wrap"><div class="field-lbl" style="opacity:0.5;">Loading methods…</div></div>
+        
+        <div id="deposit-form" style="display:none; margin-top:20px; border-top:1px solid rgba(255,255,255,0.1); padding-top:16px;">
+            <div class="account-box" id="account-box"></div>
+            
+            <div class="field-lbl">2️⃣ ENTER AMOUNT (BIRR)</div>
+            <input type="number" class="amount-input" id="amount" min="10" placeholder="100" inputmode="decimal">
+            <div class="qty-row">
+                <button class="qty" onclick="setAmount(20)">20</button>
+                <button class="qty" onclick="setAmount(50)">50</button>
+                <button class="qty" onclick="setAmount(100)">100</button>
+                <button class="qty" onclick="setAmount(500)">500</button>
+            </div>
+            <div class="file-wrap">
+                <div class="field-lbl">3️⃣ UPLOAD RECEIPT / SCREENSHOT</div>
+                <input type="file" class="file-input" id="proof" accept="image/*,.pdf"
+                       onchange="previewProof(this)" placeholder="Upload screenshot of your deposit">
+                <img class="proof-preview" id="proof-preview" alt="Proof preview">
+                <div class="field-lbl" style="margin-top: 8px;">Transfer money to the account shown above and attach the receipt here.</div>
+            </div>
+            <button class="submit" id="submit" onclick="submitDeposit()">📥 SUBMIT DEPOSIT</button>
+        </div>
+    </div>
+
+    <div class="pending-card" id="pending-card">
+        <div class="title">🕒 YOUR DEPOSIT REQUESTS</div>
+        <div id="pending-list"></div>
+    </div>
+    </div>
+
+    <script>
+        if (window.Telegram?.WebApp) { Telegram.WebApp.ready(); Telegram.WebApp.expand(); }
+        const params = new URLSearchParams(window.location.search);
+        const userId = params.get('userId');
+        const API_BASE = window.location.origin + '/api';
+
+        function setAmount(v) { document.getElementById('amount').value = v; }
+
+        let accounts = [];
+        let selectedAccount = null;
+        const selAcct = params.get('acct');
+
+        async function loadBanks() {
+            const wrap = document.getElementById('bank-wrap');
+            try {
+                const res = await fetch(`${API_BASE}/banks`);
+                accounts = await res.json();
+            } catch (e) { accounts = []; console.error(e); }
+            if (!accounts.length) {
+                wrap.innerHTML = '<div class="field-lbl" style="opacity:0.6; color: var(--red);">No payout account configured yet. Please contact support.</div>';
+                document.getElementById('account-box').style.display = 'none';
+                return;
+            }
+            wrap.innerHTML = '<div class="bank-grid">' + accounts.map(a => {
+                const isFast = a.bankName.toLowerCase().includes('telebirr');
+                const badge = isFast ? '<div class="b-badge">FAST</div>' : '<div class="b-badge" style="background:#f59e0b;">10%</div>';
+                return `
+                <div class="b-card" data-id="${a.id}" onclick="pickAccount(${a.id})">
+                    ${badge}
+                    <div class="b-top"><span>${a.bankName}</span></div>
+                    <div class="b-bot">${a.bankName}</div>
+                </div>`;
+            }).join('') + '</div>';
+            if (selAcct) {
+                const target = accounts.find(a => a.id === Number(selAcct));
+                if (target) pickAccount(target.id);
+            }
+        }
+
+        function pickAccount(id) {
+            selectedAccount = accounts.find(a => a.id === id);
+            document.querySelectorAll('.b-card').forEach(c => c.classList.toggle('selected', Number(c.dataset.id) === id));
+            const form = document.getElementById('deposit-form');
+            const box = document.getElementById('account-box');
+            if (!selectedAccount) { 
+                form.style.display = 'none'; 
+                return; 
+            }
+            form.style.display = 'block';
+            box.style.display = 'block';
+            box.innerHTML = `
+                <div style="background:var(--gold-gradient); color:#000; padding:10px; border-radius:8px; margin-bottom:10px; font-weight:900;">
+                    SEND MONEY TO:
+                </div>
+                <div class="abank">🏦 Bank: ${selectedAccount.bankName}</div>
+                <div class="abank">👤 Name: ${selectedAccount.accountName || 'Habesha Bingo'}</div>
+                <div class="anum" style="margin:10px 0;">${selectedAccount.accountNumber}</div>
+                <button class="copy" onclick="copyAccount()">📋 Copy account number</button>`;
+        }
+
+        async function copyAccount() {
+            if (!selectedAccount) return;
+            const done = () => { try { Telegram.WebApp.showAlert('Account number copied!'); } catch (e) {} };
+            try {
+                if (navigator.clipboard) { await navigator.clipboard.writeText(selectedAccount.accountNumber); return done(); }
+            } catch (e) {}
+            window.prompt('Account number:', selectedAccount.accountNumber);
+        }
+
+        function previewProof(input) {
+            const file = input.files && input.files[0];
+            input.labels && Array.from(input.labels).forEach(l => l.classList.toggle('has-file', !!file));
+            if (file) input.classList.add('has-file');
+            else input.classList.remove('has-file');
+            const prev = document.getElementById('proof-preview');
+            if (file && file.type.startsWith('image/')) {
+                prev.src = URL.createObjectURL(file);
+                prev.style.display = 'block';
+            } else {
+                prev.style.display = 'none';
+            }
+        }
+
+        async function load() {
+            try {
+                const [lobRes, reqRes] = await Promise.all([
+                    fetch(`${API_BASE}/lobby/${userId}`),
+                    fetch(`${API_BASE}/requests/${userId}`)
+                ]);
+                const lob = await lobRes.json();
+                const requests = await reqRes.json();
+                document.getElementById('balance').textContent = parseFloat(lob.balance).toFixed(2);
+
+                const pending = requests.filter(r => r.type === 'deposit');
+                const card = document.getElementById('pending-card');
+                const list = document.getElementById('pending-list');
+                if (pending.length) {
+                    card.style.display = 'block';
+                    list.innerHTML = pending.map(r => `
+                        <div class="p-row">
+                            <span>${r.amount} Birr <small style="opacity:0.5;">• #${r.id}</small>
+                                ${r.account ? `<br><small style="color:var(--gold);">🏦 ${r.account}</small>` : ''}
+                                ${r.proof ? `<br><a class="proof-link" href="${API_BASE.replace('/api','')}/uploads/${encodeURIComponent(r.proof)}" target="_blank">📎 View proof</a>` : ''}</span>
+                            <span class="status-${r.status.toLowerCase()}">${r.status}</span>
+                        </div>`).join('');
+                } else {
+                    card.style.display = 'none';
+                }
+            } catch (e) { console.error(e); }
+        }
+
+        async function submitDeposit() {
+            if (!selectedAccount) {
+                show('err', 'First choose the account you sent the money to.');
+                return;
+            }
+            const amountInput = document.getElementById('amount');
+            const amount = parseFloat(amountInput.value);
+            if (!amount || amount < 10) {
+                show('err', 'Minimum deposit is 10 Birr.');
+                return;
+            }
+            const file = document.getElementById('proof').files && document.getElementById('proof').files[0];
+            if (!file) {
+                show('err', 'Please attach a screenshot of your deposit as proof.');
+                return;
+            }
+            const btn = document.getElementById('submit');
+            btn.disabled = true;
+            try {
+                const fd = new FormData();
+                fd.append('userId', userId);
+                fd.append('amount', amount);
+                fd.append('accountId', selectedAccount.id);
+                fd.append('proof', file);
+                const res = await fetch(`${API_BASE}/request/deposit`, {
+                    method: 'POST', body: fd
+                });
+                const data = await res.json();
+                show(data.success ? 'ok' : 'err', data.msg || 'Something went wrong.');
+                if (data.success) {
+                    amountInput.value = '';
+                    document.getElementById('proof').value = '';
+                    document.getElementById('proof').classList.remove('has-file');
+                    document.getElementById('proof-preview').style.display = 'none';
+                }
+                load();
+            } catch (e) {
+                show('err', 'Connection error. Try again.');
+            } finally {
+                btn.disabled = false;
+            }
+        }
+
+        function show(type, text) {
+            const el = document.getElementById('msg');
+            el.className = 'msg ' + type;
+            el.textContent = text;
+        }
+
+        load();
+        loadBanks();
+        setInterval(load, 5000);
+    </script>
+</body>
+</html>
