@@ -6,15 +6,15 @@ How the bot runs in the cloud, how to update it, and how to control everything.
 
 | Piece | Where it lives | What it does |
 |-------|---------------|--------------|
-| App (bot + admin site) | Render service `play-with-me` | Runs the bot + web server. Stateless: restarts lose nothing except DB data if not stored in Postgres |
+| App (bot + admin site) | Render service `Habesha-bingo` | Runs the bot + web server. Stateless: restarts lose nothing except DB data if not stored in Postgres |
 | Database | Neon Postgres (`neondb`) | All persistent data (users, pools, stats, migrations) |
 | UptimeRobot | uptimerobot.com | Pings the site every 5 min so the free Render instance never falls asleep |
-| Code | GitHub: `betelhem1234/play-with-me`, branch `main` | Source of truth; every push triggers a redeploy |
+| Code | GitHub: `betelhem1234/Habesha-bingo`, branch `main` | Source of truth; every push triggers a redeploy |
 
 ## Quick reference
 
-- App URL: https://play-with-me-b19n.onrender.com
-- Render service ID: `srv-da8p9v4s728c73bsblmg`
+- App URL: https://habesha-bingo-17p0.onrender.com
+- Render service ID: `srv-db0kfiad0e5s73c1f690`
 - Neon dashboard: https://console.neon.tech (project `neondb`)
 
 ## 1. Deploying your code (normal daily flow)
@@ -109,7 +109,7 @@ Keep `prisma/schema.prisma` in sync with what you do there.
 ## 4. UptimeRobot (keep the free instance awake)
 
 1. https://uptimerobot.com -> free sign-up (one-time)
-2. Add monitor -> type **HTTP(s)** -> URL `https://play-with-me-b19n.onrender.com`
+2. Add monitor -> type **HTTP(s)** -> URL `https://habesha-bingo-17p0.onrender.com`
    -> interval **5 minutes**
 3. Save. It pings the site every 5 min so Render never sleeps (your PC staying
    off is fine). Deploys are unaffected.
@@ -118,26 +118,23 @@ Keep `prisma/schema.prisma` in sync with what you do there.
 
 | | Local (your PC) | Cloud (Render) |
 |---|---|---|
-| Bot | `@PlayWithMeTestBot` | `@BetysNewGamebot` |
-| Database | local Postgres `play_with_me_db` | Neon (`neondb`) |
+| Bot | `@MyBingoTestBot` | `@PlayMyBingoBot` |
+| Database | local Postgres | Neon (`neondb`) |
 | Started with | `bash run.sh` | `./deploy.sh "message"` |
 | Purpose | Develop and test changes | Released version testers use |
 
 **Workflow**
-1. Develop and test locally: `bash run.sh --dev` (foreground) or `bash run.sh`
-   (systemd-managed) -> runs `@PlayWithMeTestBot` on port 3000 with the tunneled
-   web app. Quick check: `bash run.sh --status`.
+1. Develop and test locally using your test bot token in `.env`.
 2. When the change is good, release it: `./deploy.sh "my update"`.
-   `deploy.sh` verifies Render's `BOT_TOKEN` is `@BetysNewGamebot` and aborts if
-   not, then pushes and waits for the cloud deploy. The cloud bot's token and
-   the Neon database never change on deploy.
-3. Tester are told to use **`@BetysNewGamebot`** (not the local bot).
+   `deploy.sh` verifies Render's `BOT_TOKEN` is `@PlayMyBingoBot` and aborts if
+   not, then pushes and waits for the cloud deploy.
+3. Players use **`@PlayMyBingoBot`**.
 
-Both bots run the same code and schema; their data lives in separate databases.
+Both bots run the same code and schema.
 
 > A bot token can only be polled by one process at a time. Never run the same
-> token locally and on Render together (the cloud is always `@BetysNewGamebot`;
-> the local PC is always `@PlayWithMeTestBot`). `run.sh --dev` stops the
+> token locally and on Render together (the cloud is always `@PlayMyBingoBot`;
+> the local PC is your test bot).
 > systemd bot before running to avoid the 409 conflict.
 
 ## 6. Helper scripts
