@@ -7,6 +7,7 @@ export interface PlayerCard {
     boardNumber: number;
     ticket: BingoTicket;
     daubed: Set<number>;
+    isBlocked?: boolean;
 }
 
 export interface Player {
@@ -21,6 +22,7 @@ export interface Player {
     firstName?: string;
     username?: string;
     lastSeen: number;
+    isBlocked?: boolean;
 }
 
 export interface WinnerRecord {
@@ -53,6 +55,7 @@ export class GameManager {
     private allNumbers: number[] = [];
     public state: 'WAITING' | 'PLAYING' = 'WAITING';
     private gameLoopInterval: NodeJS.Timeout | null = null;
+    private startTimeout: NodeJS.Timeout | null = null;
     private pendingWinners: WinnerCandidate[] = [];
     private resolutionTimeout: NodeJS.Timeout | null = null;
     
@@ -226,9 +229,11 @@ export class GameManager {
     }
 
     async forceReset(): Promise<{ success: boolean; msg: string }> {
+        if (this.startTimeout) clearTimeout(this.startTimeout);
         if (this.gameLoopInterval) clearInterval(this.gameLoopInterval);
         if (this.lobbyInterval) clearInterval(this.lobbyInterval);
         if (this.resolutionTimeout) clearTimeout(this.resolutionTimeout);
+        this.startTimeout = null;
         this.gameLoopInterval = null;
         this.lobbyInterval = null;
         this.resolutionTimeout = null;
@@ -383,11 +388,16 @@ export class GameManager {
         // Step 1: Notify all players via ticket edit (guaranteed to work since we know ticketMessageId works)
         const startMsg = `🎮 *GAME IS STARTING!*\n\n👥 Players: ${this.players.length} | 💰 Pot: *${pot} Birr*\n\n⏳ First number drawing in 3 seconds...\n\n👇 Your board — tap numbers when called:`;
         for (const p of this.players) {
+            p.isBlocked = false;
+            if (p.cards) {
+                for (const c of p.cards) c.isBlocked = false;
+            }
             await this.editTicketMessage(p, startMsg);
         }
 
         // Step 2: Short delay then start drawing
-        setTimeout(async () => {
+        if (this.startTimeout) clearTimeout(this.startTimeout);
+        this.startTimeout = setTimeout(async () => {
             await this.drawNumber();
             this.gameLoopInterval = setInterval(() => this.drawNumber(), 6000);
         }, 3000);
@@ -523,6 +533,7 @@ export class GameManager {
     async claimBingo(userId: bigint): Promise<{
         success: boolean;
         msg: string;
+        blocked?: boolean;
         late?: boolean;
         winnerName?: string;
         boardNumber?: number;
@@ -539,14 +550,21 @@ export class GameManager {
             return { success: false, msg: 'No game is currently in progress.' };
         }
 
-        // Ensure minimum 17 draws before a win can be recognized
-        if (this.drawnNumbers.size < 17) {
-            return { success: false, msg: 'A winning pattern requires at least 17 calls.' };
+        if (p.isBlocked) {
+            return { success: false, blocked: true, msg: 'Your cartella is blocked for this game.' };
         }
 
         const currentBall = Array.from(this.drawnNumbers).at(-1);
         if (currentBall === undefined) {
-            return { success: false, msg: 'No numbers drawn yet.' };
+            p.isBlocked = true;
+            if (p.cards) {
+                for (const c of p.cards) c.isBlocked = true;
+            }
+            return {
+                success: false,
+                blocked: true,
+                msg: 'False Bingo! No numbers have been drawn yet. Cartella blocked for the current game.'
+            };
         }
 
         const cards = p.cards && p.cards.length > 0 ? p.cards : [{ boardNumber: p.boardNumber || 0, ticket: p.ticket, daubed: p.daubed }];
@@ -572,14 +590,19 @@ export class GameManager {
         }
 
         if (!winningCard) {
-            if (hasStaleLine) {
-                return {
-                    success: false,
-                    late: true,
-                    msg: 'Late Bingo! You missed your turn when your winning number was called. Keep playing for another line.'
-                };
+            p.isBlocked = true;
+            if (p.cards) {
+                for (const c of p.cards) c.isBlocked = true;
             }
-            return { success: false, msg: 'You do not have a BINGO pattern yet!' };
+            const msg = hasStaleLine
+                ? 'Late Bingo! You missed your turn when your winning number was called. Cartella blocked for the current game.'
+                : 'False Bingo! You do not have a winning pattern yet. Cartella blocked for the current game.';
+            return {
+                success: false,
+                blocked: true,
+                late: hasStaleLine,
+                msg
+            };
         }
 
         // If player already claimed in pending pool
@@ -660,6 +683,10 @@ export class GameManager {
         const p = this.players.find(p => p.userId === userId);
         if (!p) return { success: false, msg: 'You are not in the current game.' };
         p.lastSeen = Date.now();
+
+        if (p.isBlocked) {
+            return { success: false, msg: 'Cartella is blocked for this game.' };
+        }
 
         if (!this.drawnNumbers.has(num)) {
             return { success: false, msg: `⛔ ${getNumberName(num)} has not been drawn yet!` };

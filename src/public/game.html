@@ -212,11 +212,44 @@ body{
   width:100%;min-width:0;box-sizing:border-box;
 }
 .card-wrapper{
+  position:relative;
+  overflow:hidden;
   background:#ece3f7;border:1px solid #c9b3e8;
   border-radius:10px;padding:3px;
   display:flex;flex-direction:column;gap:1.5px;
   width:100%;min-width:0;box-sizing:border-box;
   box-shadow:0 1px 4px rgba(74,21,75,0.08);
+}
+.card-blocked-overlay{
+  position:absolute;top:0;left:0;right:0;bottom:0;
+  background:rgba(45, 8, 12, 0.90);
+  backdrop-filter:blur(5px);
+  -webkit-backdrop-filter:blur(5px);
+  border:2px solid #e74c3c;
+  border-radius:10px;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;
+  z-index:30;padding:10px;text-align:center;
+  box-shadow:inset 0 0 24px rgba(231,76,60,0.5);
+  pointer-events:all;
+  animation:fade-in-block 0.25s ease-out;
+}
+@keyframes fade-in-block{
+  from{opacity:0;transform:scale(0.97);}to{opacity:1;transform:scale(1);}
+}
+.card-blocked-badge{
+  background:#c0392b;color:#fff;
+  font-size:0.75rem;font-weight:900;
+  padding:3px 9px;border-radius:20px;
+  letter-spacing:0.5px;margin-bottom:5px;
+  box-shadow:0 2px 6px rgba(0,0,0,0.3);
+}
+.card-blocked-title{
+  color:#fff;font-size:0.92rem;font-weight:900;
+  margin-bottom:3px;text-shadow:0 2px 4px rgba(0,0,0,0.6);
+}
+.card-blocked-sub{
+  color:#ffcdd2;font-size:0.72rem;font-weight:700;
+  line-height:1.25;max-width:240px;
 }
 .card-bingo-headers{
   display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
@@ -320,6 +353,12 @@ body{
   background:#27ae60 !important;color:#fff !important;
   opacity:1 !important;cursor:default !important;
   box-shadow:0 2px 8px rgba(39,174,96,0.4) !important;
+  animation:none !important;
+}
+.btn-bingo.btn-blocked{
+  background:#c0392b !important;color:#fff !important;
+  opacity:0.65 !important;cursor:not-allowed !important;
+  box-shadow:none !important;
   animation:none !important;
 }
 @keyframes btn-glow{
@@ -650,6 +689,7 @@ function renderBoards(cards, drawnSet){
     <div class="cards-stack-container">
       ${cards.map((card, idx) => {
         const daubedSet = new Set(card.daubed || []);
+        const isBlocked = Boolean(isPlayerBlocked || card.isBlocked);
         let cellsHtml = '';
         for(let r=0; r<5; r++){
           for(let c=0; c<5; c++){
@@ -659,15 +699,25 @@ function renderBoards(cards, drawnSet){
             }else if(daubedSet.has(num)){
               cellsHtml += `<div class="card-cell daubed">${num}</div>`;
             }else if(drawnSet.has(num)){
-              cellsHtml += `<div class="card-cell can-daub" onclick="daubNumber(${num})">${num}</div>`;
+              const clickAttr = isBlocked ? '' : `onclick="daubNumber(${num})"`;
+              cellsHtml += `<div class="card-cell can-daub" ${clickAttr}>${num}</div>`;
             }else{
               cellsHtml += `<div class="card-cell">${num}</div>`;
             }
           }
         }
 
+        const blockedOverlayHtml = isBlocked ? `
+          <div class="card-blocked-overlay">
+            <div class="card-blocked-badge">🚫 BLOCKED / ታግዷል</div>
+            <div class="card-blocked-title">Cartella Blocked for the Current Game</div>
+            <div class="card-blocked-sub">በዚህ ጨዋታ ካርቴላዎ ታግዷል — ጨዋታው እስኪያልቅ መጫወት አይችሉም</div>
+          </div>
+        ` : '';
+
         return `
           <div class="card-wrapper ${isStacked ? 'stacked' : ''}">
+            ${blockedOverlayHtml}
             <div class="cartela-title">Cartela #${card.boardNumber}</div>
             <div class="card-bingo-headers">
               <div class="cb-hdr fb-hdr-B">B</div>
@@ -911,12 +961,19 @@ function toggleSound(){
   }
   unlockAudio();
 }
+let isPlayerBlocked = false;
 let currentCanBingo = false;
 let claimInProgress = false;
 
 function updateActionButtons(canBingo){
   const bBtn = document.getElementById('btn-bingo');
   if(!bBtn) return;
+  if(isPlayerBlocked){
+    bBtn.textContent = 'Blocked 🚫';
+    bBtn.className = 'btn-bingo btn-blocked';
+    bBtn.disabled = true;
+    return;
+  }
   if(autoEnabled){
     bBtn.textContent = 'Automatic';
     bBtn.className = 'btn-bingo btn-automatic';
@@ -929,7 +986,7 @@ function updateActionButtons(canBingo){
 }
 
 function onBingoClick(){
-  if(autoEnabled) return;
+  if(autoEnabled || isPlayerBlocked) return;
   claimBingo();
 }
 
@@ -1027,7 +1084,7 @@ function autoDaubAndCheck(drawnCount = (lastDrawnSet ? lastDrawnSet.size : 0)){
     }
   }
 
-  if(autoEnabled && hasFreshWin && drawnCount >= 17 && !winnerShown && !claimInProgress){
+  if(autoEnabled && !isPlayerBlocked && hasFreshWin && !winnerShown && !claimInProgress){
     console.log('[Auto] Fresh winning pattern on current ball! Claiming Bingo automatically...');
     claimBingo();
   }
@@ -1054,6 +1111,7 @@ function playDaubPop(){
 
 // ─── Daub ───
 async function daubNumber(num){
+  if(isPlayerBlocked) return;
   playDaubPop();
 
   // Optimistically mark locally on myCards so board updates instantly on screen
@@ -1105,7 +1163,7 @@ function showValidationMessage(msg){
 }
 
 async function claimBingo(){
-  if(claimInProgress || winnerShown) return;
+  if(claimInProgress || winnerShown || isPlayerBlocked) return;
   claimInProgress = true;
   try{
     const res=await fetch('/api/claim',{
@@ -1116,6 +1174,14 @@ async function claimBingo(){
     if(data.success && data.msg==='BINGO!'){
       handleWin(data);
     } else {
+      if(data.blocked){
+        isPlayerBlocked = true;
+        if(window.Telegram?.WebApp?.HapticFeedback){
+          try{ Telegram.WebApp.HapticFeedback.notificationOccurred('error'); }catch(e){}
+        }
+        updateActionButtons(false);
+        renderBoards(myCards, lastDrawnSet);
+      }
       showValidationMessage(data.msg || "You do not have a BINGO pattern yet!");
       poll();
     }
@@ -1289,6 +1355,19 @@ async function poll(){
         }];
       }
 
+      if(data.isBlocked !== undefined){
+        isPlayerBlocked = Boolean(data.isBlocked);
+      }
+      if(data.gameState === 'WAITING'){
+        isPlayerBlocked = false;
+      }
+      if(data.gameId && window._lastSeenGameId && data.gameId !== window._lastSeenGameId){
+        isPlayerBlocked = false;
+      }
+      if(data.gameId){
+        window._lastSeenGameId = data.gameId;
+      }
+
       if(myCards.length > 0){
         renderBoardBadge();
         renderBoards(myCards, lastDrawnSet);
@@ -1298,12 +1377,12 @@ async function poll(){
         document.getElementById('stake-disp').textContent = `${totalBet}`;
 
         // Auto-daub and auto-check win across cards if enabled
-        if(autoEnabled){
+        if(autoEnabled && !isPlayerBlocked){
           autoDaubAndCheck(data.drawnNumbers?.length || lastDrawnSet.size);
         }
       }
 
-      currentCanBingo = (data.gameState === 'PLAYING' && (data.drawnNumbers?.length || 0) >= 17);
+      currentCanBingo = (data.gameState === 'PLAYING' && (data.drawnNumbers?.length || 0) >= 1 && !isPlayerBlocked);
       updateActionButtons(currentCanBingo);
 
       if(data.gameState === 'WAITING'){
@@ -1317,7 +1396,7 @@ async function poll(){
     }
 
     const hasWinners = (data.winners && data.winners.length > 0) || data.winner;
-    if(hasWinners && !winnerShown && (data.gameState === 'WAITING' || (data.drawnNumbers?.length || 0) >= 17)){
+    if(hasWinners && !winnerShown){
       const winList = (data.winners && data.winners.length > 0) ? data.winners : [data.winner];
       const firstW = winList[0];
       handleWin({

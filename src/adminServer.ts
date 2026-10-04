@@ -147,12 +147,14 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             ? player.cards.map(c => ({
                 boardNumber: c.boardNumber,
                 ticket: c.ticket,
-                daubed: Array.from(c.daubed)
+                daubed: Array.from(c.daubed),
+                isBlocked: Boolean(c.isBlocked || player.isBlocked)
             }))
             : [{
                 boardNumber: player.boardNumber ?? 0,
                 ticket: player.ticket,
-                daubed: Array.from(player.daubed)
+                daubed: Array.from(player.daubed),
+                isBlocked: Boolean(player.isBlocked)
             }];
         const boardNumbers = cardsData.map(c => c.boardNumber);
         
@@ -165,6 +167,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             boardNumbers: boardNumbers,
             fee: player.fee,
             daubed: Array.from(player.daubed),
+            isBlocked: Boolean(player.isBlocked),
             drawnNumbers: Array.from(gameManager.drawnNumbers),
             lastDrawn: Array.from(gameManager.drawnNumbers).at(-1) ?? null,
             lobbyCountdown: gameManager.lobbyCountdown,

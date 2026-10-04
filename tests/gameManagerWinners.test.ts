@@ -50,7 +50,7 @@ describe('GameManager Winner and Claim Mechanics', () => {
         assert.equal(gm.currentWinner, null);
     });
 
-    it('rejects claim if no valid winning pattern exists', async () => {
+    it('rejects claim if no valid winning pattern exists and blocks player', async () => {
         const gm = new GameManager(mockBot);
         const userId = 12345n;
         const ticket = generateTicket(50);
@@ -82,10 +82,12 @@ describe('GameManager Winner and Claim Mechanics', () => {
 
         const res = await gm.claimBingo(userId);
         assert.equal(res.success, false);
-        assert.equal(res.msg, 'You do not have a BINGO pattern yet!');
+        assert.equal(res.blocked, true);
+        assert.equal(gm.players[0].isBlocked, true);
+        assert.match(res.msg, /False Bingo/i);
     });
 
-    it('rejects claim before 17 balls are drawn', async () => {
+    it('rejects early claim without winning pattern as false bingo and blocks player', async () => {
         const gm = new GameManager(mockBot);
         const userId = 12345n;
         const ticket = generateTicket(50);
@@ -108,7 +110,19 @@ describe('GameManager Winner and Claim Mechanics', () => {
 
         const res = await gm.claimBingo(userId);
         assert.equal(res.success, false);
-        assert.equal(res.msg, 'A winning pattern requires at least 17 calls.');
+        assert.equal(res.blocked, true);
+        assert.equal(gm.players[0].isBlocked, true);
+        assert.match(res.msg, /False Bingo/i);
+
+        // Verify blocked player cannot daub numbers
+        const daubRes = await gm.daubNumber(userId, 1);
+        assert.equal(daubRes.success, false);
+        assert.match(daubRes.msg!, /blocked/i);
+
+        // Verify blocked player cannot claim again
+        const secondClaim = await gm.claimBingo(userId);
+        assert.equal(secondClaim.success, false);
+        assert.equal(secondClaim.blocked, true);
     });
 
     it('4 corners pattern is recognized as a valid win on claim', async () => {
@@ -201,6 +215,8 @@ describe('GameManager Winner and Claim Mechanics', () => {
         const res = await gm.claimBingo(userId);
         assert.equal(res.success, false);
         assert.equal(res.late, true);
+        assert.equal(res.blocked, true);
+        assert.equal(gm.players[0].isBlocked, true);
         assert.match(res.msg, /Late Bingo/i);
     });
 
@@ -247,5 +263,28 @@ describe('GameManager Winner and Claim Mechanics', () => {
         const res = await gm.claimBingo(userId);
         assert.equal(res.success, true);
         assert.equal(res.msg, 'BINGO!');
+    });
+
+    it('blocked state is cleared when game starts', async () => {
+        const gm = new GameManager(mockBot);
+        const userId = 55555n;
+        const ticket = generateTicket(20);
+
+        gm.state = 'WAITING';
+        gm.players = [{
+            userId,
+            ticket,
+            boardNumber: 1,
+            cards: [{ boardNumber: 1, ticket, daubed: new Set(), isBlocked: true }],
+            daubed: new Set(),
+            fee: 10,
+            isBlocked: true,
+            lastSeen: Date.now()
+        }];
+
+        await gm.startGame();
+        assert.equal(gm.players[0].isBlocked, false);
+        assert.equal(gm.players[0].cards[0].isBlocked, false);
+        await gm.forceReset();
     });
 });
