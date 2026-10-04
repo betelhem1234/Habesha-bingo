@@ -13,9 +13,9 @@ const userLangs = new Map<string, string>();
 
 const TEXTS = {
     welcome: {
-        en: 'Welcome to **Habesha Bingo**! 🔥 FIRST DEPOSIT 25% BONUS 🔥',
-        am: 'እንኳን ወደ **Habesha Bingo** በደህና መጡ! 🔥 FIRST DEPOSIT 25% BONUS 🔥',
-        om: 'Baga nagaan gara **Habesha Bingo** dhuftan! 🔥 FIRST DEPOSIT 25% BONUS 🔥'
+        en: 'Welcome to **Habesha Bingo**! 🔥 FIRST JOIN 30 Birr BONUS 🔥',
+        am: 'እንኳን ወደ **Habesha Bingo** በደህና መጡ! 🔥 FIRST JOIN 30 Birr BONUS 🔥',
+        om: 'Baga nagaan gara **Habesha Bingo** dhuftan! 🔥 FIRST JOIN 30 Birr BONUS 🔥'
     },
     playBtn: {
         en: '🎮 PLAY NOW',

@@ -329,9 +329,10 @@ let selectedBoards=[]; // Array of 1 or 2 board numbers
 let isJoining=false;
 let cachedBoards=[];
 let currentRange={min:1, max:500};
-let serverCountdown=30;
-let localTimer=null;
-let timerStarted=false;
+let targetEndTime=0;
+let countdownActive=false;
+let smoothTimer=null;
+let lastDisplayedSec=-1;
 let redirected=false;
 
 // Set initial labels
@@ -483,9 +484,6 @@ async function pickBoard(num){
       if(data.boards && Array.isArray(data.boards)) selectedBoards=data.boards;
       renderPreviews();
       updateStakeDisplay();
-      if(selectedBoards.length>0 && !timerStarted){
-        startLocalTimer();
-      }
       if(window.Telegram?.WebApp?.HapticFeedback) Telegram.WebApp.HapticFeedback.notificationOccurred('success');
       poll();
       loadBalance();
@@ -528,6 +526,7 @@ async function removeBoard(num){
 }
 
 async function exitGame(){
+  if(smoothTimer){ clearInterval(smoothTimer); smoothTimer=null; }
   if(selectedBoards.length>0){
     try{
       await fetch('/api/leave',{
@@ -539,30 +538,65 @@ async function exitGame(){
   window.location.href=`/index.html?userId=${userId}`;
 }
 
-function startLocalTimer(){
-  timerStarted=true;
-  if(localTimer) clearInterval(localTimer);
-  localTimer=setInterval(async ()=>{
-    if(serverCountdown > 0){
-      serverCountdown--;
-      document.getElementById('timer').textContent=serverCountdown;
+function updateCountdownTarget(serverSecs){
+  const s = parseInt(serverSecs, 10) || 0;
+  const now = Date.now();
+  if(s > 0){
+    const incomingEndTime = now + (s * 1000);
+    // If not running, or if server drifted significantly (> 2.5s offset, e.g. new game/reset)
+    if(!countdownActive || Math.abs(incomingEndTime - targetEndTime) > 2500){
+      targetEndTime = incomingEndTime;
+      countdownActive = true;
     }
-    if(serverCountdown<=0 && !redirected){
-      redirected=true;
-      clearInterval(localTimer);
-      if(selectedBoards.length>0){
+    if(!smoothTimer){
+      startSmoothTimer();
+    }
+  } else {
+    // Lobby empty / waiting - no active countdown on server
+    countdownActive = false;
+    targetEndTime = 0;
+    if(smoothTimer){ clearInterval(smoothTimer); smoothTimer = null; }
+    document.getElementById('timer').textContent = '30';
+    lastDisplayedSec = -1;
+  }
+}
+
+function startSmoothTimer(){
+  if(smoothTimer) clearInterval(smoothTimer);
+  smoothTimer = setInterval(async ()=>{
+    if(!countdownActive || targetEndTime <= 0) return;
+    const now = Date.now();
+    const remaining = Math.max(0, Math.ceil((targetEndTime - now) / 1000));
+
+    // Update screen display only when the whole second tick changes
+    if(remaining !== lastDisplayedSec){
+      lastDisplayedSec = remaining;
+      document.getElementById('timer').textContent = remaining;
+    }
+
+    if(remaining <= 0 && countdownActive){
+      countdownActive = false;
+      clearInterval(smoothTimer);
+      smoothTimer = null;
+      document.getElementById('timer').textContent = '0';
+
+      if(selectedBoards.length > 0 && !redirected){
+        // Player has selected board(s) -> Start game and navigate to game.html
+        redirected = true;
         try{
           await fetch('/api/start-game',{
             method:'POST',headers:{'Content-Type':'application/json'},
             body:JSON.stringify({bet,room})
           });
         }catch(e){}
-        window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&boards=${selectedBoards.join(',')}&v=${Date.now()}`;
-      }else{
-        window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&v=${Date.now()}`;
+        window.location.href = `/game.html?userId=${userId}&bet=${bet}&room=${room}&boards=${selectedBoards.join(',')}&v=${Date.now()}`;
+      } else {
+        // Player has NO selected boards: stay on board selection page!
+        document.getElementById('timer').textContent = '30';
+        lastDisplayedSec = -1;
       }
     }
-  },1000);
+  }, 250);
 }
 
 async function loadBalance(){
@@ -601,24 +635,19 @@ async function poll(){
       updateStakeDisplay();
     }
 
-    if(boardData.lobbyCountdown && boardData.lobbyCountdown > 0){
-      serverCountdown=boardData.lobbyCountdown;
-      document.getElementById('timer').textContent=serverCountdown;
-      if(!timerStarted){
-        startLocalTimer();
-      }
+    if(boardData.lobbyCountdown !== undefined){
+      updateCountdownTarget(boardData.lobbyCountdown);
     }
 
     renderBoards(boardData.boards||[]);
 
-    if(boardData.gameState==='PLAYING'&&!redirected){
-      redirected=true;
-      if(localTimer) clearInterval(localTimer);
-      if(selectedBoards.length>0){
+    if(boardData.gameState==='PLAYING' && !redirected){
+      if(selectedBoards.length > 0){
+        redirected = true;
+        if(smoothTimer) clearInterval(smoothTimer);
         window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&boards=${selectedBoards.join(',')}&v=${Date.now()}`;
-      }else{
-        window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&v=${Date.now()}`;
       }
+      // If player has NO boards selected, DO NOT redirect! Stay on boards.html!
     }
   }catch(e){console.error('poll error',e);}
 }
