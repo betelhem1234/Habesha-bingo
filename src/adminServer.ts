@@ -132,6 +132,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         if (!player) {
             return res.json({
                 inGame: false,
+                callerVoice: gameRooms.getCallerVoice(),
                 gameState: gameManager.state,
                 drawnNumbers: Array.from(gameManager.drawnNumbers),
                 lastDrawn: Array.from(gameManager.drawnNumbers).at(-1) ?? null,
@@ -160,6 +161,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         
         res.json({
             inGame: true,
+            callerVoice: gameRooms.getCallerVoice(),
             gameState: gameManager.state,
             ticket: player.ticket,
             boardNumber: player.boardNumber ?? null,
@@ -760,6 +762,21 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             console.error('API broadcast error:', e);
             res.status(500).json({ success: false, msg: 'Broadcast failed.' });
         }
+    });
+
+    // Caller Voice Admin API
+    app.get('/api/admin/voice', (_req, res) => {
+        res.json({ success: true, voice: gameRooms.getCallerVoice() });
+    });
+
+    app.post('/api/admin/voice', (req, res) => {
+        const { voice } = req.body || {};
+        if (voice !== 'male' && voice !== 'female') {
+            return res.status(400).json({ success: false, msg: 'Invalid voice option. Must be "male" or "female".' });
+        }
+        gameRooms.setCallerVoice(voice);
+        console.log(`[Admin] Caller voice changed to "${voice}" by admin`);
+        res.json({ success: true, voice: gameRooms.getCallerVoice() });
     });
 
 

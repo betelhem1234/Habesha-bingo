@@ -474,8 +474,8 @@ export class GameManager {
         }
 
         let num: number;
-        // For draws 1-16 (size < 16), select a safe ball that does not complete a winning line for anyone
-        if (this.drawnNumbers.size < 16 && this.players.length > 0) {
+        // For draws 1-14 (size < 14), select a safe ball that does not complete a winning line for anyone
+        if (this.drawnNumbers.size < 14 && this.players.length > 0) {
             const safeIndices: number[] = [];
             for (let i = 0; i < this.allNumbers.length; i++) {
                 if (!this.wouldCauseWin(this.allNumbers[i])) {
@@ -490,7 +490,7 @@ export class GameManager {
                 num = this.allNumbers.pop()!;
             }
         } else if (this.players.length > 0) {
-            // Draw 17+: select candidate balls that cause <= 2 winners (strictly never 3 or more)
+            // Draw 15+: select candidate balls that cause <= 2 winners (strictly never 3 or more)
             const validIndices: number[] = [];
             for (let i = 0; i < this.allNumbers.length; i++) {
                 if (this.countSimulatedWinners(this.allNumbers[i]) <= 2) {

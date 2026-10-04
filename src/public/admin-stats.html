@@ -78,6 +78,21 @@
                     </table>
                 </div>
             <section class="users-section" style="margin-top: 24px;">
+                <h2>🎙️ Caller Voice Control (የደዋይ ድምፅ ምርጫ)</h2>
+                <div style="background: rgba(255,255,255,0.05); padding: 18px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); margin-top: 10px;">
+                    <p style="font-size: 14px; margin-bottom: 12px; color: rgba(255,255,255,0.8);">
+                        Admin Mandate: Choose which announcer voice <strong>all players</strong> in the game hear.
+                    </p>
+                    <div style="display:flex; gap:12px; align-items:center; flex-wrap:wrap;">
+                        <button class="btn-primary" id="btn-voice-male" onclick="setVoice('male')" style="margin:0; padding:10px 18px; font-size:14px; background:#1976d2; border:none; cursor:pointer;">👨 Male Voice (ወንድ)</button>
+                        <button class="btn-primary" id="btn-voice-female" onclick="setVoice('female')" style="margin:0; padding:10px 18px; font-size:14px; background:#e91e63; border:none; cursor:pointer;">👩 Female Voice (ሴት)</button>
+                        <span id="voice-current-badge" style="font-weight:700; font-size:14px; padding:6px 12px; border-radius:8px; background:rgba(255,255,255,0.1);">Active: Loading...</span>
+                    </div>
+                    <div id="voice-status" style="margin-top: 10px; font-size: 13px; font-weight: 600;"></div>
+                </div>
+            </section>
+
+            <section class="users-section" style="margin-top: 24px;">
                 <h2>📣 Broadcast Message to Players</h2>
                 <div style="background: rgba(255,255,255,0.05); padding: 18px; border-radius: 12px; border: 1px solid rgba(255,255,255,0.1); margin-top: 10px;">
                     <div style="margin-bottom: 14px;">
@@ -100,5 +115,53 @@
         </main>
     </div>
     <script src="app-stats.js"></script>
+    <script>
+        async function loadVoiceSetting() {
+            try {
+                const res = await fetch('/api/admin/voice');
+                const data = await res.json();
+                const badge = document.getElementById('voice-current-badge');
+                if (badge) {
+                    if (data.voice === 'female') {
+                        badge.textContent = 'Active: 👩 Female (ሴት)';
+                        badge.style.color = '#ff80ab';
+                    } else {
+                        badge.textContent = 'Active: 👨 Male (ወንድ)';
+                        badge.style.color = '#90caf9';
+                    }
+                }
+            } catch (e) {}
+        }
+
+        async function setVoice(voice) {
+            const statusEl = document.getElementById('voice-status');
+            if (statusEl) {
+                statusEl.textContent = 'Updating caller voice...';
+                statusEl.style.color = '#ffcc00';
+            }
+            try {
+                const res = await fetch('/api/admin/voice', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ voice })
+                });
+                const data = await res.json();
+                if (data.success && statusEl) {
+                    statusEl.textContent = `✅ Successfully switched to ${voice === 'female' ? '👩 Female' : '👨 Male'} voice! All players are updated.`;
+                    statusEl.style.color = '#22ff88';
+                    loadVoiceSetting();
+                } else if (statusEl) {
+                    statusEl.textContent = '❌ Failed to update voice: ' + (data.msg || 'Unknown error');
+                    statusEl.style.color = '#ff5555';
+                }
+            } catch (e) {
+                if (statusEl) {
+                    statusEl.textContent = '❌ Network error updating voice.';
+                    statusEl.style.color = '#ff5555';
+                }
+            }
+        }
+        loadVoiceSetting();
+    </script>
 </body>
 </html>

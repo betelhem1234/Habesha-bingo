@@ -1,3 +1,5 @@
+import fs from 'fs';
+import path from 'path';
 import { Bot } from 'grammy';
 import { GameManager } from './GameManager';
 
@@ -5,10 +7,45 @@ const FEES = [10, 20, 50, 100, 0];
 
 export class GameRooms {
     private rooms: Map<number, GameManager> = new Map();
+    private callerVoice: 'male' | 'female' = 'male';
+    private settingsFilePath = path.join(process.cwd(), 'data', 'settings.json');
 
     constructor(private bot: Bot) {
+        this.loadSettings();
         // Periodically release boards/fees left by players who abandoned the lobby.
         setInterval(() => this.sweepStalePlayers(), 30000).unref();
+    }
+
+    private loadSettings() {
+        try {
+            if (fs.existsSync(this.settingsFilePath)) {
+                const data = JSON.parse(fs.readFileSync(this.settingsFilePath, 'utf8'));
+                if (data.callerVoice === 'female' || data.callerVoice === 'male') {
+                    this.callerVoice = data.callerVoice;
+                }
+            }
+        } catch (e) {
+            console.error('[GameRooms] Error reading settings file:', e);
+        }
+    }
+
+    private saveSettings() {
+        try {
+            const dir = path.dirname(this.settingsFilePath);
+            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+            fs.writeFileSync(this.settingsFilePath, JSON.stringify({ callerVoice: this.callerVoice }, null, 2), 'utf8');
+        } catch (e) {
+            console.error('[GameRooms] Error saving settings file:', e);
+        }
+    }
+
+    getCallerVoice(): 'male' | 'female' {
+        return this.callerVoice;
+    }
+
+    setCallerVoice(voice: 'male' | 'female') {
+        this.callerVoice = voice;
+        this.saveSettings();
     }
 
     private async sweepStalePlayers() {

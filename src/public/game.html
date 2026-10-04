@@ -745,10 +745,12 @@ function getCol(n){
 }
 
 // ─── Real Audio Voice Caller (Web Audio API - Fast, Preloaded, Mobile & Telegram Compatible) ───
-const audioBufferCache = new Map();
+const femaleBufferCache = new Map();
+const maleBufferCache = new Map();
 const audioFetchingMap = new Map();
 let currentCallSource = null;
 let preloadingStarted = false;
+let activeServerVoice = 'male'; // synchronized with admin mandate from server
 
 function getCtx(){
   if(!audioCtx){
@@ -826,7 +828,9 @@ function makeMaleAudioBuffer(ctx, originalBuffer, r = 0.80){
 }
 
 async function loadAudioBuffer(num){
-  if(audioBufferCache.has(num)) return audioBufferCache.get(num);
+  if(femaleBufferCache.has(num) && maleBufferCache.has(num)){
+    return activeServerVoice === 'female' ? femaleBufferCache.get(num) : maleBufferCache.get(num);
+  }
   if(audioFetchingMap.has(num)) return audioFetchingMap.get(num);
 
   const fetchPromise = (async () => {
@@ -836,9 +840,10 @@ async function loadAudioBuffer(num){
       const ctx = getCtx();
       if(!ctx) return null;
       const decoded = await ctx.decodeAudioData(arrayBuf);
+      femaleBufferCache.set(num, decoded);
       const maleBuffer = makeMaleAudioBuffer(ctx, decoded, 0.80);
-      audioBufferCache.set(num, maleBuffer);
-      return maleBuffer;
+      maleBufferCache.set(num, maleBuffer);
+      return activeServerVoice === 'female' ? decoded : maleBuffer;
     }catch(e){
       console.warn(`Failed to decode audio for #${num}:`, e);
       return null;
@@ -887,14 +892,16 @@ async function preloadAudioCalls(){
 
 async function speakDrawnNumber(num){
   if(!soundEnabled || !num) return;
+  const isFemale = (activeServerVoice === 'female');
   
-  // 1. Primary: Web Audio API (instant 0ms playback, male voice, brisk tempo)
+  // 1. Primary: Web Audio API (instant 0ms playback, female or male per admin mandate)
   try{
     const ctx = getCtx();
     if(ctx){
       if(ctx.state === 'suspended') await ctx.resume();
 
-      const buffer = await loadAudioBuffer(num);
+      await loadAudioBuffer(num);
+      const buffer = isFemale ? femaleBufferCache.get(num) : maleBufferCache.get(num);
       if(buffer){
         if(currentCallSource){
           try{ currentCallSource.stop(); }catch(e){}
@@ -902,24 +909,28 @@ async function speakDrawnNumber(num){
         const source = ctx.createBufferSource();
         source.buffer = buffer;
         
-        // Lower pitch by 20% into an authentic male voice.
-        // Combined with SOLA buffer pre-compression, duration is 100% normal speed!
-        source.playbackRate.value = 0.80;
+        if(isFemale){
+          // Female Voice: Original clean audio, 100% natural pitch & tempo
+          source.playbackRate.value = 1.0;
+          source.connect(ctx.destination);
+        }else{
+          // Male Voice: Lower pitch by 20%, SOLA-compressed, rich chest EQ
+          source.playbackRate.value = 0.80;
 
-        // Rich broadcaster EQ: adds male chest resonance
-        const bass = ctx.createBiquadFilter();
-        bass.type = 'lowshelf';
-        bass.frequency.value = 220;
-        bass.gain.value = 5.0;
+          const bass = ctx.createBiquadFilter();
+          bass.type = 'lowshelf';
+          bass.frequency.value = 220;
+          bass.gain.value = 5.0;
 
-        const treble = ctx.createBiquadFilter();
-        treble.type = 'highshelf';
-        treble.frequency.value = 3200;
-        treble.gain.value = -3.0;
+          const treble = ctx.createBiquadFilter();
+          treble.type = 'highshelf';
+          treble.frequency.value = 3200;
+          treble.gain.value = -3.0;
 
-        source.connect(bass);
-        bass.connect(treble);
-        treble.connect(ctx.destination);
+          source.connect(bass);
+          bass.connect(treble);
+          treble.connect(ctx.destination);
+        }
 
         source.start(0);
         currentCallSource = source;
@@ -936,7 +947,7 @@ async function speakDrawnNumber(num){
     if(el){
       el.pause();
       el.src = `/audio/calls/${num}.mp3`;
-      el.playbackRate = 0.82;
+      el.playbackRate = isFemale ? 1.0 : 0.82;
       el.play().catch(e => console.warn('HTML5 fallback audio error:', e));
     }
   }catch(e){}
@@ -1005,7 +1016,7 @@ function toggleAuto(){
   if(autoEnabled){
     autoDaubAndCheck();
     // Check if player had a stale line when turning on auto mid-game
-    if(myCards && myCards.length > 0 && lastDrawnSet && lastDrawnSet.size >= 17){
+    if(myCards && myCards.length > 0 && lastDrawnSet && lastDrawnSet.size >= 15){
       let hasStale = false;
       let hasFresh = false;
       for(const card of myCards){
@@ -1330,6 +1341,10 @@ async function poll(){
     if(isSpectator && data.gameState === 'WAITING' && !winnerShown){
       window.location.href=`/boards.html?userId=${userId}&bet=${bet}&room=${room}`;
       return;
+    }
+
+    if(data.callerVoice && (data.callerVoice === 'female' || data.callerVoice === 'male')){
+      activeServerVoice = data.callerVoice;
     }
 
     if(data.lastDrawn && data.lastDrawn !== lastDrawn){

@@ -102,13 +102,16 @@ async function sendMainMenu(ctx: Context, user: { id: bigint; phone?: string | n
         .text('📞 Contact Us', 'menu_support');
 
     if (userId.toString() === config.ADMIN_USER_ID) {
+        const v = gameRooms.getCallerVoice();
+        const vLabel = v === 'female' ? '👩 Voice: Female' : '👨 Voice: Male';
         kb.row()
             .text('📋 Requests', 'menu_admin_requests')
             .text('📊 Status', 'menu_admin_status').row()
             .text('🏦 Banks', 'menu_admin_banks')
             .text('📣 Broadcast', 'menu_admin_broadcast').row()
             .text('▶️ Start', 'menu_admin_start')
-            .text('⏹ Stop', 'menu_admin_stop');
+            .text('⏹ Stop', 'menu_admin_stop').row()
+            .text(`🎙️ ${vLabel}`, 'menu_admin_voice');
     }
 
     try {
@@ -231,11 +234,14 @@ bot.callbackQuery(/^lang_(en|am|om)$/, async (ctx) => {
     } catch(e) {}
 
     if (ctx.from.id.toString() === config.ADMIN_USER_ID) {
+        const v = gameRooms.getCallerVoice();
+        const vLabel = v === 'female' ? '👩 Voice: Female' : '👨 Voice: Male';
         kb.row()
             .text('📋 Requests', 'menu_admin_requests')
             .text('📊 Status', 'menu_admin_status').row()
             .text('🏦 Banks', 'menu_admin_banks')
-            .text('📣 Broadcast', 'menu_admin_broadcast');
+            .text('📣 Broadcast', 'menu_admin_broadcast').row()
+            .text(`🎙️ ${vLabel}`, 'menu_admin_voice');
     }
 
     await ctx.replyWithPhoto(getBannerPhoto(), {
@@ -491,6 +497,48 @@ bot.callbackQuery('menu_admin_stop', async (ctx) => {
         }
     }
     await ctx.reply(stopped === 0 ? '⚠️ No game is currently running.' : `✅ Stopped ${stopped} game(s) and lobby reset.`);
+});
+
+bot.callbackQuery('menu_admin_voice', async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.answerCallbackQuery({ text: '⛔ Admin only.', show_alert: true });
+    }
+    const current = gameRooms.getCallerVoice();
+    const newVoice = current === 'male' ? 'female' : 'male';
+    gameRooms.setCallerVoice(newVoice);
+    const icon = newVoice === 'female' ? '👩' : '👨';
+    const label = newVoice === 'female' ? 'Female (የሴት ድምፅ)' : 'Male (የወንድ ድምፅ)';
+    await ctx.answerCallbackQuery({
+        text: `✅ Voice changed to ${icon} ${label}! All players updated.`,
+        show_alert: true
+    });
+    const kb = new InlineKeyboard()
+        .text('👨 Set Male Voice (ወንድ)', 'voice_set_male')
+        .text('👩 Set Female Voice (ሴት)', 'voice_set_female');
+    await ctx.reply(
+        `🎙️ *Caller Voice Changed!*\n\n` +
+        `Current active voice for all players: ${icon} *${label}*.\n` +
+        `All live and upcoming games will use this voice for all players.`,
+        { parse_mode: 'Markdown', reply_markup: kb }
+    );
+});
+
+bot.callbackQuery(/^voice_set_(male|female)$/, async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.answerCallbackQuery({ text: '⛔ Admin only.', show_alert: true });
+    }
+    const voice = ctx.match[1] as 'male' | 'female';
+    gameRooms.setCallerVoice(voice);
+    const icon = voice === 'female' ? '👩' : '👨';
+    const label = voice === 'female' ? 'Female (የሴት ድምፅ)' : 'Male (የወንድ ድምፅ)';
+    await ctx.answerCallbackQuery({
+        text: `✅ Set to ${icon} ${label}!`,
+        show_alert: true
+    });
+    await ctx.reply(
+        `🎙️ *Caller Voice Updated!*\n\nAll players will now hear: ${icon} *${label}* announcements.`,
+        { parse_mode: 'Markdown' }
+    );
 });
 
 // --- Admin: payout account (bank) management ---
@@ -777,17 +825,54 @@ bot.command('admin', async (ctx) => {
     if (ctx.from.id.toString() !== config.ADMIN_USER_ID) {
         return ctx.reply("⛔ This command is admin-only.");
     }
+    const v = gameRooms.getCallerVoice();
+    const vText = v === 'female' ? '👩 Female (ሴት)' : '👨 Male (ወንድ)';
+    const kb = new InlineKeyboard()
+        .text('📋 Requests', 'menu_admin_requests')
+        .text('📊 Status', 'menu_admin_status').row()
+        .text('🏦 Banks', 'menu_admin_banks')
+        .text('📣 Broadcast', 'menu_admin_broadcast').row()
+        .text('▶️ Start Game', 'menu_admin_start')
+        .text('⏹ Stop Game', 'menu_admin_stop').row()
+        .text(`🎙️ Voice: ${vText}`, 'menu_admin_voice');
+
     await ctx.reply(
         "🔒 *Admin Panel*\n\n" +
         "• `/requests` — view & approve/reject deposits/withdrawals\n" +
-        "• `/banks` — manage payout accounts (what players send money to)\n" +
-        "• `/addbank <bank> <account> [holder]` — add a payout account\n" +
-        "• `/rmbank <id>` — deactivate/reactivate an account\n" +
+        "• `/banks` — manage payout accounts\n" +
+        "• `/voice [male|female]` — switch caller voice for all players\n" +
         "• `/broadcast <msg>` — send an announcement to all users\n" +
         "• `/start_game` — force start games with 2+ players\n" +
         "• `/stop_game` — stop all running games\n\n" +
+        `🎙️ *Active Caller Voice:* *${vText}*\n` +
         "Web dashboard: http://localhost:3001",
-        { parse_mode: "Markdown" }
+        { parse_mode: "Markdown", reply_markup: kb }
+    );
+});
+
+bot.command(['voice', 'caller'], async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.reply("⛔ This command is admin-only.");
+    }
+    const args = (ctx.match || '').toString().trim().toLowerCase();
+    if (args === 'male' || args === 'female') {
+        gameRooms.setCallerVoice(args as 'male' | 'female');
+        const icon = args === 'female' ? '👩' : '👨';
+        const label = args === 'female' ? 'Female (የሴት ድምፅ)' : 'Male (የወንድ ድምፅ)';
+        return ctx.reply(`✅ *Caller Voice Updated!*\n\nAll players are now playing with ${icon} *${label}*.`, { parse_mode: 'Markdown' });
+    }
+
+    const cur = gameRooms.getCallerVoice();
+    const curLabel = cur === 'female' ? '👩 Female (የሴት ድምፅ)' : '👨 Male (የወንድ ድምፅ)';
+    const kb = new InlineKeyboard()
+        .text('👨 Set Male Voice (ወንድ)', 'voice_set_male')
+        .text('👩 Set Female Voice (ሴት)', 'voice_set_female');
+
+    await ctx.reply(
+        `🎙️ *Bingo Caller Voice Control*\n\n` +
+        `Current active voice for all players: *${curLabel}*\n\n` +
+        `Tap a button below to switch the voice immediately:`,
+        { parse_mode: 'Markdown', reply_markup: kb }
     );
 });
 

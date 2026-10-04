@@ -1,6 +1,7 @@
 import { describe, it } from 'node:test';
 import assert from 'node:assert/strict';
 import { GameManager } from '../src/game/GameManager';
+import { GameRooms } from '../src/game/GameRooms';
 import { generateTicket, checkWinDetails } from '../src/game/bingo';
 
 describe('GameManager Winner and Claim Mechanics', () => {
@@ -286,5 +287,68 @@ describe('GameManager Winner and Claim Mechanics', () => {
         assert.equal(gm.players[0].isBlocked, false);
         assert.equal(gm.players[0].cards[0].isBlocked, false);
         await gm.forceReset();
+    });
+
+    it('caller voice can be controlled and persisted by admin via GameRooms', () => {
+        const gr = new GameRooms(mockBot);
+        // Default is male
+        const initial = gr.getCallerVoice();
+        assert.ok(initial === 'male' || initial === 'female');
+
+        // Admin switches to female
+        gr.setCallerVoice('female');
+        assert.equal(gr.getCallerVoice(), 'female');
+
+        // Admin switches to male
+        gr.setCallerVoice('male');
+        assert.equal(gr.getCallerVoice(), 'male');
+    });
+
+    it('valid winning pattern is accepted on Call #15', async () => {
+        const gm = new GameManager(mockBot);
+        const userId = 33333n;
+        const ticket = generateTicket(30);
+
+        gm.state = 'PLAYING';
+        gm.players = [{
+            userId,
+            ticket,
+            boardNumber: 1,
+            cards: [{ boardNumber: 1, ticket, daubed: new Set() }],
+            daubed: new Set(),
+            fee: 10,
+            lastSeen: Date.now()
+        }];
+
+        const ticketNums = new Set<number>();
+        for (let r = 0; r < 5; r++) {
+            for (let c = 0; c < 5; c++) {
+                ticketNums.add(ticket[r][c]);
+            }
+        }
+
+        // Draw 4 of 5 numbers for Row 0
+        const row0Nums = ticket[0];
+        for (let i = 0; i < 4; i++) {
+            gm.drawnNumbers.add(row0Nums[i]);
+        }
+
+        // Fill non-ticket numbers so total drawn count reaches exactly 14
+        for (let i = 1; i <= 75; i++) {
+            if (!ticketNums.has(i)) {
+                gm.drawnNumbers.add(i);
+                if (gm.drawnNumbers.size >= 14) break;
+            }
+        }
+        assert.equal(gm.drawnNumbers.size, 14);
+
+        // Draw the 5th number of Row 0 as the 15th ball!
+        gm.drawnNumbers.add(row0Nums[4]);
+        assert.equal(gm.drawnNumbers.size, 15);
+
+        // Claim on Call 15
+        const res = await gm.claimBingo(userId);
+        assert.equal(res.success, true);
+        assert.equal(res.msg, 'BINGO!');
     });
 });

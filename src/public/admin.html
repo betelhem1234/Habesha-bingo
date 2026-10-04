@@ -36,6 +36,14 @@
                     <p class="stat-value" id="stat-state">WAITING</p>
                     <button id="btn-start" class="btn-primary">Force Start Game</button>
                 </div>
+                <div class="stat-card voice-control">
+                    <h3>Caller Voice (ድምፅ)</h3>
+                    <p class="stat-value" id="stat-voice" style="font-size:1.1rem;">Loading...</p>
+                    <div style="display:flex; gap:6px; margin-top:8px;">
+                        <button onclick="setAdminVoice('male')" class="btn-primary" style="margin:0; padding:6px 10px; font-size:12px; background:#1976d2; border:none; cursor:pointer;">👨 Male</button>
+                        <button onclick="setAdminVoice('female')" class="btn-primary" style="margin:0; padding:6px 10px; font-size:12px; background:#e91e63; border:none; cursor:pointer;">👩 Female</button>
+                    </div>
+                </div>
             </section>
 
             <section class="users-section">
@@ -92,5 +100,30 @@
     
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
     <script src="app.js"></script>
+    <script>
+        async function loadVoice(){
+            try{
+                const r = await fetch('/api/admin/voice');
+                const d = await r.json();
+                const el = document.getElementById('stat-voice');
+                if(el && d && d.voice){
+                    el.textContent = d.voice === 'female' ? '👩 Female (ሴት)' : '👨 Male (ወንድ)';
+                    el.style.color = d.voice === 'female' ? '#ff80ab' : '#90caf9';
+                }
+            }catch(e){}
+        }
+        async function setAdminVoice(v){
+            try{
+                const r = await fetch('/api/admin/voice', {
+                    method:'POST',
+                    headers:{'Content-Type':'application/json'},
+                    body:JSON.stringify({voice:v})
+                });
+                const d = await r.json();
+                if(d.success) loadVoice();
+            }catch(e){}
+        }
+        loadVoice();
+    </script>
 </body>
 </html>
