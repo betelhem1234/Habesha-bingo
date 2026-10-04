@@ -231,10 +231,6 @@ body{
   z-index:30;padding:10px;text-align:center;
   box-shadow:inset 0 0 24px rgba(231,76,60,0.5);
   pointer-events:all;
-  animation:fade-in-block 0.25s ease-out;
-}
-@keyframes fade-in-block{
-  from{opacity:0;transform:scale(0.97);}to{opacity:1;transform:scale(1);}
 }
 .card-blocked-badge{
   background:#c0392b;color:#fff;
@@ -675,13 +671,23 @@ function renderBoardBadge(){
 }
 
 let lastDrawnSet=new Set();
+let lastRenderedBlocked=false;
 
 function renderBoards(cards, drawnSet){
   const area=document.getElementById('playing-card-area');
   if(!cards || cards.length === 0){
     area.innerHTML='';
+    lastRenderedBlocked=false;
     return;
   }
+
+  const isBlocked = Boolean(isPlayerBlocked || cards.some(c => c.isBlocked));
+
+  // If already rendered with blocked overlay, keep DOM intact to prevent re-rendering and blinking
+  if(isBlocked && lastRenderedBlocked && area.children.length > 0){
+    return;
+  }
+  lastRenderedBlocked = isBlocked;
 
   const isStacked = cards.length > 1;
 
@@ -1360,9 +1366,11 @@ async function poll(){
       }
       if(data.gameState === 'WAITING'){
         isPlayerBlocked = false;
+        lastRenderedBlocked = false;
       }
       if(data.gameId && window._lastSeenGameId && data.gameId !== window._lastSeenGameId){
         isPlayerBlocked = false;
+        lastRenderedBlocked = false;
       }
       if(data.gameId){
         window._lastSeenGameId = data.gameId;
