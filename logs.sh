@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-SERVICE_ID="srv-da8p9v4s728c73bsblmg"
+SERVICE_ID="srv-db0kfiad0e5s73c1f690"
 RENDER_BIN="$(command -v render || echo "${HOME}/bin/render")"
 
 export RENDER_API_KEY="${RENDER_API_KEY:-$(cat "${HOME}/.render/api-key" 2>/dev/null || true)}"

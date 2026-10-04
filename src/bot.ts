@@ -1348,9 +1348,33 @@ process.on('unhandledRejection', (reason, promise) => {
     console.error('[Process] Unhandled Rejection at:', promise, 'reason:', reason);
 });
 
-bot.start({
-    onStart: (botInfo) => {
-        console.log(`Bot @${botInfo.username} started successfully!`);
+let adminServerStarted = false;
+function ensureAdminServer() {
+    if (!adminServerStarted) {
+        adminServerStarted = true;
         startAdminServer(gameRooms, bot);
     }
-});
+}
+
+// Start admin/game web server immediately so WebSockets and HTTP are always available
+ensureAdminServer();
+
+async function startPollingLoop() {
+    while (true) {
+        try {
+            console.log('[Bot] Starting Telegram polling...');
+            await bot.start({
+                onStart: (botInfo) => {
+                    console.log(`Bot @${botInfo.username} started successfully!`);
+                }
+            });
+            console.warn('[Bot] Polling stopped. Reconnecting in 3 seconds...');
+        } catch (err: any) {
+            console.error('[Bot] Polling loop error:', err?.message || err);
+            console.log('[Bot] Reconnecting in 5 seconds...');
+        }
+        await new Promise((res) => setTimeout(res, 5000));
+    }
+}
+
+startPollingLoop();
