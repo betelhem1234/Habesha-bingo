@@ -105,7 +105,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     app.get('/api/users', async (req, res) => {
         const users = await prisma.user.findMany({
             orderBy: { balance: 'desc' },
-            take: 50
+            take: 50,
+            include: { _count: { select: { referrals: true } } }
         });
         
         // Convert BigInt and Decimal to standard JSON types
@@ -114,7 +115,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             username: u.username,
             firstName: u.firstName,
             lastName: u.lastName,
-            balance: u.balance.toNumber()
+            balance: u.balance.toNumber(),
+            referrals: u._count.referrals
         }));
         
         res.json(safeUsers);
