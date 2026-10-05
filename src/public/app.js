@@ -2,21 +2,28 @@
 
 let allRequests = [];
 let currentFilter = 'ALL';
+let currentPeriod = 'today';
+let selectedRequestIds = new Set();
 let isActionRunning = false;
 
 document.addEventListener('DOMContentLoaded', () => {
-    initFilters();
+    initPeriodFilters();
+    initRequestFilters();
     initForceStart();
+    initBatchActions();
+    initEditModal();
     
     // Initial fetch
     refreshAllData();
 
-    // Auto-refresh every 10 seconds for real-time monitoring
+    // Auto-refresh every 10 seconds for real-time live monitoring
     setInterval(refreshAllData, 10000);
 });
 
 async function refreshAllData() {
     await Promise.allSettled([
+        fetchFinancialSummary(),
+        fetchHouseIncome(),
         fetchStats(),
         fetchUsers(),
         fetchRequests()
@@ -24,7 +31,126 @@ async function refreshAllData() {
 }
 
 // ----------------------------------------------------
-// 1. Live Stats
+// 1. Global Period Filter (Default: Today / ዛሬ)
+// ----------------------------------------------------
+function initPeriodFilters() {
+    const periodButtons = document.querySelectorAll('.btn-period');
+    const indicator = document.getElementById('period-indicator');
+
+    const labels = {
+        'today': 'Today (ዛሬ)',
+        'yesterday': 'Yesterday (ትናንት)',
+        '7d': 'Last 7 Days (ያለፉት 7 ቀናት)',
+        '30d': 'This Month (ይህ ወር)',
+        'all': 'All Time (ሁሉንም)'
+    };
+
+    periodButtons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            periodButtons.forEach(b => b.classList.remove('active'));
+            btn.classList.add('active');
+
+            const p = btn.getAttribute('data-period') || 'today';
+            currentPeriod = p;
+
+            if (indicator) {
+                indicator.textContent = `Showing: ${labels[p] || p}`;
+            }
+
+            // Immediately refresh data for the new period
+            selectedRequestIds.clear();
+            updateBatchToolbar();
+            refreshAllData();
+        });
+    });
+}
+
+// ----------------------------------------------------
+// 2. Period Financial Summary
+// ----------------------------------------------------
+async function fetchFinancialSummary() {
+    try {
+        const res = await fetch(`/api/admin/financial-summary?period=${currentPeriod}`);
+        if (!res.ok) throw new Error('Financial summary fetch failed');
+        const data = await res.json();
+
+        setText('stat-house-profit', (data.totalHouseProfit ?? 0).toLocaleString());
+        setText('stat-games-played', (data.totalGames ?? 0).toLocaleString());
+        setText('stat-total-pot', (data.totalPot ?? 0).toLocaleString());
+        setText('stat-winner-payout', (data.totalWinnerPayout ?? 0).toLocaleString());
+        setText('stat-net-cash', (data.netCashFlow ?? 0).toLocaleString());
+        setText('stat-period-dep', (data.totalDeposits ?? 0).toLocaleString());
+        setText('stat-period-wdr', (data.totalWithdrawals ?? 0).toLocaleString());
+
+        const netCashEl = document.getElementById('stat-net-cash');
+        if (netCashEl) {
+            netCashEl.style.color = (data.netCashFlow ?? 0) >= 0 ? '#4ade80' : '#f87171';
+        }
+    } catch (err) {
+        console.error('Error fetching financial summary:', err);
+    }
+}
+
+// ----------------------------------------------------
+// 3. House Income & Game Payouts Table
+// ----------------------------------------------------
+async function fetchHouseIncome() {
+    try {
+        const res = await fetch(`/api/admin/income?period=${currentPeriod}`);
+        if (!res.ok) throw new Error('House income fetch failed');
+        const data = await res.json();
+
+        const tbody = document.querySelector('#income-table tbody');
+        if (!tbody) return;
+
+        const incomes = data.incomes || [];
+        const summary = data.summary || {};
+
+        if (incomes.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">No games recorded in this period.</td></tr>`;
+        } else {
+            tbody.innerHTML = incomes.map(i => {
+                const dateStr = i.createdAt
+                    ? new Date(i.createdAt).toLocaleString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit'
+                      })
+                    : '—';
+
+                const winnerDisplay = i.winnerUsername
+                    ? `<strong>${escapeHtml(i.winnerName || 'Winner')}</strong><br><a href="https://t.me/${i.winnerUsername}" target="_blank" style="color:#38bdf8; font-size:12px; text-decoration:none;">@${escapeHtml(i.winnerUsername)}</a>`
+                    : i.winnerName
+                        ? `<strong>${escapeHtml(i.winnerName)}</strong>`
+                        : `<span style="color:#64748b;">ID: ${escapeHtml(String(i.winnerId || '—'))}</span>`;
+
+                return `
+                    <tr>
+                        <td style="color:#94a3b8; font-family:monospace; font-size:13px;">#${escapeHtml(String(i.id))}</td>
+                        <td style="color:#94a3b8; font-size:12px; white-space:nowrap;">${dateStr}</td>
+                        <td><strong style="color:#f8fafc;">${i.playerCount}</strong></td>
+                        <td><strong>${(i.pot ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
+                        <td><strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
+                        <td><strong style="color:#4ade80;">${(i.houseProfit ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
+                        <td>${winnerDisplay}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+
+        // Totals Footer
+        setText('tot-players', (summary.totalPlayers ?? 0).toLocaleString());
+        setText('tot-pot', `${(summary.totalPot ?? 0).toLocaleString()} Birr`);
+        setText('tot-payout', `${(summary.totalWinnerPayout ?? 0).toLocaleString()} Birr`);
+        setText('tot-profit', `${(summary.totalHouseProfit ?? 0).toLocaleString()} Birr`);
+    } catch (err) {
+        console.error('Error fetching house income:', err);
+    }
+}
+
+// ----------------------------------------------------
+// 4. Live Stats (Users, Balances, Game State)
 // ----------------------------------------------------
 async function fetchStats() {
     try {
@@ -32,25 +158,17 @@ async function fetchStats() {
         if (!res.ok) throw new Error('Stats fetch failed');
         const data = await res.json();
 
-        const statUsers = document.getElementById('stat-users');
-        const statBalance = document.getElementById('stat-balance');
-        const statPlayers = document.getElementById('stat-players');
-        const statState = document.getElementById('stat-state');
-        const btnStart = document.getElementById('btn-start');
+        setText('stat-users', (data.users ?? 0).toLocaleString());
+        setText('stat-balance', (data.balance ?? 0).toLocaleString());
+        setText('stat-players', (data.activePlayers ?? 0).toLocaleString());
 
-        if (statUsers) statUsers.textContent = (data.users ?? 0).toLocaleString();
-        if (statBalance) statBalance.textContent = (data.balance ?? 0).toLocaleString();
-        if (statPlayers) statPlayers.textContent = (data.activePlayers ?? 0).toLocaleString();
-        
+        const statState = document.getElementById('stat-state');
         if (statState) {
             statState.textContent = data.gameState || 'WAITING';
-            if (data.gameState === 'PLAYING') {
-                statState.style.color = '#4ade80';
-            } else {
-                statState.style.color = '#facc15';
-            }
+            statState.style.color = data.gameState === 'PLAYING' ? '#4ade80' : '#facc15';
         }
 
+        const btnStart = document.getElementById('btn-start');
         if (btnStart) {
             if (data.gameState === 'PLAYING') {
                 btnStart.textContent = 'Game In Progress...';
@@ -68,7 +186,7 @@ async function fetchStats() {
 }
 
 // ----------------------------------------------------
-// 2. Top Users
+// 5. Top Users Table
 // ----------------------------------------------------
 async function fetchUsers() {
     try {
@@ -106,11 +224,11 @@ async function fetchUsers() {
 }
 
 // ----------------------------------------------------
-// 3. Deposit & Withdraw Requests
+// 6. Deposit & Withdraw Requests
 // ----------------------------------------------------
 async function fetchRequests() {
     try {
-        const res = await fetch('/api/requests');
+        const res = await fetch(`/api/requests?period=${currentPeriod}`);
         if (!res.ok) throw new Error('Requests fetch failed');
         allRequests = await res.json();
 
@@ -120,7 +238,7 @@ async function fetchRequests() {
     }
 }
 
-function initFilters() {
+function initRequestFilters() {
     const filters = [
         { id: 'filter-pending', key: 'PENDING' },
         { id: 'filter-approved', key: 'APPROVED' },
@@ -137,6 +255,24 @@ function initFilters() {
             });
         }
     });
+
+    const checkAll = document.getElementById('check-all-req');
+    if (checkAll) {
+        checkAll.addEventListener('change', (e) => {
+            const isChecked = e.target.checked;
+            let filtered = allRequests;
+            if (currentFilter !== 'ALL') {
+                filtered = allRequests.filter(r => r.status === currentFilter);
+            }
+
+            if (isChecked) {
+                filtered.forEach(r => selectedRequestIds.add(r.id));
+            } else {
+                selectedRequestIds.clear();
+            }
+            renderRequests();
+        });
+    }
 }
 
 function updateFilterButtonStyles() {
@@ -178,8 +314,30 @@ function updateFilterButtonStyles() {
     });
 }
 
+function updateBatchToolbar() {
+    const toolbar = document.getElementById('batch-toolbar');
+    const countSpan = document.getElementById('batch-count');
+    const checkAll = document.getElementById('check-all-req');
+
+    const count = selectedRequestIds.size;
+    if (toolbar) {
+        toolbar.style.display = count > 0 ? 'flex' : 'none';
+    }
+    if (countSpan) {
+        countSpan.textContent = `${count} selected`;
+    }
+    if (checkAll) {
+        let filtered = allRequests;
+        if (currentFilter !== 'ALL') {
+            filtered = allRequests.filter(r => r.status === currentFilter);
+        }
+        checkAll.checked = filtered.length > 0 && filtered.every(r => selectedRequestIds.has(r.id));
+    }
+}
+
 function renderRequests() {
     updateFilterButtonStyles();
+    updateBatchToolbar();
 
     const tbody = document.querySelector('#req-table tbody');
     if (!tbody) return;
@@ -190,11 +348,12 @@ function renderRequests() {
     }
 
     if (!filtered || filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#94a3b8; padding:24px;">No requests found in this category.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:#94a3b8; padding:24px;">No requests found in this category.</td></tr>`;
         return;
     }
 
     tbody.innerHTML = filtered.map(r => {
+        const isChecked = selectedRequestIds.has(r.id);
         const userDisplay = r.username
             ? `<strong>${escapeHtml(r.name || 'Player')}</strong><br><a href="https://t.me/${r.username}" target="_blank" style="color:#38bdf8; font-size:12px; text-decoration:none;">@${escapeHtml(r.username)}</a>`
             : `<strong>${escapeHtml(r.name || 'Player')}</strong><br><span style="color:#64748b; font-size:12px;">ID: ${escapeHtml(String(r.userId || ''))}</span>`;
@@ -226,22 +385,29 @@ function renderRequests() {
               })
             : '—';
 
-        let actionHtml = '';
+        // Action Buttons: Approve, Reject, Edit, Delete
+        let actionButtons = `
+            <div style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
+        `;
+
         if (r.status === 'PENDING') {
-            actionHtml = `
-                <div style="display:flex; gap:6px;">
-                    <button onclick="handleRequestAction(${r.id}, 'approve', '${r.type}', ${r.amount})" class="btn-primary" style="margin:0; padding:6px 10px; font-size:12px; background:#16a34a; border:none; border-radius:6px; cursor:pointer;">✓ Approve</button>
-                    <button onclick="handleRequestAction(${r.id}, 'reject', '${r.type}', ${r.amount})" class="btn-primary" style="margin:0; padding:6px 10px; font-size:12px; background:#dc2626; border:none; border-radius:6px; cursor:pointer;">✗ Reject</button>
-                </div>
+            actionButtons += `
+                <button onclick="handleRequestAction(${r.id}, 'approve', '${r.type}', ${r.amount})" class="action-btn-sm" style="background:#16a34a; color:#fff;" title="Approve">✓</button>
+                <button onclick="handleRequestAction(${r.id}, 'reject', '${r.type}', ${r.amount})" class="action-btn-sm" style="background:#dc2626; color:#fff;" title="Reject">✗</button>
             `;
-        } else if (r.status === 'APPROVED') {
-            actionHtml = `<span style="color:#4ade80; font-weight:600; font-size:12px;">✓ Done</span>`;
-        } else {
-            actionHtml = `<span style="color:#f87171; font-weight:600; font-size:12px;">✗ Done</span>`;
         }
+
+        actionButtons += `
+                <button onclick="openEditModal(${r.id})" class="action-btn-sm" style="background:#3b82f6; color:#fff;" title="Edit request">✏️ Edit</button>
+                <button onclick="deleteSingleRequest(${r.id}, '${r.type}', ${r.amount})" class="action-btn-sm" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4);" title="Delete request">🗑</button>
+            </div>
+        `;
 
         return `
             <tr>
+                <td style="text-align:center;">
+                    <input type="checkbox" class="req-check" data-id="${r.id}" ${isChecked ? 'checked' : ''} onchange="toggleSelectRequest(${r.id}, this.checked)">
+                </td>
                 <td style="color:#94a3b8; font-family:monospace; font-size:13px;">#${escapeHtml(String(r.id))}</td>
                 <td>${userDisplay}</td>
                 <td>${typeBadge}</td>
@@ -250,14 +416,23 @@ function renderRequests() {
                 <td>${statusBadge}</td>
                 <td><strong style="color:#94a3b8;">${(r.balance ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
                 <td style="color:#94a3b8; font-size:12px; white-space:nowrap;">${dateStr}</td>
-                <td>${actionHtml}</td>
+                <td>${actionButtons}</td>
             </tr>
         `;
     }).join('');
 }
 
+function toggleSelectRequest(id, checked) {
+    if (checked) {
+        selectedRequestIds.add(id);
+    } else {
+        selectedRequestIds.delete(id);
+    }
+    updateBatchToolbar();
+}
+
 // ----------------------------------------------------
-// 4. Request Action Handlers (Approve / Reject)
+// 7. Request Action Handlers (Approve / Reject)
 // ----------------------------------------------------
 async function handleRequestAction(id, action, type, amount) {
     if (isActionRunning) return;
@@ -289,7 +464,205 @@ async function handleRequestAction(id, action, type, amount) {
 }
 
 // ----------------------------------------------------
-// 5. Force Start Game
+// 8. Delete Single Request
+// ----------------------------------------------------
+async function deleteSingleRequest(id, type, amount) {
+    if (isActionRunning) return;
+
+    const ok = confirm(`⚠️ Are you sure you want to permanently DELETE ${type.toUpperCase()} request #${id} of ${amount} Birr?`);
+    if (!ok) return;
+
+    isActionRunning = true;
+    try {
+        const res = await fetch(`/api/request/${id}`, {
+            method: 'DELETE'
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            selectedRequestIds.delete(id);
+            await refreshAllData();
+        } else {
+            alert('Delete failed: ' + (data.msg || data.error || 'Server error'));
+        }
+    } catch (err) {
+        alert('Network error deleting request.');
+        console.error('Delete error:', err);
+    } finally {
+        isActionRunning = false;
+    }
+}
+
+// ----------------------------------------------------
+// 9. Batch Actions (Approve, Reject, Delete Selected)
+// ----------------------------------------------------
+function initBatchActions() {
+    const btnApprove = document.getElementById('btn-batch-approve');
+    const btnReject = document.getElementById('btn-batch-reject');
+    const btnDelete = document.getElementById('btn-batch-delete');
+
+    if (btnApprove) {
+        btnApprove.addEventListener('click', async () => {
+            const ids = Array.from(selectedRequestIds);
+            if (ids.length === 0) return;
+
+            const ok = confirm(`Are you sure you want to APPROVE all ${ids.length} selected pending requests?`);
+            if (!ok) return;
+
+            try {
+                const res = await fetch('/api/requests/batch-approve', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    selectedRequestIds.clear();
+                    await refreshAllData();
+                } else {
+                    alert('Batch approve failed: ' + (data.msg || 'Error'));
+                }
+            } catch (err) {
+                alert('Network error in batch approve.');
+            }
+        });
+    }
+
+    if (btnReject) {
+        btnReject.addEventListener('click', async () => {
+            const ids = Array.from(selectedRequestIds);
+            if (ids.length === 0) return;
+
+            const ok = confirm(`Are you sure you want to REJECT all ${ids.length} selected pending requests?`);
+            if (!ok) return;
+
+            try {
+                const res = await fetch('/api/requests/batch-reject', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    selectedRequestIds.clear();
+                    await refreshAllData();
+                } else {
+                    alert('Batch reject failed: ' + (data.msg || 'Error'));
+                }
+            } catch (err) {
+                alert('Network error in batch reject.');
+            }
+        });
+    }
+
+    if (btnDelete) {
+        btnDelete.addEventListener('click', async () => {
+            const ids = Array.from(selectedRequestIds);
+            if (ids.length === 0) return;
+
+            const ok = confirm(`⚠️ Are you sure you want to permanently DELETE all ${ids.length} selected requests?`);
+            if (!ok) return;
+
+            try {
+                const res = await fetch('/api/requests/batch-delete', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ ids })
+                });
+                const data = await res.json();
+                if (res.ok && data.success) {
+                    selectedRequestIds.clear();
+                    await refreshAllData();
+                } else {
+                    alert('Batch delete failed: ' + (data.msg || 'Error'));
+                }
+            } catch (err) {
+                alert('Network error in batch delete.');
+            }
+        });
+    }
+}
+
+// ----------------------------------------------------
+// 10. Edit Request Modal
+// ----------------------------------------------------
+function initEditModal() {
+    const modal = document.getElementById('edit-modal');
+    const form = document.getElementById('edit-request-form');
+    const closeBtn = document.getElementById('edit-modal-close');
+    const cancelBtn = document.getElementById('edit-modal-cancel');
+
+    if (closeBtn) closeBtn.addEventListener('click', closeEditModal);
+    if (cancelBtn) cancelBtn.addEventListener('click', closeEditModal);
+
+    if (modal) {
+        modal.addEventListener('click', (e) => {
+            if (e.target === modal) closeEditModal();
+        });
+    }
+
+    if (form) {
+        form.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const id = document.getElementById('edit-req-id').value;
+            const amount = parseFloat(document.getElementById('edit-req-amount').value);
+            const status = document.getElementById('edit-req-status').value;
+            const phone = document.getElementById('edit-req-phone').value;
+            const bankName = document.getElementById('edit-req-bank').value;
+
+            try {
+                const res = await fetch(`/api/request/${id}`, {
+                    method: 'PUT',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ amount, status, phone, bankName })
+                });
+                const data = await res.json();
+
+                if (res.ok && data.success) {
+                    closeEditModal();
+                    await refreshAllData();
+                } else {
+                    alert('Update failed: ' + (data.msg || data.error || 'Server error'));
+                }
+            } catch (err) {
+                alert('Network error updating request.');
+                console.error('Update error:', err);
+            }
+        });
+    }
+}
+
+function openEditModal(id) {
+    const req = allRequests.find(r => r.id === id);
+    if (!req) return;
+
+    document.getElementById('edit-req-id').value = req.id;
+    document.getElementById('edit-req-id-text').textContent = req.id;
+    document.getElementById('edit-req-amount').value = req.amount;
+    document.getElementById('edit-req-status').value = req.status;
+    document.getElementById('edit-req-phone').value = req.phone || '';
+    document.getElementById('edit-req-bank').value = req.bankName || '';
+
+    const proofBox = document.getElementById('edit-req-proof-box');
+    const proofLink = document.getElementById('edit-req-proof-link');
+    if (req.proofUrl) {
+        proofBox.style.display = 'block';
+        proofLink.href = req.proofUrl;
+    } else {
+        proofBox.style.display = 'none';
+    }
+
+    const modal = document.getElementById('edit-modal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeEditModal() {
+    const modal = document.getElementById('edit-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+// ----------------------------------------------------
+// 11. Force Start Game
 // ----------------------------------------------------
 function initForceStart() {
     const btn = document.getElementById('btn-start');
@@ -312,7 +685,7 @@ function initForceStart() {
 
             if (res.ok && data.success) {
                 alert('✅ Game force-started successfully!');
-                await fetchStats();
+                await refreshAllData();
             } else {
                 alert('⚠️ Could not start game: ' + (data.error || data.msg || 'Unknown error'));
             }
@@ -325,7 +698,14 @@ function initForceStart() {
     });
 }
 
-// Helper: Escape HTML to prevent injection
+// ----------------------------------------------------
+// Helpers
+// ----------------------------------------------------
+function setText(id, text) {
+    const el = document.getElementById(id);
+    if (el) el.textContent = text;
+}
+
 function escapeHtml(str) {
     if (str === null || str === undefined) return '';
     return String(str)

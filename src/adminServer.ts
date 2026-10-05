@@ -570,15 +570,72 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         }
     });
 
-    // List all requests (admin)
+    // Period Range Helper (UTC+3 East Africa Time)
+    function getPeriodRange(period: string = 'today', startDate?: string, endDate?: string) {
+        const now = new Date();
+        const EAT_OFFSET_MS = 3 * 60 * 60 * 1000; // UTC+3
+        const eatNow = new Date(now.getTime() + EAT_OFFSET_MS);
+
+        let start: Date | null = null;
+        let end: Date = now;
+
+        if (period === 'today') {
+            const y = eatNow.getUTCFullYear();
+            const m = eatNow.getUTCMonth();
+            const d = eatNow.getUTCDate();
+            start = new Date(Date.UTC(y, m, d) - EAT_OFFSET_MS);
+        } else if (period === 'yesterday') {
+            const y = eatNow.getUTCFullYear();
+            const m = eatNow.getUTCMonth();
+            const d = eatNow.getUTCDate();
+            start = new Date(Date.UTC(y, m, d - 1) - EAT_OFFSET_MS);
+            end = new Date(Date.UTC(y, m, d) - EAT_OFFSET_MS);
+        } else if (period === '7d' || period === 'week') {
+            start = new Date(now.getTime() - 7 * 86400000);
+        } else if (period === '30d' || period === 'month') {
+            start = new Date(now.getTime() - 30 * 86400000);
+        } else if (period === 'custom' && startDate) {
+            start = new Date(startDate);
+            if (endDate) {
+                const endD = new Date(endDate);
+                endD.setHours(23, 59, 59, 999);
+                end = endD;
+            }
+        } else if (period === 'all') {
+            start = null;
+        } else {
+            const y = eatNow.getUTCFullYear();
+            const m = eatNow.getUTCMonth();
+            const d = eatNow.getUTCDate();
+            start = new Date(Date.UTC(y, m, d) - EAT_OFFSET_MS);
+        }
+
+        return { start, end };
+    }
+
+    // List all requests (admin) with optional status & period filters
     app.get('/api/requests', async (req, res) => {
         const status = req.query.status as string | undefined;
-        const where = status ? { status } : {};
+        const period = req.query.period as string | undefined;
+        const startDate = req.query.startDate as string | undefined;
+        const endDate = req.query.endDate as string | undefined;
+
+        let where: any = {};
+        if (status && status !== 'ALL') {
+            where.status = status;
+        }
+        if (period && period !== 'all') {
+            const { start, end } = getPeriodRange(period, startDate, endDate);
+            if (start) {
+                where.createdAt = { gte: start, lte: end };
+            }
+        }
+
         try {
             const requests = await prisma.transactionRequest.findMany({
                 where,
                 orderBy: { createdAt: 'desc' },
-                take: 100,
+                take: 200,
                 include: { user: { select: { firstName: true, username: true, balance: true } }, account: { select: { bankName: true, accountNumber: true } } }
             });
             res.json(requests.map(r => ({
@@ -645,6 +702,349 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             res.json({ success: true, msg: `${request.type} request #${id} rejected.` });
         } catch (e) {
             res.status(500).json({ success: false, msg: 'Failed to reject request.' });
+        }
+    });
+
+    // Delete a request (admin)
+    app.delete('/api/request/:id', async (req, res) => {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid id.' });
+        try {
+            const request = await prisma.transactionRequest.findUnique({ where: { id } });
+            if (!request) return res.status(404).json({ success: false, msg: 'Request not found.' });
+
+            if (request.proof) {
+                try {
+                    const filePath = proofPath(request.proof);
+                    if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                } catch (err) {
+                    console.error('Failed to unlink proof file:', err);
+                }
+            }
+
+            await prisma.transactionRequest.delete({ where: { id } });
+            res.json({ success: true, msg: `Request #${id} deleted successfully.` });
+        } catch (e) {
+            console.error('Delete request error:', e);
+            res.status(500).json({ success: false, msg: 'Failed to delete request.' });
+        }
+    });
+
+    // Batch delete requests (admin)
+    app.post('/api/requests/batch-delete', async (req, res) => {
+        const { ids } = req.body || {};
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ success: false, msg: 'ids array is required.' });
+        }
+        const numericIds = ids.map((i: any) => parseInt(String(i), 10)).filter(n => !isNaN(n));
+        try {
+            const requests = await prisma.transactionRequest.findMany({
+                where: { id: { in: numericIds } },
+                select: { id: true, proof: true }
+            });
+
+            for (const r of requests) {
+                if (r.proof) {
+                    try {
+                        const filePath = proofPath(r.proof);
+                        if (fs.existsSync(filePath)) fs.unlinkSync(filePath);
+                    } catch (err) {}
+                }
+            }
+
+            const result = await prisma.transactionRequest.deleteMany({
+                where: { id: { in: numericIds } }
+            });
+            res.json({ success: true, count: result.count, msg: `${result.count} request(s) deleted successfully.` });
+        } catch (e) {
+            console.error('Batch delete error:', e);
+            res.status(500).json({ success: false, msg: 'Failed to batch delete requests.' });
+        }
+    });
+
+    // Edit a request (admin)
+    app.put('/api/request/:id', async (req, res) => {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid id.' });
+        const { amount, phone, bankName, status } = req.body || {};
+
+        try {
+            const existing = await prisma.transactionRequest.findUnique({ where: { id } });
+            if (!existing) return res.status(404).json({ success: false, msg: 'Request not found.' });
+
+            const newAmount = (amount !== undefined && !isNaN(Number(amount)) && Number(amount) > 0)
+                ? Number(amount)
+                : existing.amount.toNumber();
+            const newStatus = status ? String(status).toUpperCase() : existing.status;
+            const newPhone = phone !== undefined ? String(phone).trim() : existing.phone;
+            const newBank = bankName !== undefined ? String(bankName).trim() : existing.bankName;
+
+            const oldStatus = existing.status;
+            const oldAmount = existing.amount.toNumber();
+            const txOps: any[] = [];
+
+            if (oldStatus !== newStatus) {
+                // Moving from PENDING/REJECTED to APPROVED: apply balance change
+                if (newStatus === 'APPROVED' && oldStatus !== 'APPROVED') {
+                    if (existing.type === 'deposit') {
+                        txOps.push(prisma.user.update({
+                            where: { id: existing.userId },
+                            data: { balance: { increment: newAmount } }
+                        }));
+                    } else if (existing.type === 'withdraw') {
+                        txOps.push(prisma.user.update({
+                            where: { id: existing.userId },
+                            data: { balance: { decrement: newAmount } }
+                        }));
+                    }
+                }
+                // Moving from APPROVED to REJECTED/PENDING: revert balance change
+                else if (oldStatus === 'APPROVED' && newStatus !== 'APPROVED') {
+                    if (existing.type === 'deposit') {
+                        txOps.push(prisma.user.update({
+                            where: { id: existing.userId },
+                            data: { balance: { decrement: oldAmount } }
+                        }));
+                    } else if (existing.type === 'withdraw') {
+                        txOps.push(prisma.user.update({
+                            where: { id: existing.userId },
+                            data: { balance: { increment: oldAmount } }
+                        }));
+                    }
+                }
+            } else if (newStatus === 'APPROVED' && oldAmount !== newAmount) {
+                const diff = newAmount - oldAmount;
+                if (existing.type === 'deposit') {
+                    txOps.push(prisma.user.update({
+                        where: { id: existing.userId },
+                        data: { balance: { increment: diff } }
+                    }));
+                } else if (existing.type === 'withdraw') {
+                    txOps.push(prisma.user.update({
+                        where: { id: existing.userId },
+                        data: { balance: { decrement: diff } }
+                    }));
+                }
+            }
+
+            txOps.push(prisma.transactionRequest.update({
+                where: { id },
+                data: {
+                    amount: newAmount,
+                    status: newStatus,
+                    phone: newPhone,
+                    bankName: newBank
+                }
+            }));
+
+            await prisma.$transaction(txOps);
+            res.json({ success: true, msg: `Request #${id} updated successfully.` });
+        } catch (e) {
+            console.error('Edit request error:', e);
+            res.status(500).json({ success: false, msg: 'Failed to update request.' });
+        }
+    });
+
+    // Batch approve requests (admin)
+    app.post('/api/requests/batch-approve', async (req, res) => {
+        const { ids } = req.body || {};
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ success: false, msg: 'ids array is required.' });
+        }
+        const numericIds = ids.map((i: any) => parseInt(String(i), 10)).filter(n => !isNaN(n));
+        let approved = 0;
+        let failed = 0;
+
+        for (const id of numericIds) {
+            try {
+                const request = await prisma.transactionRequest.findUnique({ where: { id } });
+                if (!request || request.status !== 'PENDING') {
+                    failed++;
+                    continue;
+                }
+                if (request.type === 'deposit') {
+                    await prisma.$transaction([
+                        prisma.user.update({ where: { id: request.userId }, data: { balance: { increment: request.amount } } }),
+                        prisma.transactionRequest.update({ where: { id }, data: { status: 'APPROVED' } })
+                    ]);
+                    approved++;
+                } else {
+                    const user = await prisma.user.findUnique({ where: { id: request.userId } });
+                    if (!user || user.balance.toNumber() < request.amount.toNumber()) {
+                        failed++;
+                        continue;
+                    }
+                    await prisma.$transaction([
+                        prisma.user.update({ where: { id: request.userId }, data: { balance: { decrement: request.amount } } }),
+                        prisma.transactionRequest.update({ where: { id }, data: { status: 'APPROVED' } })
+                    ]);
+                    approved++;
+                }
+            } catch (err) {
+                failed++;
+            }
+        }
+        res.json({ success: true, approvedCount: approved, failedCount: failed, msg: `${approved} approved, ${failed} skipped.` });
+    });
+
+    // Batch reject requests (admin)
+    app.post('/api/requests/batch-reject', async (req, res) => {
+        const { ids } = req.body || {};
+        if (!Array.isArray(ids) || ids.length === 0) {
+            return res.status(400).json({ success: false, msg: 'ids array is required.' });
+        }
+        const numericIds = ids.map((i: any) => parseInt(String(i), 10)).filter(n => !isNaN(n));
+        try {
+            const result = await prisma.transactionRequest.updateMany({
+                where: { id: { in: numericIds }, status: 'PENDING' },
+                data: { status: 'REJECTED' }
+            });
+            res.json({ success: true, rejectedCount: result.count, msg: `${result.count} request(s) rejected.` });
+        } catch (e) {
+            console.error('Batch reject error:', e);
+            res.status(500).json({ success: false, msg: 'Failed to batch reject requests.' });
+        }
+    });
+
+    // House Income Game Report & History API
+    app.get('/api/admin/income', async (req, res) => {
+        const period = (req.query.period as string) || 'today';
+        const startDate = req.query.startDate as string | undefined;
+        const endDate = req.query.endDate as string | undefined;
+
+        const { start, end } = getPeriodRange(period, startDate, endDate);
+        const where: any = start ? { createdAt: { gte: start, lte: end } } : {};
+
+        try {
+            const incomes = await prisma.houseIncome.findMany({
+                where,
+                orderBy: { createdAt: 'desc' },
+                take: 200
+            });
+
+            // Gather winner usernames and names
+            const winnerIds = incomes.map(i => i.winnerId).filter((id): id is bigint => id !== null && id !== undefined);
+            const uniqueWinnerIds = Array.from(new Set(winnerIds));
+            const winners = await prisma.user.findMany({
+                where: { id: { in: uniqueWinnerIds } },
+                select: { id: true, firstName: true, username: true }
+            });
+            const winnerMap = new Map<string, { id: string; firstName: string | null; username: string | null }>(
+                winners.map(w => [w.id.toString(), { id: w.id.toString(), firstName: w.firstName, username: w.username }])
+            );
+
+            let totalPlayers = 0;
+            let totalPot = 0;
+            let totalWinnerPayout = 0;
+            let totalHouseProfit = 0;
+
+            const safeIncomes = incomes.map(i => {
+                const pot = i.totalCollected.toNumber();
+                const payout = i.winnerPayout.toNumber();
+                const profit = i.houseProfit.toNumber();
+                totalPlayers += i.playerCount;
+                totalPot += pot;
+                totalWinnerPayout += payout;
+                totalHouseProfit += profit;
+
+                const winner = i.winnerId ? winnerMap.get(i.winnerId.toString()) : null;
+                return {
+                    id: i.id,
+                    gameType: i.gameType,
+                    playerCount: i.playerCount,
+                    pot,
+                    winnerPayout: payout,
+                    houseProfit: profit,
+                    winnerId: i.winnerId ? i.winnerId.toString() : null,
+                    winnerName: winner?.firstName || null,
+                    winnerUsername: winner?.username || null,
+                    createdAt: i.createdAt
+                };
+            });
+
+            res.json({
+                period,
+                start,
+                end,
+                summary: {
+                    totalGames: incomes.length,
+                    totalPlayers,
+                    totalPot,
+                    totalWinnerPayout,
+                    totalHouseProfit
+                },
+                incomes: safeIncomes
+            });
+        } catch (e) {
+            console.error('House income fetch error:', e);
+            res.status(500).json({ error: 'Failed to fetch house income data.' });
+        }
+    });
+
+    // Financial Summary filtered by period (Default: today)
+    app.get('/api/admin/financial-summary', async (req, res) => {
+        const period = (req.query.period as string) || 'today';
+        const startDate = req.query.startDate as string | undefined;
+        const endDate = req.query.endDate as string | undefined;
+
+        const { start, end } = getPeriodRange(period, startDate, endDate);
+        const dateFilter = start ? { createdAt: { gte: start, lte: end } } : {};
+
+        try {
+            const [depAgg, wdrAgg, incAgg, newUsers, pendingCount, allUsersCount, allBalanceAgg] = await Promise.all([
+                prisma.transactionRequest.aggregate({
+                    where: { type: 'deposit', status: 'APPROVED', ...dateFilter },
+                    _sum: { amount: true },
+                    _count: true
+                }),
+                prisma.transactionRequest.aggregate({
+                    where: { type: 'withdraw', status: 'APPROVED', ...dateFilter },
+                    _sum: { amount: true },
+                    _count: true
+                }),
+                prisma.houseIncome.aggregate({
+                    where: dateFilter,
+                    _sum: { totalCollected: true, winnerPayout: true, houseProfit: true },
+                    _count: true
+                }),
+                prisma.user.count({ where: dateFilter }),
+                prisma.transactionRequest.count({ where: { status: 'PENDING' } }),
+                prisma.user.count(),
+                prisma.user.aggregate({ _sum: { balance: true } })
+            ]);
+
+            const totalDeposits = depAgg._sum.amount ? depAgg._sum.amount.toNumber() : 0;
+            const totalWithdrawals = wdrAgg._sum.amount ? wdrAgg._sum.amount.toNumber() : 0;
+            const netCashFlow = totalDeposits - totalWithdrawals;
+
+            const totalPot = incAgg._sum.totalCollected ? incAgg._sum.totalCollected.toNumber() : 0;
+            const totalWinnerPayout = incAgg._sum.winnerPayout ? incAgg._sum.winnerPayout.toNumber() : 0;
+            const totalHouseProfit = incAgg._sum.houseProfit ? incAgg._sum.houseProfit.toNumber() : 0;
+            const totalGames = incAgg._count || 0;
+
+            const totalPlayerBalance = allBalanceAgg._sum.balance ? allBalanceAgg._sum.balance.toNumber() : 0;
+
+            res.json({
+                period,
+                start,
+                end,
+                totalDeposits,
+                depositsCount: depAgg._count,
+                totalWithdrawals,
+                withdrawalsCount: wdrAgg._count,
+                netCashFlow,
+                totalHouseProfit,
+                totalPot,
+                totalWinnerPayout,
+                totalGames,
+                newUsers,
+                totalUsers: allUsersCount,
+                totalPlayerBalance,
+                pendingCount
+            });
+        } catch (e) {
+            console.error('Financial summary error:', e);
+            res.status(500).json({ error: 'Failed to calculate financial summary.' });
         }
     });
 

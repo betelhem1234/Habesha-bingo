@@ -59,6 +59,18 @@ async function loadAdminStats() {
         setText('s-balance', (data.totalBalance ?? 0).toLocaleString());
         setText('s-pending', (data.pendingCount ?? 0).toLocaleString());
 
+        // Fetch House Profit and Game Stats
+        try {
+            const fRes = await fetch('/api/admin/financial-summary?period=all');
+            if (fRes.ok) {
+                const fData = await fRes.json();
+                setText('s-profit', (fData.totalHouseProfit ?? 0).toLocaleString());
+                setText('s-pot', (fData.totalPot ?? 0).toLocaleString());
+                setText('s-payout', (fData.totalWinnerPayout ?? 0).toLocaleString());
+                setText('s-games', (fData.totalGames ?? 0).toLocaleString());
+            }
+        } catch (e) {}
+
         const approvedCount = (data.statusCounts && data.statusCounts.APPROVED) 
             ?? ((data.depStatus?.APPROVED ?? 0) + (data.wdrStatus?.APPROVED ?? 0));
         setText('s-approved', approvedCount.toLocaleString());
