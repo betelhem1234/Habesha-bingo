@@ -24,8 +24,11 @@
         <header>
             <h1><span class="gradient-text">Dashboard</span> Stats</h1>
             <div class="status-indicator"><span class="pulse"></span> <span id="updated-at">Loading…</span></div>
+            <div style="display:flex; gap:10px; align-items:center;">
+                <a href="/admin.html" class="btn-primary back-link" style="margin:0; text-decoration:none; padding:8px 14px; font-size:13px;">⬅️ Admin Panel</a>
+                <button id="btn-logout-stats" class="action-btn-sm" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4); padding:8px 14px; font-size:13px; border-radius:8px; cursor:pointer;">🚪 Logout</button>
+            </div>
         </header>
-        <a href="/admin.html" class="btn-primary back-link" style="text-decoration:none;">⬅️ Back to Admin Panel</a>
         <main>
             <section class="stats-grid">
                 <div class="stat-card">
@@ -132,53 +135,23 @@
         </main>
     </div>
     <script src="app-stats.js"></script>
-    <script>
-        async function loadVoiceSetting() {
-            try {
-                const res = await fetch('/api/admin/voice');
-                const data = await res.json();
-                const badge = document.getElementById('voice-current-badge');
-                if (badge) {
-                    if (data.voice === 'female') {
-                        badge.textContent = 'Active: 👩 Female (ሴት)';
-                        badge.style.color = '#ff80ab';
-                    } else {
-                        badge.textContent = 'Active: 👨 Male (ወንድ)';
-                        badge.style.color = '#90caf9';
-                    }
-                }
-            } catch (e) {}
-        }
 
-        async function setVoice(voice) {
-            const statusEl = document.getElementById('voice-status');
-            if (statusEl) {
-                statusEl.textContent = 'Updating caller voice...';
-                statusEl.style.color = '#ffcc00';
-            }
-            try {
-                const res = await fetch('/api/admin/voice', {
-                    method: 'POST',
-                    headers: { 'Content-Type': 'application/json' },
-                    body: JSON.stringify({ voice })
-                });
-                const data = await res.json();
-                if (data.success && statusEl) {
-                    statusEl.textContent = `✅ Successfully switched to ${voice === 'female' ? '👩 Female' : '👨 Male'} voice! All players are updated.`;
-                    statusEl.style.color = '#22ff88';
-                    loadVoiceSetting();
-                } else if (statusEl) {
-                    statusEl.textContent = '❌ Failed to update voice: ' + (data.msg || 'Unknown error');
-                    statusEl.style.color = '#ff5555';
-                }
-            } catch (e) {
-                if (statusEl) {
-                    statusEl.textContent = '❌ Network error updating voice.';
-                    statusEl.style.color = '#ff5555';
-                }
-            }
-        }
-        loadVoiceSetting();
-    </script>
+    <!-- Admin Login Screen Overlay -->
+    <div id="login-overlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.92); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); z-index:100000; align-items:center; justify-content:center;">
+        <div style="background:#1e293b; border:1px solid rgba(139,92,246,0.3); border-radius:20px; padding:32px; width:90%; max-width:420px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.7); text-align:center;">
+            <div style="font-size:42px; margin-bottom:12px;">🔐</div>
+            <h2 style="font-size:1.5rem; color:#f8fafc; margin-bottom:8px;"><span class="gradient-text">Bingo Admin</span> Login</h2>
+            <p style="font-size:13px; color:#94a3b8; margin-bottom:20px; line-height:1.5;">
+                Enter your admin master password or send <code>/admin</code> to <a href="https://t.me/PlayMyBingoBot" target="_blank" style="color:#38bdf8; text-decoration:none; font-weight:600;">@PlayMyBingoBot</a> in Telegram for 1-click access.
+            </p>
+            <form id="admin-login-form">
+                <div style="margin-bottom:16px;">
+                    <input type="password" id="admin-password-input" placeholder="Enter Admin Password..." required style="width:100%; padding:12px 14px; border-radius:10px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.5); color:#fff; font-size:15px; box-sizing:border-box; outline:none; text-align:center;">
+                </div>
+                <button type="submit" id="btn-login-submit" class="btn-primary" style="margin:0; width:100%; padding:12px; font-size:15px; font-weight:700;">🚀 Unlock Dashboard</button>
+                <div id="login-error-msg" style="margin-top:14px; font-size:13px; color:#f87171; font-weight:600; display:none;"></div>
+            </form>
+        </div>
+    </div>
 </body>
 </html>

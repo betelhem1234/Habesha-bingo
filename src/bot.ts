@@ -7,6 +7,7 @@ import { prisma } from './db';
 import { proofPath, proofUrl } from './uploads';
 import { NEW_USER_BONUS } from './bonus';
 import { GameRooms } from './game/GameRooms';
+import { generateAdminToken } from './auth';
 
 // Simple in-memory language preference
 const userLangs = new Map<string, string>();
@@ -825,9 +826,15 @@ bot.command('admin', async (ctx) => {
     if (ctx.from.id.toString() !== config.ADMIN_USER_ID) {
         return ctx.reply("⛔ This command is admin-only.");
     }
+    const token = generateAdminToken();
+    const adminUrl = `${config.BINGO_APP_URL}/admin.html?token=${token}`;
+    const statsUrl = `${config.BINGO_APP_URL}/admin-stats.html?token=${token}`;
+
     const v = gameRooms.getCallerVoice();
     const vText = v === 'female' ? '👩 Female (ሴት)' : '👨 Male (ወንድ)';
     const kb = new InlineKeyboard()
+        .url('🚀 Open Admin Dashboard (1-Click Login)', adminUrl).row()
+        .url('📊 Open Stats & Analytics', statsUrl).row()
         .text('📋 Requests', 'menu_admin_requests')
         .text('📊 Status', 'menu_admin_status').row()
         .text('🏦 Banks', 'menu_admin_banks')
@@ -837,15 +844,15 @@ bot.command('admin', async (ctx) => {
         .text(`🎙️ Voice: ${vText}`, 'menu_admin_voice');
 
     await ctx.reply(
-        "🔒 *Admin Panel*\n\n" +
+        "🔒 *Habesha Bingo Admin Portal*\n\n" +
+        "• Click the buttons below for secure **1-Click Web Access**.\n" +
         "• `/requests` — view & approve/reject deposits/withdrawals\n" +
         "• `/banks` — manage payout accounts\n" +
         "• `/voice [male|female]` — switch caller voice for all players\n" +
         "• `/broadcast <msg>` — send an announcement to all users\n" +
-        "• `/start_game` — force start games with 2+ players\n" +
-        "• `/stop_game` — stop all running games\n\n" +
-        `🎙️ *Active Caller Voice:* *${vText}*\n` +
-        "Web dashboard: http://localhost:3001",
+        "• `/start_game` — force start games\n" +
+        "• `/stop_game` — stop running games\n\n" +
+        `🎙️ *Active Caller Voice:* *${vText}*`,
         { parse_mode: "Markdown", reply_markup: kb }
     );
 });

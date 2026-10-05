@@ -8,6 +8,7 @@ import { prisma } from './db';
 import { UPLOADS_DIR, proofPath, proofUrl } from './uploads';
 import { GameRooms } from './game/GameRooms';
 import { config } from './config';
+import { isValidAdminToken, generateAdminToken, revokeAdminToken } from './auth';
 
 const upload = multer({
     storage: multer.diskStorage({
@@ -85,8 +86,58 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     }));
 
     
-    // Admin stats
-    app.get('/api/stats', async (req, res) => {
+    // Admin Auth Middleware
+    function adminAuthMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
+        const authHeader = req.headers['authorization'];
+        const bearerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+        const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+        const customToken = req.headers['x-admin-token'] as string | undefined;
+
+        const token = bearerToken || queryToken || customToken;
+
+        if (isValidAdminToken(token)) {
+            return next();
+        }
+
+        return res.status(401).json({
+            success: false,
+            error: 'Unauthorized: Admin authentication required',
+            loginRequired: true
+        });
+    }
+
+    // Admin Auth Endpoints
+    app.post('/api/admin/login', (req, res) => {
+        const { password } = req.body || {};
+        if (!password || password !== config.ADMIN_PASSWORD) {
+            return res.status(401).json({ success: false, msg: 'Invalid admin password.' });
+        }
+        const token = generateAdminToken();
+        res.json({ success: true, token, msg: 'Login successful.' });
+    });
+
+    app.get('/api/admin/verify', (req, res) => {
+        const authHeader = req.headers['authorization'];
+        const bearerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+        const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+        const token = bearerToken || queryToken || (req.headers['x-admin-token'] as string);
+
+        if (isValidAdminToken(token)) {
+            return res.json({ success: true, authenticated: true });
+        }
+        return res.status(401).json({ success: false, authenticated: false });
+    });
+
+    app.post('/api/admin/logout', (req, res) => {
+        const authHeader = req.headers['authorization'];
+        const bearerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
+        const token = bearerToken || (req.headers['x-admin-token'] as string);
+        if (token) revokeAdminToken(token);
+        res.json({ success: true, msg: 'Logged out successfully.' });
+    });
+
+    // Admin stats (Protected)
+    app.get('/api/stats', adminAuthMiddleware, async (req, res) => {
         const usersCount = await prisma.user.count();
         const users = await prisma.user.findMany();
         const totalBalance = users.reduce((acc, u) => acc + u.balance.toNumber(), 0);
@@ -102,7 +153,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         });
     });
     
-    app.get('/api/users', async (req, res) => {
+    // Top users (Protected)
+    app.get('/api/users', adminAuthMiddleware, async (req, res) => {
         const users = await prisma.user.findMany({
             orderBy: { balance: 'desc' },
             take: 50,
@@ -345,7 +397,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         res.json(result);
     });
     
-    app.post('/api/start-game', async (req, res) => {
+    app.post('/api/start-game', adminAuthMiddleware, async (req, res) => {
         const fee = parseInt(req.body?.bet, 10) > 0 ? parseInt(req.body?.bet, 10) : 10;
         const room = parseInt(req.body?.room, 10) > 0 ? parseInt(req.body?.room, 10) : 1;
         const gameManager = gameRooms.getRoom(fee, room);
@@ -490,7 +542,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Admin: list all accounts (including inactive)
-    app.get('/api/admin/banks', async (_req, res) => {
+    app.get('/api/admin/banks', adminAuthMiddleware, async (_req, res) => {
         try {
             const accounts = await prisma.paymentAccount.findMany({
                 orderBy: { createdAt: 'desc' },
@@ -511,7 +563,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Admin: add an account
-    app.post('/api/admin/banks', async (req, res) => {
+    app.post('/api/admin/banks', adminAuthMiddleware, async (req, res) => {
         const { bankName, accountNumber, accountName } = req.body;
         if (!bankName || !accountNumber) {
             return res.status(400).json({ success: false, msg: 'bankName and accountNumber are required.' });
@@ -532,7 +584,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Admin: deactivate an account
-    app.delete('/api/admin/banks/:id', async (req, res) => {
+    app.delete('/api/admin/banks/:id', adminAuthMiddleware, async (req, res) => {
         const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid id.' });
         try {
@@ -614,7 +666,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     }
 
     // List all requests (admin) with optional status & period filters
-    app.get('/api/requests', async (req, res) => {
+    app.get('/api/requests', adminAuthMiddleware, async (req, res) => {
         const status = req.query.status as string | undefined;
         const period = req.query.period as string | undefined;
         const startDate = req.query.startDate as string | undefined;
@@ -660,7 +712,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Approve a request (admin)
-    app.post('/api/request/:id/approve', async (req, res) => {
+    app.post('/api/request/:id/approve', adminAuthMiddleware, async (req, res) => {
         const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid id.' });
         try {
@@ -690,7 +742,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Reject a request (admin)
-    app.post('/api/request/:id/reject', async (req, res) => {
+    app.post('/api/request/:id/reject', adminAuthMiddleware, async (req, res) => {
         const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid id.' });
         try {
@@ -706,7 +758,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Delete a request (admin)
-    app.delete('/api/request/:id', async (req, res) => {
+    app.delete('/api/request/:id', adminAuthMiddleware, async (req, res) => {
         const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid id.' });
         try {
@@ -731,7 +783,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Batch delete requests (admin)
-    app.post('/api/requests/batch-delete', async (req, res) => {
+    app.post('/api/requests/batch-delete', adminAuthMiddleware, async (req, res) => {
         const { ids } = req.body || {};
         if (!Array.isArray(ids) || ids.length === 0) {
             return res.status(400).json({ success: false, msg: 'ids array is required.' });
@@ -763,7 +815,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Edit a request (admin)
-    app.put('/api/request/:id', async (req, res) => {
+    app.put('/api/request/:id', adminAuthMiddleware, async (req, res) => {
         const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid id.' });
         const { amount, phone, bankName, status } = req.body || {};
@@ -846,7 +898,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Batch approve requests (admin)
-    app.post('/api/requests/batch-approve', async (req, res) => {
+    app.post('/api/requests/batch-approve', adminAuthMiddleware, async (req, res) => {
         const { ids } = req.body || {};
         if (!Array.isArray(ids) || ids.length === 0) {
             return res.status(400).json({ success: false, msg: 'ids array is required.' });
@@ -888,7 +940,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Batch reject requests (admin)
-    app.post('/api/requests/batch-reject', async (req, res) => {
+    app.post('/api/requests/batch-reject', adminAuthMiddleware, async (req, res) => {
         const { ids } = req.body || {};
         if (!Array.isArray(ids) || ids.length === 0) {
             return res.status(400).json({ success: false, msg: 'ids array is required.' });
@@ -907,7 +959,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // House Income Game Report & History API
-    app.get('/api/admin/income', async (req, res) => {
+    app.get('/api/admin/income', adminAuthMiddleware, async (req, res) => {
         const period = (req.query.period as string) || 'today';
         const startDate = req.query.startDate as string | undefined;
         const endDate = req.query.endDate as string | undefined;
@@ -982,7 +1034,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Financial Summary filtered by period (Default: today)
-    app.get('/api/admin/financial-summary', async (req, res) => {
+    app.get('/api/admin/financial-summary', adminAuthMiddleware, async (req, res) => {
         const period = (req.query.period as string) || 'today';
         const startDate = req.query.startDate as string | undefined;
         const endDate = req.query.endDate as string | undefined;
@@ -1050,7 +1102,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
 
 
     // Admin dashboard stats (totals, growth, pending)
-    app.get('/api/admin/stats', async (req, res) => {
+    app.get('/api/admin/stats', adminAuthMiddleware, async (req, res) => {
         try {
             const now = new Date();
             const weekAgo = new Date(now.getTime() - 7 * 86400000);
@@ -1109,7 +1161,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Admin Broadcast API (send image + caption or text to all registered users)
-    app.post('/api/admin/broadcast', async (req, res) => {
+    app.post('/api/admin/broadcast', adminAuthMiddleware, async (req, res) => {
         const { imageUrl, caption, text } = req.body;
         const messageText = (caption || text || '').trim();
 
@@ -1167,11 +1219,11 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Caller Voice Admin API
-    app.get('/api/admin/voice', (_req, res) => {
+    app.get('/api/admin/voice', adminAuthMiddleware, (_req, res) => {
         res.json({ success: true, voice: gameRooms.getCallerVoice() });
     });
 
-    app.post('/api/admin/voice', (req, res) => {
+    app.post('/api/admin/voice', adminAuthMiddleware, (req, res) => {
         const { voice } = req.body || {};
         if (voice !== 'male' && voice !== 'female') {
             return res.status(400).json({ success: false, msg: 'Invalid voice option. Must be "male" or "female".' });

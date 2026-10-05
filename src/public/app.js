@@ -1,4 +1,4 @@
-// Bingo Admin Dashboard Controller (app.js)
+// Bingo Admin Dashboard Controller (app.js) with Authentication
 
 let allRequests = [];
 let currentFilter = 'ALL';
@@ -7,20 +7,152 @@ let selectedRequestIds = new Set();
 let isActionRunning = false;
 
 document.addEventListener('DOMContentLoaded', () => {
+    initAuth();
     initPeriodFilters();
     initRequestFilters();
     initForceStart();
     initBatchActions();
     initEditModal();
     
+    // Check if authenticated
+    const token = getAdminToken();
+    if (!token) {
+        showLoginOverlay();
+        return;
+    }
+
     // Initial fetch
     refreshAllData();
 
     // Auto-refresh every 10 seconds for real-time live monitoring
-    setInterval(refreshAllData, 10000);
+    setInterval(() => {
+        if (getAdminToken()) refreshAllData();
+    }, 10000);
 });
 
+// ----------------------------------------------------
+// 0. Authentication & Security (Option 1 & Option 2)
+// ----------------------------------------------------
+function getAdminToken() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get('token');
+    if (urlToken) {
+        const clean = urlToken.trim();
+        localStorage.setItem('adminToken', clean);
+        // Strip sensitive token from browser address bar
+        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+        return clean;
+    }
+    return localStorage.getItem('adminToken');
+}
+
+function initAuth() {
+    const loginForm = document.getElementById('admin-login-form');
+    const logoutBtn = document.getElementById('btn-logout');
+
+    if (loginForm) {
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const passInput = document.getElementById('admin-password-input');
+            const submitBtn = document.getElementById('btn-login-submit');
+            const errEl = document.getElementById('login-error-msg');
+            const password = passInput ? passInput.value.trim() : '';
+
+            if (!password) return;
+
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Verifying...';
+            }
+            if (errEl) errEl.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                const data = await res.json();
+
+                if (res.ok && data.success && data.token) {
+                    localStorage.setItem('adminToken', data.token);
+                    hideLoginOverlay();
+                    if (passInput) passInput.value = '';
+                    await refreshAllData();
+                } else {
+                    showLoginOverlay(data.msg || 'Incorrect admin password.');
+                }
+            } catch (err) {
+                showLoginOverlay('Network error verifying password.');
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '🚀 Unlock Dashboard';
+                }
+            }
+        });
+    }
+
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            const token = getAdminToken();
+            if (token) {
+                try {
+                    await fetch('/api/admin/logout', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                } catch (e) {}
+            }
+            localStorage.removeItem('adminToken');
+            showLoginOverlay();
+        });
+    }
+}
+
+function showLoginOverlay(errorMsg = '') {
+    const overlay = document.getElementById('login-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    const errEl = document.getElementById('login-error-msg');
+    if (errEl) {
+        if (errorMsg) {
+            errEl.textContent = errorMsg;
+            errEl.style.display = 'block';
+        } else {
+            errEl.style.display = 'none';
+        }
+    }
+}
+
+function hideLoginOverlay() {
+    const overlay = document.getElementById('login-overlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+async function authFetch(url, options = {}) {
+    const token = getAdminToken();
+    if (!token) {
+        showLoginOverlay();
+        throw new Error('Unauthorized');
+    }
+
+    const headers = {
+        ...(options.headers || {}),
+        'Authorization': `Bearer ${token}`
+    };
+
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+        localStorage.removeItem('adminToken');
+        showLoginOverlay('Session expired or unauthorized. Please log in again.');
+        throw new Error('Unauthorized');
+    }
+    return res;
+}
+
 async function refreshAllData() {
+    if (!getAdminToken()) return;
     await Promise.allSettled([
         fetchFinancialSummary(),
         fetchHouseIncome(),
@@ -70,7 +202,7 @@ function initPeriodFilters() {
 // ----------------------------------------------------
 async function fetchFinancialSummary() {
     try {
-        const res = await fetch(`/api/admin/financial-summary?period=${currentPeriod}`);
+        const res = await authFetch(`/api/admin/financial-summary?period=${currentPeriod}`);
         if (!res.ok) throw new Error('Financial summary fetch failed');
         const data = await res.json();
 
@@ -96,7 +228,7 @@ async function fetchFinancialSummary() {
 // ----------------------------------------------------
 async function fetchHouseIncome() {
     try {
-        const res = await fetch(`/api/admin/income?period=${currentPeriod}`);
+        const res = await authFetch(`/api/admin/income?period=${currentPeriod}`);
         if (!res.ok) throw new Error('House income fetch failed');
         const data = await res.json();
 
@@ -154,7 +286,7 @@ async function fetchHouseIncome() {
 // ----------------------------------------------------
 async function fetchStats() {
     try {
-        const res = await fetch('/api/stats');
+        const res = await authFetch('/api/stats');
         if (!res.ok) throw new Error('Stats fetch failed');
         const data = await res.json();
 
@@ -190,7 +322,7 @@ async function fetchStats() {
 // ----------------------------------------------------
 async function fetchUsers() {
     try {
-        const res = await fetch('/api/users');
+        const res = await authFetch('/api/users');
         if (!res.ok) throw new Error('Users fetch failed');
         const users = await res.json();
 
@@ -228,7 +360,7 @@ async function fetchUsers() {
 // ----------------------------------------------------
 async function fetchRequests() {
     try {
-        const res = await fetch(`/api/requests?period=${currentPeriod}`);
+        const res = await authFetch(`/api/requests?period=${currentPeriod}`);
         if (!res.ok) throw new Error('Requests fetch failed');
         allRequests = await res.json();
 
@@ -385,7 +517,6 @@ function renderRequests() {
               })
             : '—';
 
-        // Action Buttons: Approve, Reject, Edit, Delete
         let actionButtons = `
             <div style="display:flex; gap:5px; align-items:center; flex-wrap:wrap;">
         `;
@@ -444,7 +575,7 @@ async function handleRequestAction(id, action, type, amount) {
 
     isActionRunning = true;
     try {
-        const res = await fetch(`/api/request/${id}/${action}`, {
+        const res = await authFetch(`/api/request/${id}/${action}`, {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' }
         });
@@ -474,7 +605,7 @@ async function deleteSingleRequest(id, type, amount) {
 
     isActionRunning = true;
     try {
-        const res = await fetch(`/api/request/${id}`, {
+        const res = await authFetch(`/api/request/${id}`, {
             method: 'DELETE'
         });
         const data = await res.json();
@@ -510,7 +641,7 @@ function initBatchActions() {
             if (!ok) return;
 
             try {
-                const res = await fetch('/api/requests/batch-approve', {
+                const res = await authFetch('/api/requests/batch-approve', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ids })
@@ -537,7 +668,7 @@ function initBatchActions() {
             if (!ok) return;
 
             try {
-                const res = await fetch('/api/requests/batch-reject', {
+                const res = await authFetch('/api/requests/batch-reject', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ids })
@@ -564,7 +695,7 @@ function initBatchActions() {
             if (!ok) return;
 
             try {
-                const res = await fetch('/api/requests/batch-delete', {
+                const res = await authFetch('/api/requests/batch-delete', {
                     method: 'POST',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ ids })
@@ -611,7 +742,7 @@ function initEditModal() {
             const bankName = document.getElementById('edit-req-bank').value;
 
             try {
-                const res = await fetch(`/api/request/${id}`, {
+                const res = await authFetch(`/api/request/${id}`, {
                     method: 'PUT',
                     headers: { 'Content-Type': 'application/json' },
                     body: JSON.stringify({ amount, status, phone, bankName })
@@ -676,7 +807,7 @@ function initForceStart() {
         btn.textContent = 'Starting...';
 
         try {
-            const res = await fetch('/api/start-game', {
+            const res = await authFetch('/api/start-game', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ bet: 10, room: 1 })

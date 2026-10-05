@@ -1,27 +1,161 @@
-// Admin Dashboard Stats & Broadcast Controller (app-stats.js)
+// Admin Dashboard Stats & Broadcast Controller (app-stats.js) with Authentication
 
 document.addEventListener('DOMContentLoaded', () => {
+    initAuth();
     initRefreshButton();
     initBroadcastButton();
 
+    // Check if authenticated
+    const token = getAdminToken();
+    if (!token) {
+        showLoginOverlay();
+        return;
+    }
+
     // Initial load
     loadAdminStats();
+    loadVoiceSetting();
 
     // Auto-refresh every 15 seconds
-    setInterval(loadAdminStats, 15000);
+    setInterval(() => {
+        if (getAdminToken()) loadAdminStats();
+    }, 15000);
 });
+
+// ----------------------------------------------------
+// 0. Authentication & Security (Option 1 & Option 2)
+// ----------------------------------------------------
+function getAdminToken() {
+    const urlParams = new URLSearchParams(window.location.search);
+    const urlToken = urlParams.get('token');
+    if (urlToken) {
+        const clean = urlToken.trim();
+        localStorage.setItem('adminToken', clean);
+        // Strip sensitive token from browser address bar
+        const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
+        window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+        return clean;
+    }
+    return localStorage.getItem('adminToken');
+}
+
+function initAuth() {
+    const loginForm = document.getElementById('admin-login-form');
+    const logoutBtn = document.getElementById('btn-logout-stats');
+
+    if (loginForm) {
+        loginForm.addEventListener('submit', async (e) => {
+            e.preventDefault();
+            const passInput = document.getElementById('admin-password-input');
+            const submitBtn = document.getElementById('btn-login-submit');
+            const errEl = document.getElementById('login-error-msg');
+            const password = passInput ? passInput.value.trim() : '';
+
+            if (!password) return;
+
+            if (submitBtn) {
+                submitBtn.disabled = true;
+                submitBtn.textContent = 'Verifying...';
+            }
+            if (errEl) errEl.style.display = 'none';
+
+            try {
+                const res = await fetch('/api/admin/login', {
+                    method: 'POST',
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify({ password })
+                });
+                const data = await res.json();
+
+                if (res.ok && data.success && data.token) {
+                    localStorage.setItem('adminToken', data.token);
+                    hideLoginOverlay();
+                    if (passInput) passInput.value = '';
+                    await loadAdminStats();
+                    await loadVoiceSetting();
+                } else {
+                    showLoginOverlay(data.msg || 'Incorrect admin password.');
+                }
+            } catch (err) {
+                showLoginOverlay('Network error verifying password.');
+            } finally {
+                if (submitBtn) {
+                    submitBtn.disabled = false;
+                    submitBtn.textContent = '🚀 Unlock Dashboard';
+                }
+            }
+        });
+    }
+
+    if (logoutBtn) {
+        logoutBtn.addEventListener('click', async () => {
+            const token = getAdminToken();
+            if (token) {
+                try {
+                    await fetch('/api/admin/logout', {
+                        method: 'POST',
+                        headers: { 'Authorization': `Bearer ${token}` }
+                    });
+                } catch (e) {}
+            }
+            localStorage.removeItem('adminToken');
+            showLoginOverlay();
+        });
+    }
+}
+
+function showLoginOverlay(errorMsg = '') {
+    const overlay = document.getElementById('login-overlay');
+    if (overlay) overlay.style.display = 'flex';
+    const errEl = document.getElementById('login-error-msg');
+    if (errEl) {
+        if (errorMsg) {
+            errEl.textContent = errorMsg;
+            errEl.style.display = 'block';
+        } else {
+            errEl.style.display = 'none';
+        }
+    }
+}
+
+function hideLoginOverlay() {
+    const overlay = document.getElementById('login-overlay');
+    if (overlay) overlay.style.display = 'none';
+}
+
+async function authFetch(url, options = {}) {
+    const token = getAdminToken();
+    if (!token) {
+        showLoginOverlay();
+        throw new Error('Unauthorized');
+    }
+
+    const headers = {
+        ...(options.headers || {}),
+        'Authorization': `Bearer ${token}`
+    };
+
+    const res = await fetch(url, { ...options, headers });
+    if (res.status === 401) {
+        localStorage.removeItem('adminToken');
+        showLoginOverlay('Session expired or unauthorized. Please log in again.');
+        throw new Error('Unauthorized');
+    }
+    return res;
+}
 
 // ----------------------------------------------------
 // 1. Fetch & Render Admin Stats
 // ----------------------------------------------------
 async function loadAdminStats() {
+    if (!getAdminToken()) return;
     const refreshSpan = document.getElementById('refreshing');
     const updatedAtEl = document.getElementById('updated-at');
 
     if (refreshSpan) refreshSpan.style.display = 'inline';
 
     try {
-        const res = await fetch('/api/admin/stats');
+        const res = await authFetch('/api/admin/stats');
         if (!res.ok) throw new Error('Failed to fetch admin stats');
         const data = await res.json();
 
@@ -61,7 +195,7 @@ async function loadAdminStats() {
 
         // Fetch House Profit and Game Stats
         try {
-            const fRes = await fetch('/api/admin/financial-summary?period=all');
+            const fRes = await authFetch('/api/admin/financial-summary?period=all');
             if (fRes.ok) {
                 const fData = await fRes.json();
                 setText('s-profit', (fData.totalHouseProfit ?? 0).toLocaleString());
@@ -86,6 +220,7 @@ async function loadAdminStats() {
 
         if (updatedAtEl) {
             updatedAtEl.textContent = `Updated: ${new Date().toLocaleTimeString()}`;
+            updatedAtEl.style.color = 'rgba(255,255,255,0.5)';
         }
     } catch (err) {
         console.error('Error loading admin stats:', err);
@@ -111,12 +246,64 @@ function initRefreshButton() {
     if (btn) {
         btn.addEventListener('click', () => {
             loadAdminStats();
+            loadVoiceSetting();
         });
     }
 }
 
 // ----------------------------------------------------
-// 3. Broadcast to Players
+// 3. Caller Voice Control
+// ----------------------------------------------------
+async function loadVoiceSetting() {
+    if (!getAdminToken()) return;
+    try {
+        const res = await authFetch('/api/admin/voice');
+        if (!res.ok) return;
+        const data = await res.json();
+        const badge = document.getElementById('voice-current-badge');
+        if (badge) {
+            if (data.voice === 'female') {
+                badge.textContent = 'Active: 👩 Female (ሴት)';
+                badge.style.color = '#ff80ab';
+            } else {
+                badge.textContent = 'Active: 👨 Male (ወንድ)';
+                badge.style.color = '#90caf9';
+            }
+        }
+    } catch (e) {}
+}
+
+window.setVoice = async function(voice) {
+    const statusEl = document.getElementById('voice-status');
+    if (statusEl) {
+        statusEl.textContent = 'Updating caller voice...';
+        statusEl.style.color = '#ffcc00';
+    }
+    try {
+        const res = await authFetch('/api/admin/voice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ voice })
+        });
+        const data = await res.json();
+        if (data.success && statusEl) {
+            statusEl.textContent = `✅ Successfully switched to ${voice === 'female' ? '👩 Female' : '👨 Male'} voice! All players are updated.`;
+            statusEl.style.color = '#22ff88';
+            loadVoiceSetting();
+        } else if (statusEl) {
+            statusEl.textContent = '❌ Failed to update voice: ' + (data.msg || 'Unknown error');
+            statusEl.style.color = '#ff5555';
+        }
+    } catch (e) {
+        if (statusEl) {
+            statusEl.textContent = '❌ Network error updating voice.';
+            statusEl.style.color = '#ff5555';
+        }
+    }
+};
+
+// ----------------------------------------------------
+// 4. Broadcast to Players
 // ----------------------------------------------------
 function initBroadcastButton() {
     const btn = document.getElementById('btn-broadcast');
@@ -149,7 +336,7 @@ function initBroadcastButton() {
         }
 
         try {
-            const res = await fetch('/api/admin/broadcast', {
+            const res = await authFetch('/api/admin/broadcast', {
                 method: 'POST',
                 headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({
