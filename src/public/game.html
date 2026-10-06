@@ -146,6 +146,16 @@ body{
   font-size:0.88rem;font-weight:900;
   box-shadow:0 1px 3px rgba(0,0,0,0.25);
 }
+.call-timer-track{
+  width:100%;height:3px;background:rgba(91,13,107,0.18);
+  border-radius:3px;overflow:hidden;margin:2px 0 4px 0;
+}
+.call-timer-bar{
+  height:100%;width:0%;
+  background:linear-gradient(90deg, #ff7a00, #ffb300);
+  border-radius:3px;transform-origin:left;
+  transition:width 0.1s linear;
+}
 
 /* Last 3 Calls Strip */
 .last-calls-box{
@@ -512,6 +522,9 @@ body{
     <div class="current-call-capsule">
       <span class="current-call-label">Current Call</span>
       <div class="current-call-badge" id="current-call-badge">—</div>
+    </div>
+    <div class="call-timer-track">
+      <div class="call-timer-bar" id="call-timer-bar"></div>
     </div>
 
     <!-- Last 3 Calls -->
@@ -881,8 +894,8 @@ async function preloadAudioCalls(){
     }
     const queue = [...priority, ...all];
 
-    // Download in chunks of 4 concurrent requests
-    const BATCH = 4;
+    // Download in chunks of 8 concurrent requests for fast pre-caching
+    const BATCH = 8;
     for(let i=0; i<queue.length; i+=BATCH){
       const chunk = queue.slice(i, i+BATCH);
       await Promise.all(chunk.map(n => loadAudioBuffer(n)));
@@ -1319,122 +1332,295 @@ function showWinnerOverlay(data){
   },1000);
 }
 
-// ─── Main Poll ───
-async function poll(){
-  try{
-    const res=await fetch(`/api/game-state/${userId}?bet=${bet}&room=${room}`);
-    const data=await res.json();
+// ─── Visual 6-Second Clockwork Timer ───
+let timerAnimId = null;
+function startTimerCountdown(nextDrawAt) {
+  if (timerAnimId) cancelAnimationFrame(timerAnimId);
+  const bar = document.getElementById('call-timer-bar');
+  if (!bar) return;
+  const total = 6000;
 
-    if(data.isSpectator || (!data.inGame && data.gameState === 'PLAYING')){
-      isSpectator=true;
+  function tick() {
+    const remaining = Math.max(0, nextDrawAt - Date.now());
+    const pct = Math.min(100, Math.max(0, (remaining / total) * 100));
+    bar.style.width = pct + '%';
+    if (remaining > 0) {
+      timerAnimId = requestAnimationFrame(tick);
+    } else {
+      bar.style.width = '0%';
+    }
+  }
+  tick();
+}
+
+// ─── Process Full Game State ───
+function applyGameState(data) {
+  if (!data) return;
+
+  if (data.isSpectator || (!data.inGame && data.gameState === 'PLAYING')) {
+    isSpectator = true;
+  }
+
+  document.getElementById('player-count').textContent = data.playerCount || 0;
+  const pot = Math.floor(parseFloat(data.pot || 0) * 0.8);
+  document.getElementById('derash').textContent = `${pot}`;
+  document.getElementById('called-count').textContent = (data.drawnNumbers || []).length;
+
+  if (data.gameId) {
+    document.getElementById('game-id').textContent = data.gameId.toString().slice(-8).toUpperCase();
+  }
+
+  if (isSpectator && data.gameState === 'WAITING' && !winnerShown) {
+    window.location.href = `/boards.html?userId=${userId}&bet=${bet}&room=${room}`;
+    return;
+  }
+
+  if (data.callerVoice && (data.callerVoice === 'female' || data.callerVoice === 'male')) {
+    activeServerVoice = data.callerVoice;
+  }
+
+  if (data.lastDrawn && data.lastDrawn !== lastDrawn) {
+    lastDrawn = data.lastDrawn;
+    speakDrawnNumber(lastDrawn);
+  }
+
+  lastDrawnSet = new Set(data.drawnNumbers || []);
+  updateFlashboard(data.drawnNumbers, data.lastDrawn);
+  updateLastCalls(data.drawnNumbers, data.lastDrawn);
+
+  if (isSpectator) {
+    document.getElementById('playing-card-area').style.display = 'none';
+    document.getElementById('wait-message-area').style.display = 'flex';
+    currentCanBingo = false;
+    updateActionButtons(false);
+    document.getElementById('wait-sub-status').textContent = 'ጨዋታው በሂደት ላይ ነው...';
+  } else {
+    document.getElementById('playing-card-area').style.display = 'block';
+    document.getElementById('wait-message-area').style.display = 'none';
+
+    if (data.cards && data.cards.length > 0) {
+      myCards = data.cards;
+    } else if (data.ticket) {
+      myCards = [{
+        boardNumber: data.boardNumber || 0,
+        ticket: data.ticket,
+        daubed: data.daubed || []
+      }];
     }
 
-    document.getElementById('player-count').textContent=data.playerCount||0;
-    const pot=Math.floor(parseFloat(data.pot||0)*0.8);
-    document.getElementById('derash').textContent=`${pot}`;
-    document.getElementById('called-count').textContent=(data.drawnNumbers||[]).length;
-
-    if(data.gameId){
-      document.getElementById('game-id').textContent=data.gameId.toString().slice(-8).toUpperCase();
+    if (data.isBlocked !== undefined) {
+      isPlayerBlocked = Boolean(data.isBlocked);
+    }
+    if (data.gameState === 'WAITING') {
+      isPlayerBlocked = false;
+      lastRenderedBlocked = false;
+    }
+    if (data.gameId && window._lastSeenGameId && data.gameId !== window._lastSeenGameId) {
+      isPlayerBlocked = false;
+      lastRenderedBlocked = false;
+    }
+    if (data.gameId) {
+      window._lastSeenGameId = data.gameId;
     }
 
-    if(isSpectator && data.gameState === 'WAITING' && !winnerShown){
-      window.location.href=`/boards.html?userId=${userId}&bet=${bet}&room=${room}`;
-      return;
-    }
+    if (myCards.length > 0) {
+      renderBoardBadge();
+      renderBoards(myCards, lastDrawnSet);
+      preloadAudioCalls();
 
-    if(data.callerVoice && (data.callerVoice === 'female' || data.callerVoice === 'male')){
-      activeServerVoice = data.callerVoice;
-    }
+      const totalBet = parseInt(bet, 10) * myCards.length;
+      document.getElementById('stake-disp').textContent = `${totalBet}`;
 
-    if(data.lastDrawn && data.lastDrawn !== lastDrawn){
-      lastDrawn=data.lastDrawn;
-      speakDrawnNumber(lastDrawn);
-    }
-
-    lastDrawnSet = new Set(data.drawnNumbers || []);
-    updateFlashboard(data.drawnNumbers, data.lastDrawn);
-    updateLastCalls(data.drawnNumbers, data.lastDrawn);
-
-    if(isSpectator){
-      document.getElementById('playing-card-area').style.display='none';
-      document.getElementById('wait-message-area').style.display='flex';
-      currentCanBingo = false;
-      updateActionButtons(false);
-      document.getElementById('wait-sub-status').textContent='ጨዋታው በሂደት ላይ ነው...';
-    }else{
-      document.getElementById('playing-card-area').style.display='block';
-      document.getElementById('wait-message-area').style.display='none';
-
-      if(data.cards && data.cards.length > 0){
-        myCards = data.cards;
-      }else if(data.ticket){
-        myCards = [{
-          boardNumber: data.boardNumber || 0,
-          ticket: data.ticket,
-          daubed: data.daubed || []
-        }];
-      }
-
-      if(data.isBlocked !== undefined){
-        isPlayerBlocked = Boolean(data.isBlocked);
-      }
-      if(data.gameState === 'WAITING'){
-        isPlayerBlocked = false;
-        lastRenderedBlocked = false;
-      }
-      if(data.gameId && window._lastSeenGameId && data.gameId !== window._lastSeenGameId){
-        isPlayerBlocked = false;
-        lastRenderedBlocked = false;
-      }
-      if(data.gameId){
-        window._lastSeenGameId = data.gameId;
-      }
-
-      if(myCards.length > 0){
-        renderBoardBadge();
-        renderBoards(myCards, lastDrawnSet);
-        preloadAudioCalls();
-
-        const totalBet = parseInt(bet, 10) * myCards.length;
-        document.getElementById('stake-disp').textContent = `${totalBet}`;
-
-        // Auto-daub and auto-check win across cards if enabled
-        if(autoEnabled && !isPlayerBlocked){
-          autoDaubAndCheck(data.drawnNumbers?.length || lastDrawnSet.size);
-        }
-      }
-
-      currentCanBingo = (data.gameState === 'PLAYING' && (data.drawnNumbers?.length || 0) >= 1 && !isPlayerBlocked);
-      updateActionButtons(currentCanBingo);
-
-      if(data.gameState === 'WAITING'){
-        document.getElementById('playing-card-area').style.display='none';
-        document.getElementById('wait-message-area').style.display='flex';
-        document.getElementById('wait-sub-status').textContent =
-          data.lobbyCountdown > 0
-            ? `ጨዋታው በ ${data.lobbyCountdown} ሰኮንድ ይጀምራል...`
-            : 'ተጫዋቾችን እየጠበቁ ነው...';
+      if (autoEnabled && !isPlayerBlocked) {
+        autoDaubAndCheck(data.drawnNumbers?.length || lastDrawnSet.size);
       }
     }
 
-    const hasWinners = (data.winners && data.winners.length > 0) || data.winner;
-    if(hasWinners && !winnerShown){
-      const winList = (data.winners && data.winners.length > 0) ? data.winners : [data.winner];
-      const firstW = winList[0];
-      handleWin({
-        winners: winList,
-        winnerName: firstW.firstName || 'Player',
-        boardNumber: firstW.boardNumber,
-        winnerTicket: firstW.ticket,
-        winnerDaubed: firstW.daubed,
-        winningCells: firstW.winningCells || [],
-        amount: firstW.amount,
-        drawnNumbers: data.drawnNumbers || []
-      });
-    }
+    currentCanBingo = (data.gameState === 'PLAYING' && (data.drawnNumbers?.length || 0) >= 1 && !isPlayerBlocked);
+    updateActionButtons(currentCanBingo);
 
-  }catch(e){
+    if (data.gameState === 'WAITING') {
+      document.getElementById('playing-card-area').style.display = 'none';
+      document.getElementById('wait-message-area').style.display = 'flex';
+      document.getElementById('wait-sub-status').textContent =
+        data.lobbyCountdown > 0
+          ? `ጨዋታው በ ${data.lobbyCountdown} ሰኮንድ ይጀምራል...`
+          : 'ተጫዋቾችን እየጠበቁ ነው...';
+    }
+  }
+
+  const hasWinners = (data.winners && data.winners.length > 0) || data.winner;
+  if (hasWinners && !winnerShown) {
+    const winList = (data.winners && data.winners.length > 0) ? data.winners : [data.winner];
+    const firstW = winList[0];
+    handleWin({
+      winners: winList,
+      winnerName: firstW.firstName || 'Player',
+      boardNumber: firstW.boardNumber,
+      winnerTicket: firstW.ticket,
+      winnerDaubed: firstW.daubed,
+      winningCells: firstW.winningCells || [],
+      amount: firstW.amount,
+      drawnNumbers: data.drawnNumbers || []
+    });
+  }
+}
+
+// ─── Real-Time Push Event Handlers (0ms Latency) ───
+function applyBallEvent(data) {
+  if (!data) return;
+
+  if (data.lastDrawn && data.lastDrawn !== lastDrawn) {
+    lastDrawn = data.lastDrawn;
+    speakDrawnNumber(lastDrawn);
+  }
+
+  lastDrawnSet = new Set(data.drawnNumbers || []);
+  updateFlashboard(data.drawnNumbers, data.lastDrawn);
+  updateLastCalls(data.drawnNumbers, data.lastDrawn);
+  document.getElementById('called-count').textContent = (data.drawnNumbers || []).length;
+
+  if (data.pot) {
+    document.getElementById('derash').textContent = `${Math.floor(parseFloat(data.pot) * 0.8)}`;
+  }
+  if (data.playerCount !== undefined) {
+    document.getElementById('player-count').textContent = data.playerCount;
+  }
+
+  if (data.nextDrawAt) {
+    startTimerCountdown(data.nextDrawAt);
+  }
+
+  if (!isSpectator && myCards.length > 0) {
+    renderBoards(myCards, lastDrawnSet);
+    if (autoEnabled && !isPlayerBlocked) {
+      autoDaubAndCheck(data.drawnNumbers?.length || lastDrawnSet.size);
+    }
+  }
+
+  currentCanBingo = (!isPlayerBlocked && (data.drawnNumbers?.length || 0) >= 1);
+  updateActionButtons(currentCanBingo);
+}
+
+function applyLobbyEvent(data) {
+  if (!data) return;
+  if (data.playerCount !== undefined) {
+    document.getElementById('player-count').textContent = data.playerCount;
+  }
+  if (data.pot) {
+    document.getElementById('derash').textContent = `${Math.floor(parseFloat(data.pot) * 0.8)}`;
+  }
+  if (data.lobbyCountdown !== undefined) {
+    const msgEl = document.getElementById('wait-sub-status');
+    if (msgEl) {
+      msgEl.textContent = data.lobbyCountdown > 0
+        ? `ጨዋታው በ ${data.lobbyCountdown} ሰኮንድ ይጀምራል...`
+        : 'ተጫዋቾችን እየጠበቁ ነው...';
+    }
+  }
+}
+
+function applyStartEvent(data) {
+  if (!data) return;
+  isPlayerBlocked = false;
+  lastRenderedBlocked = false;
+  lastDrawn = null;
+  lastDrawnSet.clear();
+  document.getElementById('called-count').textContent = '0';
+  document.getElementById('wait-message-area').style.display = 'none';
+  document.getElementById('playing-card-area').style.display = 'block';
+
+  if (data.gameId) {
+    document.getElementById('game-id').textContent = data.gameId.toString().slice(-8).toUpperCase();
+  }
+  if (data.pot) {
+    document.getElementById('derash').textContent = `${Math.floor(parseFloat(data.pot) * 0.8)}`;
+  }
+  if (data.playerCount !== undefined) {
+    document.getElementById('player-count').textContent = data.playerCount;
+  }
+  if (data.nextDrawAt) {
+    startTimerCountdown(data.nextDrawAt);
+  }
+
+  renderBoards(myCards, lastDrawnSet);
+  currentCanBingo = false;
+  updateActionButtons(false);
+}
+
+function applyWinnerEvent(data) {
+  if (winnerShown || !data) return;
+  const winList = (data.winners && data.winners.length > 0) ? data.winners : (data.winner ? [data.winner] : []);
+  if (!winList || !winList[0]) return;
+  const firstW = winList[0];
+  handleWin({
+    winners: winList,
+    winnerName: firstW.firstName || 'Player',
+    boardNumber: firstW.boardNumber,
+    winnerTicket: firstW.ticket,
+    winnerDaubed: firstW.daubed,
+    winningCells: firstW.winningCells || [],
+    amount: firstW.amount,
+    drawnNumbers: data.drawnNumbers || []
+  });
+}
+
+// ─── Real-Time Server-Sent Events (SSE) Stream ───
+let evtSource = null;
+let sseActive = false;
+
+function initSSE() {
+  if (!window.EventSource) return;
+
+  try {
+    if (evtSource) evtSource.close();
+    evtSource = new EventSource(`/api/game-stream/${userId}?bet=${bet}&room=${room}`);
+
+    evtSource.onopen = () => {
+      sseActive = true;
+      console.log('[SSE] Connected to real-time game stream');
+    };
+
+    evtSource.addEventListener('init', (e) => {
+      try { applyGameState(JSON.parse(e.data)); } catch (err) {}
+    });
+
+    evtSource.addEventListener('ball', (e) => {
+      try { applyBallEvent(JSON.parse(e.data)); } catch (err) {}
+    });
+
+    evtSource.addEventListener('lobby', (e) => {
+      try { applyLobbyEvent(JSON.parse(e.data)); } catch (err) {}
+    });
+
+    evtSource.addEventListener('start', (e) => {
+      try { applyStartEvent(JSON.parse(e.data)); } catch (err) {}
+    });
+
+    evtSource.addEventListener('winner', (e) => {
+      try { applyWinnerEvent(JSON.parse(e.data)); } catch (err) {}
+    });
+
+    evtSource.addEventListener('reset', () => {
+      poll();
+    });
+
+    evtSource.onerror = () => {
+      sseActive = false;
+      // Browser EventSource automatically reconnects
+    };
+  } catch (err) {
+    sseActive = false;
+  }
+}
+
+// ─── Backup HTTP Poll ───
+async function poll() {
+  try {
+    const res = await fetch(`/api/game-state/${userId}?bet=${bet}&room=${room}`);
+    const data = await res.json();
+    applyGameState(data);
+  } catch (e) {
     console.error('Poll error:', e);
   }
 }
@@ -1467,9 +1653,19 @@ function unlockAudio(){
   document.addEventListener(evt, unlockAudio, { passive: true });
 });
 
-poll();
+// Initial startup: Connect SSE real-time stream + fallback poll
 preloadAudioCalls();
-pollInterval=setInterval(poll, 2500);
+initSSE();
+poll();
+
+// Adaptive polling: Runs relaxed sync when SSE is active, or full backup when SSE is reconnecting
+pollInterval = setInterval(() => {
+  if (!sseActive) {
+    poll(); // Full backup poll if mobile network dropped SSE
+  } else {
+    poll(); // Background sanity check every 15s
+  }
+}, 15000);
 </script>
 <audio id="caller-audio" preload="auto" playsinline style="display:none"></audio>
 </body>

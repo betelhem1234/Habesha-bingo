@@ -235,6 +235,59 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         });
     });
 
+    // Real-Time Event Stream (SSE) for zero-latency ball calls, countdowns, and winners
+    app.get('/api/game-stream/:userId', (req, res) => {
+        const userId = BigInt(req.params.userId);
+        const fee = parseInt(req.query.bet as string, 10) > 0 ? parseInt(req.query.bet as string, 10) : 10;
+        const room = parseInt(req.query.room as string, 10) > 0 ? parseInt(req.query.room as string, 10) : 1;
+        const gameManager = gameRooms.findPlayer(userId) || gameRooms.getRoom(fee, room);
+        const player = gameManager.players.find(p => p.userId === userId);
+        if (player) gameManager.touch(userId);
+
+        res.setHeader('Content-Type', 'text/event-stream');
+        res.setHeader('Cache-Control', 'no-cache, no-transform');
+        res.setHeader('Connection', 'keep-alive');
+        res.setHeader('X-Accel-Buffering', 'no');
+        if (typeof res.flushHeaders === 'function') res.flushHeaders();
+
+        const cardsData = (player && player.cards && player.cards.length > 0)
+            ? player.cards.map(c => ({
+                boardNumber: c.boardNumber,
+                ticket: c.ticket,
+                daubed: Array.from(c.daubed),
+                isBlocked: Boolean(c.isBlocked || player.isBlocked)
+            }))
+            : player ? [{
+                boardNumber: player.boardNumber ?? 0,
+                ticket: player.ticket,
+                daubed: Array.from(player.daubed),
+                isBlocked: Boolean(player.isBlocked)
+            }] : [];
+
+        const initialSnapshot = {
+            inGame: Boolean(player),
+            callerVoice: gameRooms.getCallerVoice(),
+            gameState: gameManager.state,
+            ticket: player?.ticket || null,
+            boardNumber: player?.boardNumber ?? null,
+            cards: cardsData,
+            boardNumbers: cardsData.map(c => c.boardNumber),
+            fee: player?.fee || fee,
+            daubed: player ? Array.from(player.daubed) : [],
+            isBlocked: Boolean(player?.isBlocked),
+            drawnNumbers: Array.from(gameManager.drawnNumbers),
+            lastDrawn: Array.from(gameManager.drawnNumbers).at(-1) ?? null,
+            lobbyCountdown: gameManager.lobbyCountdown,
+            playerCount: gameManager.players.length,
+            pot: gameManager.getPot(),
+            gameId: gameManager.gameId,
+            winner: (gameManager.state === 'WAITING' && gameManager.currentWinner) ? gameManager.currentWinner : null,
+            winners: (gameManager.state === 'WAITING' && gameManager.currentWinners.length > 0) ? gameManager.currentWinners : []
+        };
+
+        gameManager.addSSEClient(userId, res, initialSnapshot);
+    });
+
     // Lobby data with real stats (balance, bonus, tiers, winners, status)
     app.get('/api/lobby/:userId', async (req, res) => {
         let balance = 0;

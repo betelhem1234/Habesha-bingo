@@ -55,15 +55,65 @@ export class GameManager {
     private allNumbers: number[] = [];
     public state: 'WAITING' | 'PLAYING' = 'WAITING';
     private gameLoopInterval: NodeJS.Timeout | null = null;
+    private gameLoopTimeout: NodeJS.Timeout | null = null;
+    private gameStartTime: number = 0;
     private startTimeout: NodeJS.Timeout | null = null;
     private pendingWinners: WinnerCandidate[] = [];
     private resolutionTimeout: NodeJS.Timeout | null = null;
+    private sseClients: Set<{ res: any; userId: bigint }> = new Set();
+    private heartbeatInterval: NodeJS.Timeout | null = null;
     
     // Auto-start Lobby Timer Variables
     public lobbyCountdown: number = 0;
     private lobbyInterval: NodeJS.Timeout | null = null;
 
-    constructor(private bot: Bot) {}
+    constructor(private bot: Bot) {
+        this.heartbeatInterval = setInterval(() => {
+            if (this.sseClients.size === 0) return;
+            const toDelete: Array<{ res: any; userId: bigint }> = [];
+            for (const client of this.sseClients) {
+                try {
+                    client.res.write(': ping\n\n');
+                } catch (e) {
+                    toDelete.push(client);
+                }
+            }
+            for (const dead of toDelete) {
+                this.sseClients.delete(dead);
+            }
+        }, 15000).unref();
+    }
+
+    addSSEClient(userId: bigint, res: any, initialData?: any) {
+        const client = { res, userId };
+        this.sseClients.add(client);
+
+        res.on('close', () => {
+            this.sseClients.delete(client);
+        });
+
+        if (initialData) {
+            try {
+                res.write(`event: init\ndata: ${JSON.stringify(initialData)}\n\n`);
+            } catch (e) {}
+        }
+    }
+
+    broadcastSSE(event: string, data: any) {
+        if (this.sseClients.size === 0) return;
+        const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
+        const toDelete: Array<{ res: any; userId: bigint }> = [];
+        for (const client of this.sseClients) {
+            try {
+                client.res.write(payload);
+            } catch (e) {
+                toDelete.push(client);
+            }
+        }
+        for (const dead of toDelete) {
+            this.sseClients.delete(dead);
+        }
+    }
 
     async selectBoards(userId: bigint, boardNumbers: number[], feePerBoard: number = 10): Promise<{ success: boolean; msg: string; boards: number[] }> {
         if (this.state !== 'WAITING') {
@@ -197,6 +247,12 @@ export class GameManager {
 
         this.lobbyInterval = setInterval(async () => {
             this.lobbyCountdown -= 1;
+            this.broadcastSSE('lobby', {
+                lobbyCountdown: this.lobbyCountdown,
+                playerCount: this.players.length,
+                pot: this.getPot(),
+                gameState: this.state
+            });
             
             if (this.lobbyCountdown <= 0) {
                 clearInterval(this.lobbyInterval!);
@@ -231,10 +287,12 @@ export class GameManager {
     async forceReset(): Promise<{ success: boolean; msg: string }> {
         if (this.startTimeout) clearTimeout(this.startTimeout);
         if (this.gameLoopInterval) clearInterval(this.gameLoopInterval);
+        if (this.gameLoopTimeout) clearTimeout(this.gameLoopTimeout);
         if (this.lobbyInterval) clearInterval(this.lobbyInterval);
         if (this.resolutionTimeout) clearTimeout(this.resolutionTimeout);
         this.startTimeout = null;
         this.gameLoopInterval = null;
+        this.gameLoopTimeout = null;
         this.lobbyInterval = null;
         this.resolutionTimeout = null;
         this.pendingWinners = [];
@@ -246,6 +304,7 @@ export class GameManager {
         this.currentWinners = [];
         this.state = 'WAITING';
         this.gameId = '';
+        this.broadcastSSE('reset', { msg: 'Game reset to waiting lobby.' });
         return { success: true, msg: 'Game reset to waiting lobby.' };
     }
 
@@ -354,6 +413,40 @@ export class GameManager {
         }
     }
 
+    private broadcastTelegramTickets(text: string) {
+        const activePlayers = this.players.filter(p => p.ticketMessageId);
+        if (activePlayers.length === 0) return;
+
+        // Run asynchronously in the background so it never blocks the clockwork game loop
+        (async () => {
+            const BATCH_SIZE = 10;
+            for (let i = 0; i < activePlayers.length; i += BATCH_SIZE) {
+                const batch = activePlayers.slice(i, i + BATCH_SIZE);
+                await Promise.allSettled(batch.map(p => this.editTicketMessage(p, text)));
+                if (i + BATCH_SIZE < activePlayers.length) {
+                    await new Promise(r => setTimeout(r, 150));
+                }
+            }
+        })().catch(err => {
+            console.error('[Game] Error in broadcastTelegramTickets:', err);
+        });
+    }
+
+    private scheduleNextDraw() {
+        if (this.state !== 'PLAYING') return;
+        if (this.gameLoopTimeout) clearTimeout(this.gameLoopTimeout);
+
+        // Self-adjusting target timestamp: gameStartTime + drawnCount * 6000ms
+        const targetTime = this.gameStartTime + (this.drawnNumbers.size * 6000);
+        const delay = Math.max(50, targetTime - Date.now());
+
+        this.gameLoopTimeout = setTimeout(async () => {
+            if (this.state !== 'PLAYING') return;
+            await this.drawNumber();
+            this.scheduleNextDraw();
+        }, delay);
+    }
+
     async startGame() {
         if (this.state === 'PLAYING') {
             console.log('[Game] Already playing, ignoring startGame.');
@@ -385,21 +478,31 @@ export class GameManager {
         this.allNumbers = Array.from({ length: 75 }, (_, i) => i + 1).sort(() => Math.random() - 0.5);
         const pot = this.getPot();
 
-        // Step 1: Notify all players via ticket edit (guaranteed to work since we know ticketMessageId works)
+        // Broadcast GAME_START to SSE clients
+        this.broadcastSSE('start', {
+            gameId: this.gameId,
+            pot,
+            playerCount: this.players.length,
+            nextDrawAt: Date.now() + 3000
+        });
+
+        // Step 1: Notify all players via ticket edit in background
         const startMsg = `🎮 *GAME IS STARTING!*\n\n👥 Players: ${this.players.length} | 💰 Pot: *${pot} Birr*\n\n⏳ First number drawing in 3 seconds...\n\n👇 Your board — tap numbers when called:`;
         for (const p of this.players) {
             p.isBlocked = false;
             if (p.cards) {
                 for (const c of p.cards) c.isBlocked = false;
             }
-            await this.editTicketMessage(p, startMsg);
         }
+        this.broadcastTelegramTickets(startMsg);
 
-        // Step 2: Short delay then start drawing
+        // Step 2: Timestamp-based Clockwork Timer (first ball in 3 seconds)
+        this.gameStartTime = Date.now() + 3000;
         if (this.startTimeout) clearTimeout(this.startTimeout);
         this.startTimeout = setTimeout(async () => {
+            if (this.state !== 'PLAYING') return;
             await this.drawNumber();
-            this.gameLoopInterval = setInterval(() => this.drawNumber(), 6000);
+            this.scheduleNextDraw();
         }, 3000);
     }
 
@@ -468,7 +571,8 @@ export class GameManager {
 
     private async drawNumber() {
         if (this.allNumbers.length === 0 || this.state !== 'PLAYING') {
-            clearInterval(this.gameLoopInterval!);
+            if (this.gameLoopTimeout) clearTimeout(this.gameLoopTimeout);
+            if (this.gameLoopInterval) clearInterval(this.gameLoopInterval);
             await this.endGame(null);
             return;
         }
@@ -517,7 +621,20 @@ export class GameManager {
 
         console.log(`[Game] Drawing: ${numName} (#${this.drawnNumbers.size}) | Players: ${this.players.length}`);
 
-        // Big, bold drawn number with column color
+        // Instant Real-Time SSE Push to all connected players (0ms latency!)
+        this.broadcastSSE('ball', {
+            number: num,
+            numName,
+            emoji,
+            drawnNumbers: Array.from(this.drawnNumbers),
+            lastDrawn: num,
+            recent: Array.from(this.drawnNumbers).slice(-10),
+            nextDrawAt: Date.now() + 6000,
+            pot: this.getPot(),
+            playerCount: this.players.length
+        });
+
+        // Big, bold drawn number with column color for Telegram
         const text =
             `${emoji} *${numName.replace('-', ' — ')}* ${emoji}\n` +
             `━━━━━━━━━━━━━━━━━━━\n` +
@@ -525,9 +642,8 @@ export class GameManager {
             `━━━━━━━━━━━━━━━━━━━\n` +
             `👇 Tap the number on your board if you have it!`;
 
-        for (const p of this.players) {
-            await this.editTicketMessage(p, text);
-        }
+        // Update Telegram messages in background without blocking the loop
+        this.broadcastTelegramTickets(text);
     }
 
     async claimBingo(userId: bigint): Promise<{
@@ -711,6 +827,14 @@ export class GameManager {
 
     private async endGame(winners: WinnerCandidate[] | null) {
         this.state = 'WAITING';
+        if (this.gameLoopTimeout) {
+            clearTimeout(this.gameLoopTimeout);
+            this.gameLoopTimeout = null;
+        }
+        if (this.gameLoopInterval) {
+            clearInterval(this.gameLoopInterval);
+            this.gameLoopInterval = null;
+        }
         if (this.resolutionTimeout) {
             clearTimeout(this.resolutionTimeout);
             this.resolutionTimeout = null;
@@ -821,6 +945,14 @@ export class GameManager {
                 await this.editTicketMessage(p, `🏁 *Game Over!*\n\nAll 75 numbers drawn — no winner this round.`);
             }
         }
+
+        // Broadcast winner event to all connected SSE clients
+        this.broadcastSSE('winner', {
+            winners: this.currentWinners,
+            winner: this.currentWinner,
+            pot,
+            drawnNumbers: Array.from(this.drawnNumbers)
+        });
 
         console.log(`[Game] Game ended (${winners ? winners.length : 0} winner(s)), lobby reset.`);
         this.players = [];
