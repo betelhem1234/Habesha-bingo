@@ -27,8 +27,46 @@ const TEXTS = {
         en: '📱 Register Phone',
         am: '📱 ለመመዝገብ ስልክዎን ያስገቡ',
         om: '📱 Galmaa\'uuf bilbila galchaa'
+    },
+    instructionsBtn: {
+        en: '📖 Instructions',
+        am: '📖 አጨዋወት (ህጎች)',
+        om: '📖 Qajeelfama'
+    },
+    feedbackBtn: {
+        en: '✍️ Feedback',
+        am: '✍️ አስተያየት መስጫ',
+        om: '✍️ Yaada'
     }
 };
+
+function escapeHtmlBot(str: string): string {
+    return String(str || '')
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;');
+}
+
+const INSTRUCTIONS_TEXT = `🎮 *Afro Bingo — የቢንጎ ጨዋታ ህጎች*
+
+🃏 *መጫወቻ ካርድ*
+ጨዋታውን ለመጀመር ከሚመጣልን ከ1-400 የመጫወቻ ካርድ ውስጥ አንዱን እንመርጣለን
+የመጫወቻ ካርዱ ላይ በቀይ ቀለም የተመረጡ ቁጥሮች የሚያሳዩት መጫወቻ ካርድ በሌላ ተጫዋች መመረጡን ነው
+የመጫወቻ ካርድ ስንነካው ከታች በኩል ካርድ ቁጥሩ የሚይዘዉን መጫወቻ ካርድ ያሳየናል
+ወደ ጨዋታው ለመግባት የምንፈልገዉን ካርድ ከመረጥን ለምዝገባ የተሰጠው ሰኮንድ ዜሮ ሲሆን ቀጥታ ወደ ጨዋታ ያስገባናል
+
+🎲 *ጨዋታ*
+ወደ ጨዋታው ስንገባ በመረጥነው የካርድ ቁጥር መሰረት የመጫወቻ ካርድ እናገኛለን
+ከላይ በቀኝ በኩል ጨዋታው ለመጀመር ያለዉን ቀሪ ሴኮንድ መቁጠር ይጀምራል
+ጨዋታው ሲጀምር የተለያዪ ቁጥሮች ከ1 እስከ 75 መጥራት ይጀምራል
+የሚጠራው ቁጥር የኛ መጫወቻ ካርድ ዉስጥ ካለ የተጠራዉን ቁጥር ክሊክ በማረግ መምረጥ እንችላለን
+የመረጥነዉን ቁጥር ማጥፋት ከፈለግን መልሰን እራሱን ቁጠር ክሊክ በማረግ ማጥፋት እንችላለን
+
+🏆 *አሸናፊ*
+ቁጥሮቹ ሲጠሩ ከመጫወቻ ካርዳችን ላይ እየመረጥን ወደጎን ወይም ወደታች ወይም ወደሁለቱም አግዳሚ ወይም አራቱን ማእዘናት ከመረጥን ወዲአዉኑ ከታች በኩል bingo የሚለዉን በመንካት ማሸነፍ እንችላለን
+ወደጎን ወይም ወደታች ወዪም ወደሁለቱም አግዳሚ ወይም አራቱን ማእዘናት ሳይጠሩ bingo የሚለዉን ክሊክ ካደረግን ከጨዋታው እንታገዳለን
+ሁለት ወይም ከዚያ በላይ ተጫዋቾች እኩል ቢያሸንፉ ደራሹ ለ ቀጥራቸው ይካፈላል።`;
+
 import { TelebirrService } from './payments/Telebirr';
 import { startAdminServer } from './adminServer';
 
@@ -44,7 +82,7 @@ const BINGO_APP_VERSION = 'v2';
 // In production, use Redis for this!
 type UserState = {
     step: 'NONE' | 'WAITING_DEPOSIT_AMOUNT' | 'WAITING_WITHDRAW_AMOUNT' | 'WAITING_WITHDRAW_PHONE' | 'WAITING_BROADCAST' | 'WAITING_BROADCAST_CAPTION' | 'CONFIRM_BROADCAST'
-        | 'WAITING_BANK_NAME' | 'WAITING_BANK_ACCOUNT' | 'WAITING_BANK_HOLDER';
+        | 'WAITING_BANK_NAME' | 'WAITING_BANK_ACCOUNT' | 'WAITING_BANK_HOLDER' | 'WAITING_FEEDBACK';
     tempAmount?: number;
     tempBank?: { bankName: string; accountNumber: string };
     broadcastDraft?: {
@@ -100,7 +138,8 @@ async function sendMainMenu(ctx: Context, user: { id: bigint; phone?: string | n
         .text('💰 Deposit', 'menu_deposit')
         .text('💸 Withdraw', 'menu_withdraw').row()
         .text('💼 Balance', 'menu_balance')
-        .text('📞 Contact Us', 'menu_support');
+        .text('📖 Instructions', 'menu_instructions').row()
+        .text('✍️ Feedback', 'menu_feedback');
 
     if (userId.toString() === config.ADMIN_USER_ID) {
         const v = gameRooms.getCallerVoice();
@@ -225,7 +264,8 @@ bot.callbackQuery(/^lang_(en|am|om)$/, async (ctx) => {
         .text('💰 Deposit', 'menu_deposit')
         .text('💸 Withdraw', 'menu_withdraw').row()
         .text('💼 Balance', 'menu_balance')
-        .text('📞 Contact Us', 'menu_support');
+        .text(TEXTS.instructionsBtn[t] || '📖 Instructions', 'menu_instructions').row()
+        .text(TEXTS.feedbackBtn[t] || '✍️ Feedback', 'menu_feedback');
 
     try {
         const user = await prisma.user.findUnique({ where: { id: BigInt(ctx.from.id) } });
@@ -786,6 +826,80 @@ bot.callbackQuery('menu_balance', async (ctx) => {
     await ctx.reply(`💰 Your current balance is: *${user?.balance || 0} Birr*${bonusText}`, { parse_mode: "Markdown" });
 });
 
+bot.callbackQuery(['menu_instructions', 'menu_support'], async (ctx) => {
+    await ctx.answerCallbackQuery();
+    const playUrl = `${config.BINGO_APP_URL}/index.html?userId=${ctx.from?.id}&v=${Date.now()}`;
+    const kb = new InlineKeyboard()
+        .webApp('🎮 አሁኑኑ ይጫወቱ (Play Now)', playUrl).row()
+        .text('✍️ አስተያየት መስጫ (Feedback)', 'menu_feedback');
+
+    await ctx.reply(INSTRUCTIONS_TEXT, {
+        parse_mode: 'Markdown',
+        reply_markup: kb
+    });
+});
+
+bot.command(['instructions', 'rules', 'heg'], async (ctx) => {
+    const playUrl = `${config.BINGO_APP_URL}/index.html?userId=${ctx.from?.id}&v=${Date.now()}`;
+    const kb = new InlineKeyboard()
+        .webApp('🎮 አሁኑኑ ይጫወቱ (Play Now)', playUrl).row()
+        .text('✍️ አስተያየት መስጫ (Feedback)', 'menu_feedback');
+
+    await ctx.reply(INSTRUCTIONS_TEXT, {
+        parse_mode: 'Markdown',
+        reply_markup: kb
+    });
+});
+
+bot.callbackQuery(['menu_feedback', 'btn_feedback'], async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (!ctx.from) return;
+    const userId = BigInt(ctx.from.id);
+    const state = getState(userId);
+    state.step = 'WAITING_FEEDBACK';
+
+    const cancelKb = new InlineKeyboard().text('❌ ሰርዝ (Cancel)', 'cancel_feedback');
+    await ctx.reply(
+        `✍️ *አስተያየት፣ ጥቆማ ወይም ቅሬታ ይጻፉልን*\n\n` +
+        `እባክዎ የሚፈልጉትን ማንኛውንም አስተያየት ወይም ጥያቄ በዚህ መልእክት ይላኩልን። መልእክትዎ በቀጥታ ለአስተዳዳሪው ይደርሳል!\n\n` +
+        `_ለመሰረዝ ከታች ያለውን ሰርዝ የሚለውን ይጫኑ ወይም /cancel ይበሉ።_`,
+        { parse_mode: 'Markdown', reply_markup: cancelKb }
+    );
+});
+
+bot.command('feedback', async (ctx) => {
+    if (!ctx.from) return;
+    const userId = BigInt(ctx.from.id);
+    const state = getState(userId);
+    state.step = 'WAITING_FEEDBACK';
+
+    const cancelKb = new InlineKeyboard().text('❌ ሰርዝ (Cancel)', 'cancel_feedback');
+    await ctx.reply(
+        `✍️ *አስተያየት፣ ጥቆማ ወይም ቅሬታ ይጻፉልን*\n\n` +
+        `እባክዎ የሚፈልጉትን ማንኛውንም አስተያየት ወይም ጥያቄ በዚህ መልእክት ይላኩልን። መልእክትዎ በቀጥታ ለአስተዳዳሪው ይደርሳል!\n\n` +
+        `_ለመሰረዝ ከታች ያለውን ሰርዝ የሚለውን ይጫኑ ወይም /cancel ይበሉ።_`,
+        { parse_mode: 'Markdown', reply_markup: cancelKb }
+    );
+});
+
+bot.callbackQuery('cancel_feedback', async (ctx) => {
+    await ctx.answerCallbackQuery();
+    if (!ctx.from) return;
+    clearState(BigInt(ctx.from.id));
+    await ctx.reply('❌ አስተያየት መላክ ተሰርዟል። ወደ ዋናው ሜኑ ለመመለስ /start ይበሉ።');
+});
+
+bot.command('cancel', async (ctx) => {
+    if (!ctx.from) return;
+    const userId = BigInt(ctx.from.id);
+    const state = getState(userId);
+    if (state.step !== 'NONE') {
+        clearState(userId);
+        return ctx.reply('❌ ክንውኑ ተሰርዟል (Cancelled). ወደ ዋናው ሜኑ ለመመለስ /start ይበሉ።');
+    }
+    return ctx.reply('ምንም የሚሰረዝ ንቁ ክንውን የለም።');
+});
+
 bot.command('start_game', async (ctx) => {
     if (!ctx.from) return;
     const rooms = gameRooms.roomsList();
@@ -1139,6 +1253,40 @@ bot.on('message:photo', async (ctx) => {
     const userId = BigInt(ctx.from.id);
     const state = getState(userId);
 
+    if (state.step === 'WAITING_FEEDBACK') {
+        clearState(userId);
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        const fullName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ') || 'Player';
+        const usernameStr = ctx.from.username ? `@${ctx.from.username}` : 'None';
+        const phoneStr = user?.phone || 'Not shared';
+        const caption = ctx.message.caption || '(No caption)';
+        const photos = ctx.message.photo;
+        const photoFileId = photos[photos.length - 1].file_id;
+
+        if (config.ADMIN_USER_ID) {
+            try {
+                await bot.api.sendPhoto(
+                    config.ADMIN_USER_ID,
+                    photoFileId,
+                    {
+                        caption: `📬 <b>አዲስ የተጠቃሚ አስተያየት (ፎቶ)!</b>\n\n` +
+                            `👤 <b>ተጫዋች:</b> ${escapeHtmlBot(fullName)} (${escapeHtmlBot(usernameStr)})\n` +
+                            `🆔 <b>ID:</b> <code>${ctx.from.id}</code> | 📱 <code>${escapeHtmlBot(phoneStr)}</code>\n\n` +
+                            `💬 <b>መልእክት:</b> ${escapeHtmlBot(caption)}`,
+                        parse_mode: 'HTML'
+                    }
+                );
+            } catch (err) {
+                console.error('[BOT] Failed to forward feedback photo to admin:', err);
+            }
+        }
+
+        return ctx.reply(
+            `✅ *ፎቶዎ እና አስተያየትዎ በተሳካ ሁኔታ ለአስተዳዳሪው ደርሷል!*\n\nእናመሰግናለን። 🎮`,
+            { parse_mode: 'Markdown' }
+        );
+    }
+
     if (state.step === 'WAITING_BROADCAST') {
         if (ctx.from.id.toString() !== config.ADMIN_USER_ID) {
             clearState(userId);
@@ -1175,6 +1323,39 @@ bot.on('message:text', async (ctx) => {
     const userId = BigInt(ctx.from.id);
     const state = getState(userId);
     const text = ctx.message.text.trim();
+
+    if (state.step === 'WAITING_FEEDBACK') {
+        clearState(userId);
+        const user = await prisma.user.findUnique({ where: { id: userId } });
+        const fullName = [ctx.from.first_name, ctx.from.last_name].filter(Boolean).join(' ') || 'Player';
+        const usernameStr = ctx.from.username ? `@${ctx.from.username}` : 'None';
+        const phoneStr = user?.phone || 'Not shared';
+        const timeStr = new Date().toLocaleString('en-US', { timeZone: 'Africa/Addis_Ababa' });
+
+        if (config.ADMIN_USER_ID) {
+            try {
+                await bot.api.sendMessage(
+                    config.ADMIN_USER_ID,
+                    `📬 <b>አዲስ የተጠቃሚ አስተያየት (New Player Feedback)!</b>\n\n` +
+                    `👤 <b>ተጫዋች:</b> ${escapeHtmlBot(fullName)}\n` +
+                    `🏷 <b>Username:</b> ${escapeHtmlBot(usernameStr)}\n` +
+                    `🆔 <b>User ID:</b> <code>${ctx.from.id}</code>\n` +
+                    `📱 <b>ስልክ:</b> <code>${escapeHtmlBot(phoneStr)}</code>\n` +
+                    `⏰ <b>ሰዓት:</b> ${escapeHtmlBot(timeStr)}\n\n` +
+                    `💬 <b>መልእክት:</b>\n${escapeHtmlBot(text)}`,
+                    { parse_mode: 'HTML' }
+                );
+            } catch (err) {
+                console.error('[BOT] Failed to forward feedback to admin:', err);
+            }
+        }
+
+        return ctx.reply(
+            `✅ *አስተያየትዎ በተሳካ ሁኔታ ለአስተዳዳሪው ደርሷል!*\n\n` +
+            `ሀሳብዎን ስላጋሩን ከልብ እናመሰግናለን። መልካም ጨዋታ ይሁንልዎ! 🎮`,
+            { parse_mode: 'Markdown' }
+        );
+    }
 
     if (state.step === 'WAITING_BROADCAST_CAPTION') {
         if (ctx.from.id.toString() !== config.ADMIN_USER_ID) {
