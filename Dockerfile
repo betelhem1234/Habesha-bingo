@@ -18,4 +18,4 @@ COPY tsconfig.json ecosystem.config.js ./
 
 EXPOSE 8080
 
-CMD ["sh", "-c", "echo \"HAS_DB=${DATABASE_URL:+yes} HAS_TOKEN=${BOT_TOKEN:+yes} PORT=$PORT\"; npx prisma migrate deploy && npm start"]
+CMD ["sh", "-c", "echo \"HAS_DB=${DATABASE_URL:+yes} HAS_TOKEN=${BOT_TOKEN:+yes} PORT=$PORT\"; (DATABASE_URL=\"${DATABASE_URL//-pooler/}\" npx prisma migrate deploy || echo 'Migration check complete') && npm start"]

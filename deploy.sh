@@ -65,18 +65,32 @@ git add -A
 git commit -q -m "${MSG}" || echo "Nothing to commit."
 git push -q origin main
 
+LATEST_COMMIT="$(git rev-parse HEAD)"
+
 if [ "${CLEAN}" -eq 1 ]; then
   echo "Triggering clean (clear-cache) deploy..."
   render deploys create "${SERVICE_ID}" --clear-cache --wait
 else
-  echo "Waiting for auto-deploy to go live..."
-  for _ in $(seq 1 30); do
-    if render deploys list "${SERVICE_ID}" -o json 2>/dev/null | grep -q '"live"'; then
+  echo "Waiting for commit ${LATEST_COMMIT:0:7} deploy to go live..."
+  for _ in $(seq 1 40); do
+    STATUS="$(render deploys list "${SERVICE_ID}" -o json 2>/dev/null | node -e '
+      try {
+        const deploys = JSON.parse(require("fs").readFileSync(0, "utf-8"));
+        const target = deploys.find(d => d.commit && d.commit.id === process.argv[1]) || deploys[0];
+        console.log((target && target.status) || "unknown");
+      } catch(e) { console.log("unknown"); }
+    ' "${LATEST_COMMIT}")"
+
+    if [ "${STATUS}" = "live" ]; then
       echo "Deploy live."
       exit 0
+    elif [ "${STATUS}" = "update_failed" ] || [ "${STATUS}" = "build_failed" ] || [ "${STATUS}" = "canceled" ]; then
+      echo "Deploy failed with status: ${STATUS}. Check ./logs.sh for details." >&2
+      exit 1
     fi
+    echo "Current status: ${STATUS}... waiting 5s"
     sleep 5
   done
-  echo "Still deploying after 150s - check ./logs.sh --tail or the dashboard." >&2
+  echo "Still deploying after 200s - check ./logs.sh --tail or the dashboard." >&2
   exit 1
 fi
