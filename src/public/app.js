@@ -1,6 +1,8 @@
 // Bingo Admin Dashboard Controller (app.js) with Authentication
 
 let allRequests = [];
+let allUsers = [];
+let pendingDeleteUserId = null;
 let currentFilter = 'ALL';
 let currentPeriod = 'today';
 let selectedRequestIds = new Set();
@@ -13,6 +15,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initForceStart();
     initBatchActions();
     initEditModal();
+    initUserModals();
     
     // Check if authenticated
     const token = getAdminToken();
@@ -29,6 +32,19 @@ document.addEventListener('DOMContentLoaded', () => {
         if (getAdminToken()) refreshAllData();
     }, 10000);
 });
+
+// ----------------------------------------------------
+// Tab Navigation Controller
+// ----------------------------------------------------
+function switchAdminTab(tabId) {
+    document.querySelectorAll('.tab-btn').forEach(btn => {
+        btn.classList.toggle('active', btn.getAttribute('data-tab') === tabId);
+    });
+    document.querySelectorAll('.tab-content').forEach(content => {
+        content.classList.toggle('active', content.id === tabId);
+    });
+}
+window.switchAdminTab = switchAdminTab;
 
 // ----------------------------------------------------
 // 0. Authentication & Security (Option 1 & Option 2)
@@ -153,11 +169,13 @@ async function authFetch(url, options = {}) {
 
 async function refreshAllData() {
     if (!getAdminToken()) return;
+    const searchInput = document.getElementById('user-search-input');
+    const searchQuery = searchInput ? searchInput.value.trim() : '';
     await Promise.allSettled([
         fetchFinancialSummary(),
         fetchHouseIncome(),
         fetchStats(),
-        fetchUsers(),
+        fetchUsers(searchQuery),
         fetchRequests()
     ]);
 }
@@ -212,7 +230,13 @@ async function fetchFinancialSummary() {
         setText('stat-winner-payout', (data.totalWinnerPayout ?? 0).toLocaleString());
         setText('stat-net-cash', (data.netCashFlow ?? 0).toLocaleString());
         setText('stat-period-dep', (data.totalDeposits ?? 0).toLocaleString());
+        setText('stat-dep-count', (data.depositsCount ?? 0).toLocaleString());
         setText('stat-period-wdr', (data.totalWithdrawals ?? 0).toLocaleString());
+        setText('stat-wdr-count', (data.withdrawalsCount ?? 0).toLocaleString());
+
+        if (data.pendingCount !== undefined) {
+            setText('tab-badge-pending', String(data.pendingCount));
+        }
 
         const netCashEl = document.getElementById('stat-net-cash');
         if (netCashEl) {
@@ -341,35 +365,53 @@ async function fetchStats() {
 }
 
 // ----------------------------------------------------
-// 5. Top Users Table
+// 5. Users Management Table
 // ----------------------------------------------------
-async function fetchUsers() {
+async function fetchUsers(searchQuery = '') {
     try {
-        const res = await authFetch('/api/users');
+        const url = searchQuery 
+            ? `/api/admin/users?search=${encodeURIComponent(searchQuery)}`
+            : '/api/users';
+        const res = await authFetch(url);
         if (!res.ok) throw new Error('Users fetch failed');
         const users = await res.json();
+        allUsers = Array.isArray(users) ? users : [];
+
+        setText('tab-badge-users', String(allUsers.length));
 
         const tbody = document.querySelector('#users-table tbody');
         if (!tbody) return;
 
-        if (!users || users.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:24px;">No users registered yet.</td></tr>`;
+        if (allUsers.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:24px;">No users found.</td></tr>`;
             return;
         }
 
-        tbody.innerHTML = users.map(u => {
+        tbody.innerHTML = allUsers.map(u => {
             const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Player';
             const usernameHtml = u.username 
-                ? `<a href="https://t.me/${u.username}" target="_blank" style="color:#38bdf8; text-decoration:none; font-weight:600;">@${escapeHtml(u.username)}</a>`
-                : `<span style="color:#64748b;">—</span>`;
+                ? `<strong>${escapeHtml(fullName)}</strong><br><a href="https://t.me/${u.username}" target="_blank" style="color:#38bdf8; text-decoration:none; font-size:12px; font-weight:600;">@${escapeHtml(u.username)}</a>`
+                : `<strong>${escapeHtml(fullName)}</strong>`;
             
+            const statusHtml = u.banned
+                ? `<span class="badge-banned">Banned</span>`
+                : `<span class="badge-active">Active</span>`;
+
             return `
                 <tr>
                     <td style="color:#94a3b8; font-family:monospace; font-size:13px;">#${escapeHtml(String(u.id))}</td>
                     <td>${usernameHtml}</td>
-                    <td>${escapeHtml(fullName)}</td>
+                    <td style="color:#e2e8f0; font-size:13px;">${escapeHtml(u.phone || '—')}</td>
                     <td><strong style="color:#4ade80;">${(u.balance ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
-                    <td style="color:#a78bfa; font-weight:600;">${u.referrals ?? 0}</td>
+                    <td><strong style="color:#fbbf24;">${(u.bonus ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
+                    <td><span style="color:#94a3b8;">${u.gamesPlayed ?? 0}</span> / <strong style="color:#38bdf8;">${u.wins ?? 0}</strong></td>
+                    <td>${statusHtml}</td>
+                    <td>
+                        <div style="display:flex; gap:6px;">
+                            <button onclick="openEditUserModal('${u.id}')" class="action-btn-sm" style="background:#3b82f6; color:#fff;" title="Edit user">✏️ Edit</button>
+                            <button onclick="openDeleteUserModal('${u.id}')" class="action-btn-sm" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4);" title="Delete user">🗑</button>
+                        </div>
+                    </td>
                 </tr>
             `;
         }).join('');
@@ -386,6 +428,9 @@ async function fetchRequests() {
         const res = await authFetch(`/api/requests?period=${currentPeriod}`);
         if (!res.ok) throw new Error('Requests fetch failed');
         allRequests = await res.json();
+
+        const pendingCount = allRequests.filter(r => r.status === 'PENDING').length;
+        setText('tab-badge-pending', String(pendingCount));
 
         renderRequests();
     } catch (err) {
@@ -853,6 +898,140 @@ function initForceStart() {
 }
 
 // ----------------------------------------------------
+// 12. User Management Modals & Handlers
+// ----------------------------------------------------
+function initUserModals() {
+    const editModal = document.getElementById('edit-user-modal');
+    if (editModal) {
+        editModal.addEventListener('click', (e) => {
+            if (e.target === editModal) closeEditUserModal();
+        });
+    }
+
+    const deleteModal = document.getElementById('delete-user-modal');
+    if (deleteModal) {
+        deleteModal.addEventListener('click', (e) => {
+            if (e.target === deleteModal) closeDeleteUserModal();
+        });
+    }
+
+    const confirmDeleteBtn = document.getElementById('btn-confirm-delete-user');
+    if (confirmDeleteBtn) {
+        confirmDeleteBtn.addEventListener('click', confirmDeleteUser);
+    }
+
+    const searchBtn = document.getElementById('btn-user-search');
+    const searchInput = document.getElementById('user-search-input');
+    if (searchBtn && searchInput) {
+        searchBtn.addEventListener('click', () => {
+            fetchUsers(searchInput.value.trim());
+        });
+        searchInput.addEventListener('keydown', (e) => {
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                fetchUsers(searchInput.value.trim());
+            }
+        });
+    }
+}
+
+function openEditUserModal(userId) {
+    const user = allUsers.find(u => String(u.id) === String(userId));
+    if (!user) return;
+
+    document.getElementById('edit-user-id').value = user.id;
+    const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Player';
+    const nameDisplay = user.username 
+        ? `${fullName} (@${user.username}) - #${user.id}`
+        : `${fullName} - #${user.id}`;
+    
+    document.getElementById('edit-user-name-display').textContent = nameDisplay;
+    document.getElementById('edit-user-balance').value = user.balance ?? 0;
+    document.getElementById('edit-user-bonus').value = user.bonus ?? 0;
+    document.getElementById('edit-user-phone').value = user.phone || '';
+    document.getElementById('edit-user-banned').value = user.banned ? 'true' : 'false';
+
+    const modal = document.getElementById('edit-user-modal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeEditUserModal() {
+    const modal = document.getElementById('edit-user-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function saveUserEdit(e) {
+    if (e) e.preventDefault();
+    const userId = document.getElementById('edit-user-id').value;
+    if (!userId) return;
+
+    const balance = parseFloat(document.getElementById('edit-user-balance').value);
+    const bonus = parseFloat(document.getElementById('edit-user-bonus').value);
+    const phone = document.getElementById('edit-user-phone').value.trim();
+    const banned = document.getElementById('edit-user-banned').value === 'true';
+
+    try {
+        const res = await authFetch(`/api/admin/user/${userId}`, {
+            method: 'PUT',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ balance, bonus, phone, banned })
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            closeEditUserModal();
+            await refreshAllData();
+        } else {
+            alert('Failed to update user: ' + (data.msg || data.error || 'Server error'));
+        }
+    } catch (err) {
+        alert('Network error updating user.');
+        console.error('Update user error:', err);
+    }
+}
+
+function openDeleteUserModal(userId) {
+    const user = allUsers.find(u => String(u.id) === String(userId));
+    pendingDeleteUserId = userId;
+    const fullName = user ? ([user.firstName, user.lastName].filter(Boolean).join(' ') || (user.username ? `@${user.username}` : 'Player')) : 'Player';
+    const nameEl = document.getElementById('delete-user-name');
+    const idEl = document.getElementById('delete-user-id-text');
+    if (nameEl) nameEl.textContent = fullName;
+    if (idEl) idEl.textContent = `#${userId}`;
+
+    const modal = document.getElementById('delete-user-modal');
+    if (modal) modal.style.display = 'flex';
+}
+
+function closeDeleteUserModal() {
+    pendingDeleteUserId = null;
+    const modal = document.getElementById('delete-user-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function confirmDeleteUser() {
+    if (!pendingDeleteUserId) return;
+    const userId = pendingDeleteUserId;
+
+    try {
+        const res = await authFetch(`/api/admin/user/${userId}`, {
+            method: 'DELETE'
+        });
+        const data = await res.json();
+
+        if (res.ok && data.success) {
+            closeDeleteUserModal();
+            await refreshAllData();
+        } else {
+            alert('Delete failed: ' + (data.msg || data.error || 'Server error'));
+        }
+    } catch (err) {
+        alert('Network error deleting user.');
+        console.error('Delete user error:', err);
+    }
+}
+
+// ----------------------------------------------------
 // Helpers
 // ----------------------------------------------------
 function setText(id, text) {
@@ -869,3 +1048,15 @@ function escapeHtml(str) {
         .replace(/"/g, '&quot;')
         .replace(/'/g, '&#039;');
 }
+
+// Global exports for inline HTML event attributes
+window.openEditUserModal = openEditUserModal;
+window.closeEditUserModal = closeEditUserModal;
+window.saveUserEdit = saveUserEdit;
+window.openDeleteUserModal = openDeleteUserModal;
+window.closeDeleteUserModal = closeDeleteUserModal;
+window.handleRequestAction = handleRequestAction;
+window.deleteSingleRequest = deleteSingleRequest;
+window.openEditModal = openEditModal;
+window.closeEditModal = closeEditModal;
+window.toggleSelectRequest = toggleSelectRequest;

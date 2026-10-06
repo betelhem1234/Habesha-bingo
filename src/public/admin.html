@@ -36,157 +36,253 @@
         </section>
 
         <main>
-            <!-- Period Financial & House Profit Cards -->
+            <!-- Period Financial KPI Cards (Deposits, Withdrawals, Net, Profit) -->
             <section class="stats-grid" style="margin-bottom: 25px;">
                 <div class="stat-card" style="border-color: rgba(34, 197, 94, 0.4);">
                     <h3>House Profit (20%)</h3>
                     <p class="stat-value" style="color: #4ade80;"><span id="stat-house-profit">0</span> <span class="currency">Birr</span></p>
-                    <p style="font-size: 12px; color: #94a3b8; margin-top: 4px;">from <span id="stat-games-played">0</span> games played</p>
+                    <p style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Pot: <span id="stat-total-pot">0</span> Birr | <span id="stat-games-played">0</span> games</p>
+                </div>
+                <div class="stat-card" style="border-color: rgba(56, 189, 248, 0.4);">
+                    <h3>📥 Total Deposits (ገቢ)</h3>
+                    <p class="stat-value" style="color: #38bdf8;"><span id="stat-period-dep">0</span> <span class="currency">Birr</span></p>
+                    <p style="font-size: 12px; color: #94a3b8; margin-top: 4px;"><span id="stat-dep-count">0</span> approved deposits</p>
+                </div>
+                <div class="stat-card" style="border-color: rgba(244, 63, 94, 0.4);">
+                    <h3>📤 Total Withdrawals (ወጪ)</h3>
+                    <p class="stat-value" style="color: #fb7185;"><span id="stat-period-wdr">0</span> <span class="currency">Birr</span></p>
+                    <p style="font-size: 12px; color: #94a3b8; margin-top: 4px;"><span id="stat-wdr-count">0</span> approved withdrawals</p>
                 </div>
                 <div class="stat-card">
-                    <h3>Total Pot (Bets)</h3>
-                    <p class="stat-value"><span id="stat-total-pot">0</span> <span class="currency">Birr</span></p>
-                    <p style="font-size: 12px; color: #94a3b8; margin-top: 4px;">collected game pot</p>
-                </div>
-                <div class="stat-card">
-                    <h3>Winner Payouts (80%)</h3>
-                    <p class="stat-value" style="color: #38bdf8;"><span id="stat-winner-payout">0</span> <span class="currency">Birr</span></p>
-                    <p style="font-size: 12px; color: #94a3b8; margin-top: 4px;">credited to players</p>
-                </div>
-                <div class="stat-card">
-                    <h3>Period Net (Dep − Wdr)</h3>
+                    <h3>📈 Net Cash Flow (የተጣራ)</h3>
                     <p class="stat-value"><span id="stat-net-cash">0</span> <span class="currency">Birr</span></p>
-                    <p style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Dep: <span id="stat-period-dep">0</span> | Wdr: <span id="stat-period-wdr">0</span></p>
+                    <p style="font-size: 12px; color: #94a3b8; margin-top: 4px;">Deposits − Withdrawals</p>
                 </div>
             </section>
 
-            <!-- Real-time App & Balance Stats -->
-            <section class="stats-grid">
-                <div class="stat-card">
-                    <h3>Total Registered Users</h3>
-                    <p class="stat-value" id="stat-users">0</p>
-                </div>
-                <div class="stat-card">
-                    <h3>Total Player Balance</h3>
-                    <p class="stat-value"><span id="stat-balance">0</span> <span class="currency">Birr</span></p>
-                </div>
-                <div class="stat-card">
-                    <h3>Active Players Now</h3>
-                    <p class="stat-value" id="stat-players">0</p>
-                </div>
-                <div class="stat-card game-control">
-                    <h3>Game State</h3>
-                    <p class="stat-value" id="stat-state">WAITING</p>
-                    <button id="btn-start" class="btn-primary">Force Start Game</button>
-                </div>
-                <div class="stat-card voice-control">
-                    <h3>Caller Voice (ድምፅ)</h3>
-                    <p class="stat-value" id="stat-voice" style="font-size:1.1rem;">Loading...</p>
-                    <div style="display:flex; gap:6px; margin-top:8px;">
-                        <button onclick="setAdminVoice('male')" class="btn-primary" style="margin:0; padding:6px 10px; font-size:12px; background:#1976d2; border:none; cursor:pointer;">👨 Male</button>
-                        <button onclick="setAdminVoice('female')" class="btn-primary" style="margin:0; padding:6px 10px; font-size:12px; background:#e91e63; border:none; cursor:pointer;">👩 Female</button>
+            <!-- Modern Tab Navigation Bar -->
+            <nav class="admin-tabs" id="admin-tabs">
+                <button class="tab-btn active" data-tab="tab-requests" onclick="switchAdminTab('tab-requests')">
+                    📋 Requests <span class="tab-badge" id="tab-badge-pending">0</span>
+                </button>
+                <button class="tab-btn" data-tab="tab-income" onclick="switchAdminTab('tab-income')">
+                    🎰 House Income & Rounds
+                </button>
+                <button class="tab-btn" data-tab="tab-users" onclick="switchAdminTab('tab-users')">
+                    👥 Users Management <span class="tab-badge" id="tab-badge-users">0</span>
+                </button>
+                <button class="tab-btn" data-tab="tab-controls" onclick="switchAdminTab('tab-controls')">
+                    ⚙️ Controls & Stats
+                </button>
+            </nav>
+
+            <!-- TAB 1: Requests (Deposit / Withdraw) -->
+            <section class="tab-content active" id="tab-requests">
+                <div class="users-section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
+                        <h2>Deposit / Withdraw Requests</h2>
+                        <!-- Batch Action Toolbar -->
+                        <div id="batch-toolbar" style="display: none; align-items: center; gap: 8px; background: rgba(139, 92, 246, 0.2); padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(139, 92, 246, 0.4);">
+                            <span style="font-size: 13px; font-weight: 700; color: #c4b5fd;" id="batch-count">0 selected</span>
+                            <button id="btn-batch-approve" class="action-btn-sm" style="background: #16a34a; color:#fff;">✓ Approve Selected</button>
+                            <button id="btn-batch-reject" class="action-btn-sm" style="background: #dc2626; color:#fff;">✗ Reject Selected</button>
+                            <button id="btn-batch-delete" class="action-btn-sm" style="background: #991b1b; color:#fff;">🗑 Delete Selected</button>
+                        </div>
+                    </div>
+                    <div class="req-filter" style="margin-bottom: 12px; display:flex; gap:8px;">
+                        <button class="btn-primary" id="filter-pending" style="margin:0;">Pending</button>
+                        <button class="btn-primary" id="filter-approved" style="margin:0;">Approved</button>
+                        <button class="btn-primary" id="filter-rejected" style="margin:0;">Rejected</button>
+                        <button class="btn-primary" id="filter-all" style="margin:0;">All</button>
+                    </div>
+                    <div class="table-container">
+                        <table id="req-table">
+                            <thead>
+                                <tr>
+                                    <th style="width: 32px; text-align: center;"><input type="checkbox" id="check-all-req" style="cursor: pointer;" title="Select all requests"></th>
+                                    <th>#</th>
+                                    <th>User</th>
+                                    <th>Type</th>
+                                    <th>Amount</th>
+                                    <th>Phone / Bank</th>
+                                    <th>Status</th>
+                                    <th>Balance</th>
+                                    <th>Time</th>
+                                    <th>Action</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
                     </div>
                 </div>
             </section>
 
-            <!-- House Income & Game Payouts Table -->
-            <section class="users-section" style="margin-bottom: 35px;">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
-                    <div>
-                        <h2>🎰 House Income & Game Payouts History</h2>
-                        <p style="font-size: 13px; color: #94a3b8; margin-top: 2px;">80% credited to winners, 20% recorded as house income in <code style="color:#a78bfa;">houseIncome</code> table</p>
+            <!-- TAB 2: House Income & Rounds History -->
+            <section class="tab-content" id="tab-income">
+                <div class="users-section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <h2>🎰 House Income & Game Payouts History</h2>
+                            <p style="font-size: 13px; color: #94a3b8; margin-top: 2px;">80% credited to winners, 20% recorded as house income in <code style="color:#a78bfa;">houseIncome</code> table</p>
+                        </div>
                     </div>
-                </div>
-                <div class="table-container">
-                    <table id="income-table">
-                        <thead>
-                            <tr>
-                                <th>Game #</th>
-                                <th>Time</th>
-                                <th>Players</th>
-                                <th>Pot</th>
-                                <th>Winner Payout (80%)</th>
-                                <th>House Profit (20%)</th>
-                                <th>Winner</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Populated by JS -->
-                        </tbody>
-                        <tfoot>
-                            <tr id="income-table-totals" style="font-weight: 700; background: rgba(139, 92, 246, 0.15); border-top: 2px solid rgba(139, 92, 246, 0.5);">
-                                <td colspan="2" style="color: #c4b5fd;">PERIOD TOTAL</td>
-                                <td id="tot-players">0</td>
-                                <td id="tot-pot">0 Birr</td>
-                                <td id="tot-payout" style="color: #38bdf8;">0 Birr</td>
-                                <td id="tot-profit" style="color: #4ade80;">0 Birr</td>
-                                <td>—</td>
-                            </tr>
-                        </tfoot>
-                    </table>
+                    <div class="table-container">
+                        <table id="income-table">
+                            <thead>
+                                <tr>
+                                    <th>Game #</th>
+                                    <th>Time</th>
+                                    <th>Players</th>
+                                    <th>Pot</th>
+                                    <th>Winner Payout (80%)</th>
+                                    <th>House Profit (20%)</th>
+                                    <th>Winner</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated by JS -->
+                            </tbody>
+                            <tfoot>
+                                <tr id="income-table-totals" style="font-weight: 700; background: rgba(139, 92, 246, 0.15); border-top: 2px solid rgba(139, 92, 246, 0.5);">
+                                    <td colspan="2" style="color: #c4b5fd;">PERIOD TOTAL</td>
+                                    <td id="tot-players">0</td>
+                                    <td id="tot-pot">0 Birr</td>
+                                    <td id="tot-payout" style="color: #38bdf8;">0 Birr</td>
+                                    <td id="tot-profit" style="color: #4ade80;">0 Birr</td>
+                                    <td>—</td>
+                                </tr>
+                            </tfoot>
+                        </table>
+                    </div>
                 </div>
             </section>
 
-            <section class="users-section">
-                <h2>Top Users</h2>
-                <div class="table-container">
-                    <table id="users-table">
-                        <thead>
-                            <tr>
-                                <th>ID</th>
-                                <th>Username</th>
-                                <th>Name</th>
-                                <th>Balance (Birr)</th>
-                                <th>Referrals</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Populated by JS -->
-                        </tbody>
-                    </table>
+            <!-- TAB 3: Users Management (Search, Edit, Delete) -->
+            <section class="tab-content" id="tab-users">
+                <div class="users-section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 14px; flex-wrap: wrap; gap: 12px;">
+                        <div>
+                            <h2>👥 Users Management</h2>
+                            <p style="font-size: 13px; color: #94a3b8; margin-top: 2px;">View, edit balances, adjust bonus, or manage player status</p>
+                        </div>
+                        <div style="display: flex; gap: 8px; flex: 1; max-width: 380px;">
+                            <input type="text" id="user-search-input" placeholder="🔍 Search name, username, phone, or ID..." style="width: 100%; padding: 8px 12px; border-radius: 8px; border: 1px solid var(--border); background: rgba(0,0,0,0.3); color: #fff; font-size: 13px;">
+                            <button id="btn-user-search" class="action-btn-sm" style="background: #3b82f6; color:#fff; padding: 8px 14px;">Search</button>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table id="users-table">
+                            <thead>
+                                <tr>
+                                    <th>ID</th>
+                                    <th>User</th>
+                                    <th>Phone</th>
+                                    <th>Balance (Birr)</th>
+                                    <th>Bonus</th>
+                                    <th>Games / Wins</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
                 </div>
             </section>
 
-            <section class="users-section">
-                <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 8px;">
-                    <h2>Deposit / Withdraw Requests</h2>
-                    <!-- Batch Action Toolbar -->
-                    <div id="batch-toolbar" style="display: none; align-items: center; gap: 8px; background: rgba(139, 92, 246, 0.2); padding: 6px 14px; border-radius: 8px; border: 1px solid rgba(139, 92, 246, 0.4);">
-                        <span style="font-size: 13px; font-weight: 700; color: #c4b5fd;" id="batch-count">0 selected</span>
-                        <button id="btn-batch-approve" class="action-btn-sm" style="background: #16a34a; color:#fff;">✓ Approve Selected</button>
-                        <button id="btn-batch-reject" class="action-btn-sm" style="background: #dc2626; color:#fff;">✗ Reject Selected</button>
-                        <button id="btn-batch-delete" class="action-btn-sm" style="background: #991b1b; color:#fff;">🗑 Delete Selected</button>
+            <!-- TAB 4: Controls & Stats -->
+            <section class="tab-content" id="tab-controls">
+                <div class="stats-grid">
+                    <div class="stat-card">
+                        <h3>Total Registered Users</h3>
+                        <p class="stat-value" id="stat-users">0</p>
                     </div>
-                </div>
-                <div class="req-filter" style="margin-bottom: 12px; display:flex; gap:8px;">
-                    <button class="btn-primary" id="filter-pending" style="margin:0;">Pending</button>
-                    <button class="btn-primary" id="filter-approved" style="margin:0;">Approved</button>
-                    <button class="btn-primary" id="filter-rejected" style="margin:0;">Rejected</button>
-                    <button class="btn-primary" id="filter-all" style="margin:0;">All</button>
-                </div>
-                <div class="table-container">
-                    <table id="req-table">
-                        <thead>
-                            <tr>
-                                <th style="width: 32px; text-align: center;"><input type="checkbox" id="check-all-req" style="cursor: pointer;" title="Select all requests"></th>
-                                <th>#</th>
-                                <th>User</th>
-                                <th>Type</th>
-                                <th>Amount</th>
-                                <th>Phone / Bank</th>
-                                <th>Status</th>
-                                <th>Balance</th>
-                                <th>Time</th>
-                                <th>Action</th>
-                            </tr>
-                        </thead>
-                        <tbody>
-                            <!-- Populated by JS -->
-                        </tbody>
-                    </table>
+                    <div class="stat-card">
+                        <h3>Total Player Balance</h3>
+                        <p class="stat-value"><span id="stat-balance">0</span> <span class="currency">Birr</span></p>
+                    </div>
+                    <div class="stat-card">
+                        <h3>Active Players Now</h3>
+                        <p class="stat-value" id="stat-players">0</p>
+                    </div>
+                    <div class="stat-card game-control">
+                        <h3>Game State</h3>
+                        <p class="stat-value" id="stat-state">WAITING</p>
+                        <button id="btn-start" class="btn-primary">Force Start Game</button>
+                    </div>
+                    <div class="stat-card voice-control">
+                        <h3>Caller Voice (ድምፅ)</h3>
+                        <p class="stat-value" id="stat-voice" style="font-size:1.1rem;">Loading...</p>
+                        <div style="display:flex; gap:6px; margin-top:8px;">
+                            <button onclick="setAdminVoice('male')" class="btn-primary" style="margin:0; padding:6px 10px; font-size:12px; background:#1976d2; border:none; cursor:pointer;">👨 Male</button>
+                            <button onclick="setAdminVoice('female')" class="btn-primary" style="margin:0; padding:6px 10px; font-size:12px; background:#e91e63; border:none; cursor:pointer;">👩 Female</button>
+                        </div>
+                    </div>
                 </div>
             </section>
         </main>
+    </div>
+
+    <!-- Edit User Modal -->
+    <div id="edit-user-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(6px); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:#1e293b; border:1px solid rgba(255,255,255,0.18); border-radius:16px; padding:24px; width:90%; max-width:460px; box-shadow:0 20px 40px rgba(0,0,0,0.6);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:18px;">
+                <h3 id="edit-user-modal-title" style="font-size:1.2rem; color:#f8fafc; font-weight:700;">✏️ Edit User</h3>
+                <button onclick="closeEditUserModal()" style="background:none; border:none; color:#94a3b8; font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <form id="edit-user-form" onsubmit="saveUserEdit(event)">
+                <input type="hidden" id="edit-user-id">
+                <div style="margin-bottom:12px;">
+                    <label style="display:block; font-size:12px; color:#94a3b8; margin-bottom:4px; font-weight:600;">USER</label>
+                    <div id="edit-user-name-display" style="color:#f8fafc; font-weight:700; font-size:14px; padding:8px 0;">—</div>
+                </div>
+                <div style="display:flex; gap:10px; margin-bottom:12px;">
+                    <div style="flex:1;">
+                        <label style="display:block; font-size:12px; color:#94a3b8; margin-bottom:4px; font-weight:600;">BALANCE (BIRR)</label>
+                        <input type="number" step="0.01" id="edit-user-balance" required style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:14px; box-sizing:border-box;">
+                    </div>
+                    <div style="flex:1;">
+                        <label style="display:block; font-size:12px; color:#94a3b8; margin-bottom:4px; font-weight:600;">BONUS (BIRR)</label>
+                        <input type="number" step="0.01" id="edit-user-bonus" required style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:14px; box-sizing:border-box;">
+                    </div>
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="display:block; font-size:12px; color:#94a3b8; margin-bottom:4px; font-weight:600;">PHONE NUMBER</label>
+                    <input type="text" id="edit-user-phone" placeholder="e.g. 0912345678" style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:14px; box-sizing:border-box;">
+                </div>
+                <div style="margin-bottom:16px;">
+                    <label style="display:block; font-size:12px; color:#94a3b8; margin-bottom:4px; font-weight:600;">ACCOUNT STATUS</label>
+                    <select id="edit-user-banned" style="width:100%; padding:10px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:#0f172a; color:#fff; font-size:14px; box-sizing:border-box;">
+                        <option value="false">Active (ንቁ)</option>
+                        <option value="true">Banned (የታገደ)</option>
+                    </select>
+                </div>
+                <div style="display:flex; gap:10px;">
+                    <button type="submit" class="btn-primary" style="margin:0; flex:1; background:#16a34a;">Save Changes</button>
+                    <button type="button" onclick="closeEditUserModal()" class="btn-primary" style="margin:0; flex:1; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">Cancel</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Delete User Confirmation Modal -->
+    <div id="delete-user-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.75); backdrop-filter:blur(6px); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:#1e293b; border:1px solid rgba(239,68,68,0.3); border-radius:16px; padding:24px; width:90%; max-width:440px; box-shadow:0 20px 40px rgba(0,0,0,0.7); text-align:center;">
+            <div style="font-size:42px; margin-bottom:12px;">⚠️</div>
+            <h3 style="font-size:1.25rem; color:#f8fafc; font-weight:700; margin-bottom:8px;">Delete User?</h3>
+            <p style="font-size:13px; color:#94a3b8; margin-bottom:20px; line-height:1.5;">
+                Are you sure you want to permanently delete user <strong id="delete-user-name" style="color:#fff;">—</strong> (ID: <span id="delete-user-id-text"></span>)?<br>
+                <span style="color:#f87171; font-weight:600;">All transaction requests and game history will be permanently deleted. This cannot be undone.</span>
+            </p>
+            <div style="display:flex; gap:10px;">
+                <button id="btn-confirm-delete-user" class="btn-primary" style="margin:0; flex:1; background:#dc2626; color:#fff;">Yes, Delete User</button>
+                <button onclick="closeDeleteUserModal()" class="btn-primary" style="margin:0; flex:1; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">Cancel</button>
+            </div>
+        </div>
     </div>
 
     <!-- Edit Request Modal -->

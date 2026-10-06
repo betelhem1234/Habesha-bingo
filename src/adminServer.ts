@@ -153,25 +153,107 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         });
     });
     
-    // Top users (Protected)
-    app.get('/api/users', adminAuthMiddleware, async (req, res) => {
-        const users = await prisma.user.findMany({
-            orderBy: { balance: 'desc' },
-            take: 50,
-            include: { _count: { select: { referrals: true } } }
-        });
-        
-        // Convert BigInt and Decimal to standard JSON types
-        const safeUsers = users.map(u => ({
-            id: u.id.toString(),
-            username: u.username,
-            firstName: u.firstName,
-            lastName: u.lastName,
-            balance: u.balance.toNumber(),
-            referrals: u._count.referrals
-        }));
-        
-        res.json(safeUsers);
+    // Users management list (Protected)
+    const handleGetUsers = async (req: any, res: any) => {
+        try {
+            const search = req.query.search ? String(req.query.search).trim() : '';
+            const where: any = {};
+            if (search) {
+                const searchLower = search.toLowerCase();
+                const numericId = /^\d+$/.test(search) ? BigInt(search) : null;
+                where.OR = [
+                    { username: { contains: search, mode: 'insensitive' } },
+                    { firstName: { contains: search, mode: 'insensitive' } },
+                    { phone: { contains: search } }
+                ];
+                if (numericId !== null) {
+                    where.OR.push({ id: numericId });
+                }
+            }
+
+            const users = await prisma.user.findMany({
+                where,
+                orderBy: { balance: 'desc' },
+                take: 150,
+                include: { _count: { select: { referrals: true } } }
+            });
+            
+            const safeUsers = users.map(u => ({
+                id: u.id.toString(),
+                username: u.username,
+                firstName: u.firstName,
+                lastName: u.lastName,
+                phone: u.phone,
+                balance: u.balance.toNumber(),
+                bonus: u.bonus.toNumber(),
+                banned: u.banned,
+                gamesPlayed: u.gamesPlayed,
+                wins: u.wins,
+                referrals: u._count.referrals,
+                createdAt: u.createdAt
+            }));
+            
+            res.json(safeUsers);
+        } catch (e: any) {
+            console.error('Fetch users error:', e);
+            res.status(500).json({ error: 'Failed to fetch users' });
+        }
+    };
+    app.get('/api/users', adminAuthMiddleware, handleGetUsers);
+    app.get('/api/admin/users', adminAuthMiddleware, handleGetUsers);
+
+    // Edit user (Protected)
+    app.put('/api/admin/user/:userId', adminAuthMiddleware, async (req, res) => {
+        const userId = BigInt(req.params.userId);
+        const { balance, bonus, phone, username, firstName, banned } = req.body;
+        try {
+            const data: any = {};
+            if (balance !== undefined && !isNaN(Number(balance))) data.balance = Number(balance);
+            if (bonus !== undefined && !isNaN(Number(bonus))) data.bonus = Number(bonus);
+            if (phone !== undefined) data.phone = phone ? String(phone).trim() : null;
+            if (username !== undefined) data.username = username ? String(username).trim() : null;
+            if (firstName !== undefined) data.firstName = firstName ? String(firstName).trim() : null;
+            if (banned !== undefined) data.banned = Boolean(banned);
+
+            const updated = await prisma.user.update({
+                where: { id: userId },
+                data
+            });
+
+            res.json({
+                success: true,
+                user: {
+                    id: updated.id.toString(),
+                    username: updated.username,
+                    firstName: updated.firstName,
+                    lastName: updated.lastName,
+                    phone: updated.phone,
+                    balance: updated.balance.toNumber(),
+                    bonus: updated.bonus.toNumber(),
+                    banned: updated.banned
+                }
+            });
+        } catch (e: any) {
+            console.error('Update user error:', e);
+            res.status(500).json({ success: false, msg: e?.message || 'Failed to update user' });
+        }
+    });
+
+    // Delete user (Protected)
+    app.delete('/api/admin/user/:userId', adminAuthMiddleware, async (req, res) => {
+        const userId = BigInt(req.params.userId);
+        try {
+            const user = await prisma.user.findUnique({ where: { id: userId } });
+            if (!user) {
+                return res.status(404).json({ success: false, msg: 'User not found' });
+            }
+
+            await prisma.user.delete({ where: { id: userId } });
+            res.json({ success: true, msg: `User ${userId} deleted successfully.` });
+        } catch (e: any) {
+            console.error('Delete user error:', e);
+            res.status(500).json({ success: false, msg: e?.message || 'Failed to delete user' });
+        }
     });
     
     // Player game state (polled by game.html)
