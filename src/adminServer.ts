@@ -231,7 +231,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             pot: gameManager.getPot(),
             gameId: gameManager.gameId,
             winner: (gameManager.state === 'WAITING' && gameManager.currentWinner) ? gameManager.currentWinner : null,
-            winners: (gameManager.state === 'WAITING' && gameManager.currentWinners.length > 0) ? gameManager.currentWinners : []
+            winners: (gameManager.state === 'WAITING' && gameManager.currentWinners.length > 0) ? gameManager.currentWinners : [],
+            winningNumber: (gameManager.state === 'WAITING' && gameManager.currentWinner?.winningNumber) ? gameManager.currentWinner.winningNumber : (Array.from(gameManager.drawnNumbers).at(-1) ?? null)
         });
     });
 
@@ -282,7 +283,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             pot: gameManager.getPot(),
             gameId: gameManager.gameId,
             winner: (gameManager.state === 'WAITING' && gameManager.currentWinner) ? gameManager.currentWinner : null,
-            winners: (gameManager.state === 'WAITING' && gameManager.currentWinners.length > 0) ? gameManager.currentWinners : []
+            winners: (gameManager.state === 'WAITING' && gameManager.currentWinners.length > 0) ? gameManager.currentWinners : [],
+            winningNumber: (gameManager.state === 'WAITING' && gameManager.currentWinner?.winningNumber) ? gameManager.currentWinner.winningNumber : (Array.from(gameManager.drawnNumbers).at(-1) ?? null)
         };
 
         gameManager.addSSEClient(userId, res, initialSnapshot);

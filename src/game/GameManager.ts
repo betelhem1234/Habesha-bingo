@@ -34,6 +34,7 @@ export interface WinnerRecord {
     ticket?: BingoTicket;
     daubed?: number[];
     winningCells?: { row: number; col: number }[];
+    winningNumber?: number;
     at: string;
 }
 
@@ -43,6 +44,7 @@ export interface WinnerCandidate {
     ticket: BingoTicket;
     daubed: Set<number>;
     winningCells: { row: number; col: number }[];
+    winningNumber?: number;
 }
 
 export class GameManager {
@@ -436,8 +438,8 @@ export class GameManager {
         if (this.state !== 'PLAYING') return;
         if (this.gameLoopTimeout) clearTimeout(this.gameLoopTimeout);
 
-        // Self-adjusting target timestamp: gameStartTime + drawnCount * 6000ms
-        const targetTime = this.gameStartTime + (this.drawnNumbers.size * 6000);
+        // Self-adjusting target timestamp: gameStartTime + drawnCount * 4000ms
+        const targetTime = this.gameStartTime + (this.drawnNumbers.size * 4000);
         const delay = Math.max(50, targetTime - Date.now());
 
         this.gameLoopTimeout = setTimeout(async () => {
@@ -629,7 +631,7 @@ export class GameManager {
             drawnNumbers: Array.from(this.drawnNumbers),
             lastDrawn: num,
             recent: Array.from(this.drawnNumbers).slice(-10),
-            nextDrawAt: Date.now() + 6000,
+            nextDrawAt: Date.now() + 4000,
             pot: this.getPot(),
             playerCount: this.players.length
         });
@@ -696,7 +698,8 @@ export class GameManager {
                         boardNumber: card.boardNumber,
                         ticket: card.ticket,
                         daubed: new Set([...card.daubed, ...Array.from(this.drawnNumbers)]),
-                        winningCells: winRes.winningCells
+                        winningCells: winRes.winningCells,
+                        winningNumber: currentBall
                     };
                     break;
                 } else {
@@ -886,6 +889,7 @@ export class GameManager {
                 ticket: w.ticket,
                 daubed: Array.from(w.daubed),
                 winningCells: w.winningCells || [],
+                winningNumber: w.winningNumber || Array.from(this.drawnNumbers).at(-1),
                 at: new Date().toISOString()
             }));
             this.currentWinner = this.currentWinners[0] || null;
@@ -951,7 +955,8 @@ export class GameManager {
             winners: this.currentWinners,
             winner: this.currentWinner,
             pot,
-            drawnNumbers: Array.from(this.drawnNumbers)
+            drawnNumbers: Array.from(this.drawnNumbers),
+            winningNumber: this.currentWinner?.winningNumber || Array.from(this.drawnNumbers).at(-1)
         });
 
         console.log(`[Game] Game ended (${winners ? winners.length : 0} winner(s)), lobby reset.`);

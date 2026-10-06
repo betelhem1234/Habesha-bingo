@@ -439,9 +439,31 @@ body{
   background:#27ae60;color:#fff;font-weight:900;
   box-shadow:0 1px 4px rgba(39,174,96,0.5);
 }
+.w-cell.win-trigger{
+  background:linear-gradient(135deg, #ff1744, #d50000) !important;
+  color:#fff !important;
+  font-weight:900 !important;
+  font-size:1.05rem !important;
+  border:2.5px solid #ffd700 !important;
+  box-shadow:0 0 14px rgba(255,23,68,0.9), 0 0 6px #ffd700 !important;
+  transform:scale(1.12);
+  z-index:5;
+  position:relative;
+  animation:pulseWinTrigger 1.2s infinite alternate ease-in-out;
+}
+@keyframes pulseWinTrigger {
+  0% { transform:scale(1.08); box-shadow:0 0 8px rgba(255,23,68,0.8), 0 0 4px #ffd700; }
+  100% { transform:scale(1.18); box-shadow:0 0 20px rgba(255,23,68,1), 0 0 10px #ffeb3b; }
+}
+.winner-trigger-badge{
+  display:inline-flex;align-items:center;gap:4px;
+  background:rgba(255,23,68,0.15);border:1px solid #ff1744;
+  color:#ff1744;font-size:0.8rem;font-weight:900;
+  padding:2px 8px;border-radius:12px;margin-left:6px;
+}
 .winner-board-number-label{
   text-align:center;color:#27ae60;font-size:0.95rem;font-weight:900;
-  padding:8px 0 2px;
+  padding:8px 0 2px;display:flex;align-items:center;justify-content:center;flex-wrap:wrap;gap:4px;
 }
 
 /* Countdown Action Button */
@@ -1273,7 +1295,13 @@ function showWinnerOverlay(data){
   }
 
   function renderWinnerBoard(wObj){
-    document.getElementById('w-board-num').textContent = `Board Number ${wObj.boardNumber || 111}`;
+    const winNum = wObj.winningNumber || data.winningNumber || (data.drawnNumbers && data.drawnNumbers.length ? data.drawnNumbers[data.drawnNumbers.length - 1] : lastDrawn);
+    const winCallName = winNum ? (COLS[getCol(winNum)] + '-' + winNum) : '';
+    const boardNumEl = document.getElementById('w-board-num');
+    if(boardNumEl){
+      boardNumEl.innerHTML = `<span>Board Number ${wObj.boardNumber || 111}</span>` + 
+        (winCallName ? `<span class="winner-trigger-badge">🎯 Winning Call: ${winCallName}</span>` : '');
+    }
     if(wObj.ticket){
       const daubSet = new Set(wObj.daubed || []);
       const winningCoordSet = new Set((wObj.winningCells || []).map(c => `${c.row},${c.col}`));
@@ -1282,11 +1310,14 @@ function showWinnerOverlay(data){
         for(let c = 0; c < 5; c++){
           const num = wObj.ticket[r][c];
           const isWinCell = winningCoordSet.has(`${r},${c}`);
+          const isTriggerNum = (isWinCell && winNum && num === winNum);
           const isDaubed = (num === 0 || daubSet.has(num));
-          if(isWinCell){
-            html += `<div class="w-cell win-line">${num===0?'*':num}</div>`;
+          if(isTriggerNum){
+            html += `<div class="w-cell win-line win-trigger" title="🎯 Winning Call">${num===0?'★':num}</div>`;
+          }else if(isWinCell){
+            html += `<div class="w-cell win-line">${num===0?'★':num}</div>`;
           }else if(isDaubed){
-            html += `<div class="w-cell daubed-yellow">${num===0?'*':num}</div>`;
+            html += `<div class="w-cell daubed-yellow">${num===0?'★':num}</div>`;
           }else{
             html += `<div class="w-cell">${num}</div>`;
           }
@@ -1332,13 +1363,13 @@ function showWinnerOverlay(data){
   },1000);
 }
 
-// ─── Visual 6-Second Clockwork Timer ───
+// ─── Visual 4-Second Clockwork Timer ───
 let timerAnimId = null;
 function startTimerCountdown(nextDrawAt) {
   if (timerAnimId) cancelAnimationFrame(timerAnimId);
   const bar = document.getElementById('call-timer-bar');
   if (!bar) return;
-  const total = 6000;
+  const total = 4000;
 
   function tick() {
     const remaining = Math.max(0, nextDrawAt - Date.now());
@@ -1487,9 +1518,7 @@ function applyBallEvent(data) {
     document.getElementById('player-count').textContent = data.playerCount;
   }
 
-  if (data.nextDrawAt) {
-    startTimerCountdown(data.nextDrawAt);
-  }
+  startTimerCountdown(data.nextDrawAt || (Date.now() + 4000));
 
   if (!isSpectator && myCards.length > 0) {
     renderBoards(myCards, lastDrawnSet);
