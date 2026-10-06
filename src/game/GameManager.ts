@@ -889,7 +889,9 @@ export class GameManager {
                         totalCollected: pot,
                         winnerPayout: totalWinnerPayout,
                         houseProfit: houseProfit,
-                        winnerId: winners[0].player.userId
+                        winnerId: winners[0].player.userId,
+                        winner2Id: winners.length > 1 ? winners[1].player.userId : null,
+                        winnerCount
                     }
                 });
             } catch (e) {

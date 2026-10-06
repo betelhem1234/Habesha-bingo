@@ -1588,9 +1588,11 @@ function applyStartEvent(data) {
 }
 
 function applyWinnerEvent(data) {
-  if (winnerShown || !data) return;
+  if (!data) return;
   const winList = (data.winners && data.winners.length > 0) ? data.winners : (data.winner ? [data.winner] : []);
   if (!winList || !winList[0]) return;
+  if (winnerShown && winList.length <= 1) return;
+  winnerShown = false;
   const firstW = winList[0];
   handleWin({
     winners: winList,

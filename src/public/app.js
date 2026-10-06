@@ -251,11 +251,34 @@ async function fetchHouseIncome() {
                       })
                     : '—';
 
-                const winnerDisplay = i.winnerUsername
-                    ? `<strong>${escapeHtml(i.winnerName || 'Winner')}</strong><br><a href="https://t.me/${i.winnerUsername}" target="_blank" style="color:#38bdf8; font-size:12px; text-decoration:none;">@${escapeHtml(i.winnerUsername)}</a>`
-                    : i.winnerName
-                        ? `<strong>${escapeHtml(i.winnerName)}</strong>`
-                        : `<span style="color:#64748b;">ID: ${escapeHtml(String(i.winnerId || '—'))}</span>`;
+                function formatUserBadge(name, username, id) {
+                    if (username) {
+                        return `<strong>${escapeHtml(name || 'Winner')}</strong><br><a href="https://t.me/${username}" target="_blank" style="color:#38bdf8; font-size:12px; text-decoration:none;">@${escapeHtml(username)}</a>`;
+                    }
+                    if (name) {
+                        return `<strong>${escapeHtml(name)}</strong>`;
+                    }
+                    return `<span style="color:#64748b;">ID: ${escapeHtml(String(id || '—'))}</span>`;
+                }
+
+                let winnerDisplay = '—';
+                const hasTwoWinners = Boolean((i.winnerCount && i.winnerCount > 1) || i.winner2Id);
+
+                if (hasTwoWinners) {
+                    const w1 = formatUserBadge(i.winnerName, i.winnerUsername, i.winnerId);
+                    const w2 = formatUserBadge(i.winner2Name, i.winner2Username, i.winner2Id);
+                    winnerDisplay = `<div style="display:flex; flex-direction:column; gap:4px;">
+                        <div>${w1}</div>
+                        <div style="color:#f59e0b; font-size:11px; font-weight:700;">🤝 Shared Jackpot</div>
+                        <div>${w2}</div>
+                    </div>`;
+                } else if (i.winnerId) {
+                    winnerDisplay = formatUserBadge(i.winnerName, i.winnerUsername, i.winnerId);
+                }
+
+                const payoutDisplay = hasTwoWinners
+                    ? `<strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span><br><span style="color:#94a3b8; font-size:11px; font-weight:600;">(${(i.splitPayout ?? Math.floor((i.winnerPayout || 0) / 2)).toLocaleString()} Birr each)</span>`
+                    : `<strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span>`;
 
                 return `
                     <tr>
@@ -263,7 +286,7 @@ async function fetchHouseIncome() {
                         <td style="color:#94a3b8; font-size:12px; white-space:nowrap;">${dateStr}</td>
                         <td><strong style="color:#f8fafc;">${i.playerCount}</strong></td>
                         <td><strong>${(i.pot ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
-                        <td><strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
+                        <td>${payoutDisplay}</td>
                         <td><strong style="color:#4ade80;">${(i.houseProfit ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
                         <td>${winnerDisplay}</td>
                     </tr>

@@ -88,6 +88,8 @@ model HouseIncome {
   winnerPayout   Decimal
   houseProfit    Decimal
   winnerId       BigInt?
+  winner2Id      BigInt?
+  winnerCount    Int      @default(1)
   createdAt      DateTime @default(now())
   
   @@index([createdAt])

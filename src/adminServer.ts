@@ -1029,8 +1029,13 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 take: 200
             });
 
-            // Gather winner usernames and names
-            const winnerIds = incomes.map(i => i.winnerId).filter((id): id is bigint => id !== null && id !== undefined);
+            // Gather winner usernames and names for both winnerId and winner2Id
+            const winnerIds: bigint[] = [];
+            for (const i of incomes) {
+                if (i.winnerId) winnerIds.push(i.winnerId);
+                const w2 = (i as any).winner2Id;
+                if (w2) winnerIds.push(w2);
+            }
             const uniqueWinnerIds = Array.from(new Set(winnerIds));
             const winners = await prisma.user.findMany({
                 where: { id: { in: uniqueWinnerIds } },
@@ -1054,17 +1059,28 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 totalWinnerPayout += payout;
                 totalHouseProfit += profit;
 
+                const w2Id = (i as any).winner2Id;
+                const wCount = (i as any).winnerCount || (w2Id ? 2 : 1);
+                const splitPayout = Math.floor(payout / wCount);
+
                 const winner = i.winnerId ? winnerMap.get(i.winnerId.toString()) : null;
+                const winner2 = w2Id ? winnerMap.get(w2Id.toString()) : null;
+
                 return {
                     id: i.id,
                     gameType: i.gameType,
                     playerCount: i.playerCount,
                     pot,
                     winnerPayout: payout,
+                    splitPayout,
+                    winnerCount: wCount,
                     houseProfit: profit,
                     winnerId: i.winnerId ? i.winnerId.toString() : null,
                     winnerName: winner?.firstName || null,
                     winnerUsername: winner?.username || null,
+                    winner2Id: w2Id ? w2Id.toString() : null,
+                    winner2Name: winner2?.firstName || null,
+                    winner2Username: winner2?.username || null,
                     createdAt: i.createdAt
                 };
             });
