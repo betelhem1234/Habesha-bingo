@@ -70,4 +70,46 @@ test('Real-Time SSE and Clockwork Timer Engine', async (t) => {
         await gm.forceReset();
         assert.equal(resetReceived, true);
     });
+
+    await t.test('claimBingo cancels gameLoopTimeout immediately so no extra balls are drawn', async () => {
+        const gm = new GameManager(mockBot);
+        gm.players = [{
+            userId: 99999n,
+            boardNumber: 1,
+            ticket: [
+                [1, 2, 3, 4, 5],
+                [16, 17, 18, 19, 20],
+                [31, 32, 0, 34, 35],
+                [46, 47, 48, 49, 50],
+                [61, 62, 63, 64, 65]
+            ],
+            daubed: new Set([1, 2, 3, 4, 5]),
+            cards: [{
+                boardNumber: 1,
+                ticket: [
+                    [1, 2, 3, 4, 5],
+                    [16, 17, 18, 19, 20],
+                    [31, 32, 0, 34, 35],
+                    [46, 47, 48, 49, 50],
+                    [61, 62, 63, 64, 65]
+                ],
+                daubed: new Set([1, 2, 3, 4, 5])
+            }],
+            fee: 10,
+            lastSeen: Date.now()
+        }];
+        gm.state = 'PLAYING';
+        gm.drawnNumbers = new Set([1, 2, 3, 4, 5]);
+
+        // Simulate an active gameLoopTimeout
+        (gm as any).gameLoopTimeout = setTimeout(() => {}, 4000);
+        assert.ok((gm as any).gameLoopTimeout !== null);
+
+        const res = await gm.claimBingo(99999n);
+        assert.equal(res.success, true);
+        assert.equal((gm as any).gameLoopTimeout, null, 'gameLoopTimeout must be cleared when Bingo is claimed');
+
+        // Cleanup
+        await gm.forceReset();
+    });
 });

@@ -630,6 +630,7 @@ const room=params.get('room')||params.get('board')||'1';
 
 const COLS=['B','I','N','G','O'];
 let lastDrawn=null;
+const spokenNumbersInRound=new Set();
 let soundEnabled=true;
 let autoEnabled=false;
 let audioCtx=null;
@@ -927,6 +928,9 @@ async function preloadAudioCalls(){
 
 async function speakDrawnNumber(num){
   if(!soundEnabled || !num) return;
+  const n = parseInt(num, 10);
+  if(isNaN(n) || spokenNumbersInRound.has(n)) return;
+  spokenNumbersInRound.add(n);
   const isFemale = (activeServerVoice === 'female');
   
   // 1. Primary: Web Audio API (instant 0ms playback, female or male per admin mandate)
@@ -1410,14 +1414,17 @@ function applyGameState(data) {
     activeServerVoice = data.callerVoice;
   }
 
-  if (data.lastDrawn && data.lastDrawn !== lastDrawn) {
+  const incomingCount = (data.drawnNumbers || []).length;
+  if (data.lastDrawn && incomingCount >= lastDrawnSet.size && data.lastDrawn !== lastDrawn) {
     lastDrawn = data.lastDrawn;
     speakDrawnNumber(lastDrawn);
   }
 
-  lastDrawnSet = new Set(data.drawnNumbers || []);
-  updateFlashboard(data.drawnNumbers, data.lastDrawn);
-  updateLastCalls(data.drawnNumbers, data.lastDrawn);
+  if (incomingCount >= lastDrawnSet.size || data.gameState === 'WAITING') {
+    lastDrawnSet = new Set(data.drawnNumbers || []);
+    updateFlashboard(data.drawnNumbers, data.lastDrawn);
+    updateLastCalls(data.drawnNumbers, data.lastDrawn);
+  }
 
   if (isSpectator) {
     document.getElementById('playing-card-area').style.display = 'none';
@@ -1445,10 +1452,12 @@ function applyGameState(data) {
     if (data.gameState === 'WAITING') {
       isPlayerBlocked = false;
       lastRenderedBlocked = false;
+      spokenNumbersInRound.clear();
     }
     if (data.gameId && window._lastSeenGameId && data.gameId !== window._lastSeenGameId) {
       isPlayerBlocked = false;
       lastRenderedBlocked = false;
+      spokenNumbersInRound.clear();
     }
     if (data.gameId) {
       window._lastSeenGameId = data.gameId;
@@ -1555,6 +1564,7 @@ function applyStartEvent(data) {
   lastRenderedBlocked = false;
   lastDrawn = null;
   lastDrawnSet.clear();
+  spokenNumbersInRound.clear();
   document.getElementById('called-count').textContent = '0';
   document.getElementById('wait-message-area').style.display = 'none';
   document.getElementById('playing-card-area').style.display = 'block';

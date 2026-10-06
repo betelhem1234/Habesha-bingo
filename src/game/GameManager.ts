@@ -62,6 +62,7 @@ export class GameManager {
     private startTimeout: NodeJS.Timeout | null = null;
     private pendingWinners: WinnerCandidate[] = [];
     private resolutionTimeout: NodeJS.Timeout | null = null;
+    private isDrawing: boolean = false;
     private sseClients: Set<{ res: any; userId: bigint }> = new Set();
     private heartbeatInterval: NodeJS.Timeout | null = null;
     
@@ -435,15 +436,18 @@ export class GameManager {
     }
 
     private scheduleNextDraw() {
-        if (this.state !== 'PLAYING') return;
-        if (this.gameLoopTimeout) clearTimeout(this.gameLoopTimeout);
+        if (this.state !== 'PLAYING' || this.pendingWinners.length > 0) return;
+        if (this.gameLoopTimeout) {
+            clearTimeout(this.gameLoopTimeout);
+            this.gameLoopTimeout = null;
+        }
 
         // Self-adjusting target timestamp: gameStartTime + drawnCount * 4000ms
         const targetTime = this.gameStartTime + (this.drawnNumbers.size * 4000);
         const delay = Math.max(50, targetTime - Date.now());
 
         this.gameLoopTimeout = setTimeout(async () => {
-            if (this.state !== 'PLAYING') return;
+            if (this.state !== 'PLAYING' || this.pendingWinners.length > 0) return;
             await this.drawNumber();
             this.scheduleNextDraw();
         }, delay);
@@ -572,80 +576,93 @@ export class GameManager {
     }
 
     private async drawNumber() {
-        if (this.allNumbers.length === 0 || this.state !== 'PLAYING') {
-            if (this.gameLoopTimeout) clearTimeout(this.gameLoopTimeout);
-            if (this.gameLoopInterval) clearInterval(this.gameLoopInterval);
-            await this.endGame(null);
-            return;
-        }
+        if (this.state !== 'PLAYING' || this.pendingWinners.length > 0 || this.isDrawing) return;
+        this.isDrawing = true;
 
-        let num: number;
-        // For draws 1-14 (size < 14), select a safe ball that does not complete a winning line for anyone
-        if (this.drawnNumbers.size < 14 && this.players.length > 0) {
-            const safeIndices: number[] = [];
-            for (let i = 0; i < this.allNumbers.length; i++) {
-                if (!this.wouldCauseWin(this.allNumbers[i])) {
-                    safeIndices.push(i);
+        try {
+            if (this.allNumbers.length === 0) {
+                if (this.gameLoopTimeout) {
+                    clearTimeout(this.gameLoopTimeout);
+                    this.gameLoopTimeout = null;
                 }
+                if (this.gameLoopInterval) {
+                    clearInterval(this.gameLoopInterval);
+                    this.gameLoopInterval = null;
+                }
+                await this.endGame(null);
+                return;
             }
 
-            if (safeIndices.length > 0) {
-                const pickIndex = safeIndices[Math.floor(Math.random() * safeIndices.length)];
-                num = this.allNumbers.splice(pickIndex, 1)[0];
+            let num: number;
+            // For draws 1-14 (size < 14), select a safe ball that does not complete a winning line for anyone
+            if (this.drawnNumbers.size < 14 && this.players.length > 0) {
+                const safeIndices: number[] = [];
+                for (let i = 0; i < this.allNumbers.length; i++) {
+                    if (!this.wouldCauseWin(this.allNumbers[i])) {
+                        safeIndices.push(i);
+                    }
+                }
+
+                if (safeIndices.length > 0) {
+                    const pickIndex = safeIndices[Math.floor(Math.random() * safeIndices.length)];
+                    num = this.allNumbers.splice(pickIndex, 1)[0];
+                } else {
+                    num = this.allNumbers.pop()!;
+                }
+            } else if (this.players.length > 0) {
+                // Draw 15+: select candidate balls that cause <= 2 winners (strictly never 3 or more)
+                const validIndices: number[] = [];
+                for (let i = 0; i < this.allNumbers.length; i++) {
+                    if (this.countSimulatedWinners(this.allNumbers[i]) <= 2) {
+                        validIndices.push(i);
+                    }
+                }
+
+                if (validIndices.length > 0) {
+                    const pickIndex = validIndices[Math.floor(Math.random() * validIndices.length)];
+                    num = this.allNumbers.splice(pickIndex, 1)[0];
+                } else {
+                    num = this.allNumbers.pop()!;
+                }
             } else {
+                // Draw 17+: unrestricted random draw if no active players
                 num = this.allNumbers.pop()!;
             }
-        } else if (this.players.length > 0) {
-            // Draw 15+: select candidate balls that cause <= 2 winners (strictly never 3 or more)
-            const validIndices: number[] = [];
-            for (let i = 0; i < this.allNumbers.length; i++) {
-                if (this.countSimulatedWinners(this.allNumbers[i]) <= 2) {
-                    validIndices.push(i);
-                }
-            }
 
-            if (validIndices.length > 0) {
-                const pickIndex = validIndices[Math.floor(Math.random() * validIndices.length)];
-                num = this.allNumbers.splice(pickIndex, 1)[0];
-            } else {
-                num = this.allNumbers.pop()!;
-            }
-        } else {
-            // Draw 17+: unrestricted random draw if no active players
-            num = this.allNumbers.pop()!;
+            this.drawnNumbers.add(num);
+            const numName = getNumberName(num);
+            const emoji = getColumnEmoji(num);
+            const allDrawn = Array.from(this.drawnNumbers).map(n => getNumberName(n));
+            const recent = allDrawn.slice(-10).join('  ');
+
+            console.log(`[Game] Drawing: ${numName} (#${this.drawnNumbers.size}) | Players: ${this.players.length}`);
+
+            // Instant Real-Time SSE Push to all connected players (0ms latency!)
+            this.broadcastSSE('ball', {
+                number: num,
+                numName,
+                emoji,
+                drawnNumbers: Array.from(this.drawnNumbers),
+                lastDrawn: num,
+                recent: Array.from(this.drawnNumbers).slice(-10),
+                nextDrawAt: Date.now() + 4000,
+                pot: this.getPot(),
+                playerCount: this.players.length
+            });
+
+            // Big, bold drawn number with column color for Telegram
+            const text =
+                `${emoji} *${numName.replace('-', ' — ')}* ${emoji}\n` +
+                `━━━━━━━━━━━━━━━━━━━\n` +
+                `📜 *Drawn:* ${recent}\n` +
+                `━━━━━━━━━━━━━━━━━━━\n` +
+                `👇 Tap the number on your board if you have it!`;
+
+            // Update Telegram messages in background without blocking the loop
+            this.broadcastTelegramTickets(text);
+        } finally {
+            this.isDrawing = false;
         }
-
-        this.drawnNumbers.add(num);
-        const numName = getNumberName(num);
-        const emoji = getColumnEmoji(num);
-        const allDrawn = Array.from(this.drawnNumbers).map(n => getNumberName(n));
-        const recent = allDrawn.slice(-10).join('  ');
-
-        console.log(`[Game] Drawing: ${numName} (#${this.drawnNumbers.size}) | Players: ${this.players.length}`);
-
-        // Instant Real-Time SSE Push to all connected players (0ms latency!)
-        this.broadcastSSE('ball', {
-            number: num,
-            numName,
-            emoji,
-            drawnNumbers: Array.from(this.drawnNumbers),
-            lastDrawn: num,
-            recent: Array.from(this.drawnNumbers).slice(-10),
-            nextDrawAt: Date.now() + 4000,
-            pot: this.getPot(),
-            playerCount: this.players.length
-        });
-
-        // Big, bold drawn number with column color for Telegram
-        const text =
-            `${emoji} *${numName.replace('-', ' — ')}* ${emoji}\n` +
-            `━━━━━━━━━━━━━━━━━━━\n` +
-            `📜 *Drawn:* ${recent}\n` +
-            `━━━━━━━━━━━━━━━━━━━\n` +
-            `👇 Tap the number on your board if you have it!`;
-
-        // Update Telegram messages in background without blocking the loop
-        this.broadcastTelegramTickets(text);
     }
 
     async claimBingo(userId: bigint): Promise<{
@@ -744,7 +761,15 @@ export class GameManager {
             this.pendingWinners.push(winningCard);
         }
 
-        // Pause ball drawing loop while resolving winner(s)
+        // Pause ball drawing loop immediately while resolving winner(s)
+        if (this.gameLoopTimeout) {
+            clearTimeout(this.gameLoopTimeout);
+            this.gameLoopTimeout = null;
+        }
+        if (this.startTimeout) {
+            clearTimeout(this.startTimeout);
+            this.startTimeout = null;
+        }
         if (this.gameLoopInterval) {
             clearInterval(this.gameLoopInterval);
             this.gameLoopInterval = null;
@@ -830,6 +855,10 @@ export class GameManager {
 
     private async endGame(winners: WinnerCandidate[] | null) {
         this.state = 'WAITING';
+        if (this.startTimeout) {
+            clearTimeout(this.startTimeout);
+            this.startTimeout = null;
+        }
         if (this.gameLoopTimeout) {
             clearTimeout(this.gameLoopTimeout);
             this.gameLoopTimeout = null;
@@ -919,8 +948,12 @@ export class GameManager {
                 } catch (e) {}
 
                 if (isWinner) {
-                    try { await this.bot.api.sendMessage(Number(p.userId), '🎉'); } catch (e) {}
-                    try { await this.bot.api.sendMessage(Number(p.userId), '🎊'); } catch (e) {}
+                    const winNotification = winnerCount > 1
+                        ? `🎉 *Congratulations! You won ${payoutPerWinner} Birr!* (Shared Jackpot)`
+                        : `🎉 *Congratulations! You won ${totalWinnerPayout} Birr!*`;
+                    try {
+                        await this.bot.api.sendMessage(Number(p.userId), winNotification, { parse_mode: 'Markdown' });
+                    } catch (e) {}
                 }
 
                 const msg = isWinner
