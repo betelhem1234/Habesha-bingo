@@ -211,7 +211,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             if (balance !== undefined && !isNaN(Number(balance))) data.balance = Number(balance);
             if (bonus !== undefined && !isNaN(Number(bonus))) data.bonus = Number(bonus);
             if (phone !== undefined) data.phone = phone ? String(phone).trim() : null;
-            if (username !== undefined) data.username = username ? String(username).trim() : null;
+            if (username !== undefined) data.username = username ? String(username).trim().replace(/^@+/, '') : null;
             if (firstName !== undefined) data.firstName = firstName ? String(firstName).trim() : null;
             if (banned !== undefined) data.banned = Boolean(banned);
 

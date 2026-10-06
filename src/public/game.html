@@ -618,7 +618,7 @@ body{
       <div class="winner-board-number-label" id="w-board-num">Board Number 111</div>
     </div>
 
-    <button class="winner-countdown-btn" id="w-countdown-btn">5</button>
+    <button class="winner-countdown-btn" id="w-countdown-btn">7</button>
   </div>
 </div>
 
@@ -1355,7 +1355,7 @@ function showWinnerOverlay(data){
 
   document.getElementById('winner-overlay').classList.add('show');
 
-  let cnt=5; // Countdown from 5 to 1
+  let cnt=7; // Countdown from 7 to 0
   const cdBtn=document.getElementById('w-countdown-btn');
   cdBtn.textContent=cnt;
   const cd=setInterval(()=>{

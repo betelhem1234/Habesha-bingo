@@ -940,12 +940,15 @@ function openEditUserModal(userId) {
     if (!user) return;
 
     document.getElementById('edit-user-id').value = user.id;
-    const fullName = [user.firstName, user.lastName].filter(Boolean).join(' ') || 'Player';
-    const nameDisplay = user.username 
-        ? `${fullName} (@${user.username}) - #${user.id}`
-        : `${fullName} - #${user.id}`;
+    const idEl = document.getElementById('edit-user-id-display');
+    if (idEl) idEl.textContent = `#${user.id}`;
     
-    document.getElementById('edit-user-name-display').textContent = nameDisplay;
+    const fnEl = document.getElementById('edit-user-firstname');
+    if (fnEl) fnEl.value = user.firstName || '';
+
+    const unEl = document.getElementById('edit-user-username');
+    if (unEl) unEl.value = user.username || '';
+
     document.getElementById('edit-user-balance').value = user.balance ?? 0;
     document.getElementById('edit-user-bonus').value = user.bonus ?? 0;
     document.getElementById('edit-user-phone').value = user.phone || '';
@@ -965,6 +968,12 @@ async function saveUserEdit(e) {
     const userId = document.getElementById('edit-user-id').value;
     if (!userId) return;
 
+    const firstNameInput = document.getElementById('edit-user-firstname');
+    const usernameInput = document.getElementById('edit-user-username');
+    const firstName = firstNameInput ? firstNameInput.value.trim() : null;
+    const rawUsername = usernameInput ? usernameInput.value.trim().replace(/^@+/, '') : null;
+    const username = rawUsername || null;
+
     const balance = parseFloat(document.getElementById('edit-user-balance').value);
     const bonus = parseFloat(document.getElementById('edit-user-bonus').value);
     const phone = document.getElementById('edit-user-phone').value.trim();
@@ -974,7 +983,7 @@ async function saveUserEdit(e) {
         const res = await authFetch(`/api/admin/user/${userId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ balance, bonus, phone, banned })
+            body: JSON.stringify({ balance, bonus, phone, username, firstName, banned })
         });
         const data = await res.json();
 
