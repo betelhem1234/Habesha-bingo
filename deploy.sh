@@ -76,8 +76,8 @@ else
     STATUS="$(render deploys list "${SERVICE_ID}" -o json 2>/dev/null | node -e '
       try {
         const deploys = JSON.parse(require("fs").readFileSync(0, "utf-8"));
-        const target = deploys.find(d => d.commit && d.commit.id === process.argv[1]) || deploys[0];
-        console.log((target && target.status) || "unknown");
+        const target = deploys.find(d => d.commit && d.commit.id === process.argv[1]);
+        console.log((target && target.status) || "waiting_to_start");
       } catch(e) { console.log("unknown"); }
     ' "${LATEST_COMMIT}")"
 
