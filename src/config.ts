@@ -8,8 +8,8 @@ export const config = {
     ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || 'habesha_bingo_admin_2026',
     BINGO_APP_URL: process.env.BINGO_APP_URL || 'https://localhost:3001',
     PORT: process.env.PORT || '3001',
-    CHANNEL_URL: process.env.CHANNEL_URL || 'https://t.me/BaronBingochannel',
-    SUPPORT_URL: process.env.SUPPORT_URL || 'https://t.me/BaronBingobot',
+    CHANNEL_URL: process.env.CHANNEL_URL || 'https://t.me/ethioBingoOne',
+    SUPPORT_URL: process.env.SUPPORT_URL || '',
     
     // Telebirr Configuration (Placeholders for real keys)
     TELEBIRR_APP_ID: process.env.TELEBIRR_APP_ID || '',

@@ -112,9 +112,7 @@ export function getBroadcastKeyboard(userId: bigint | string) {
     if (config.CHANNEL_URL) {
         kb.url('📣 Channel', config.CHANNEL_URL);
     }
-    if (config.SUPPORT_URL) {
-        kb.url('💬 Support', config.SUPPORT_URL);
-    }
+    kb.text('✍️ Feedback', 'menu_feedback');
     return kb;
 }
 
@@ -397,7 +395,7 @@ bot.callbackQuery('menu_admin_broadcast', async (ctx) => {
         `• **Option A**: Send a **Photo** with a caption description written under it\n` +
         `• **Option B**: Send a **Photo** first (I will ask for caption next)\n` +
         `• **Option C**: Send a **Text message** only\n\n` +
-        `*The bot will automatically attach game action buttons (🎮 Play, 💰 Deposit, Channel, Support) and show a preview before sending!*`,
+        `*The bot will automatically attach game action buttons (🎮 Play, 💰 Deposit, Channel, Feedback) and show a preview before sending!*`,
         { parse_mode: 'Markdown' }
     );
 });
@@ -1220,7 +1218,7 @@ bot.command('broadcast', async (ctx) => {
             `Send your announcement message now:\n` +
             `• Send a **Photo / Banner Image** (with caption description)\n` +
             `• Or send a **Text message**\n\n` +
-            `*The bot will automatically attach game buttons (🎮 Play, 💰 Deposit, Channel, Support) and let you preview before broadcasting to all players.*`,
+            `*The bot will automatically attach game buttons (🎮 Play, 💰 Deposit, Channel, Feedback) and let you preview before broadcasting to all players.*`,
             { parse_mode: 'Markdown' }
         );
     }

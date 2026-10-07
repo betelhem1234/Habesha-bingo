@@ -1344,10 +1344,10 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 try {
                     const userKb = new InlineKeyboard()
                         .webApp('🎮 ይጫወቱ', `${config.BINGO_APP_URL}/index.html?userId=${u.id.toString()}`).row()
-                        .text('💰 ገንዘብ ማስገባት', 'menu_deposit').row();
+                        .text('💰 ገንዘብ አስገባ', 'menu_deposit').row();
 
                     if (config.CHANNEL_URL) userKb.url('📣 Channel', config.CHANNEL_URL);
-                    if (config.SUPPORT_URL) userKb.url('💬 Support', config.SUPPORT_URL);
+                    userKb.text('✍️ Feedback', 'menu_feedback');
 
                     if (imageUrl) {
                         await bot.api.sendPhoto(Number(u.id), imageUrl.trim(), {
