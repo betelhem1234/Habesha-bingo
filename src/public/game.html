@@ -1231,6 +1231,10 @@ async function claimBingo(){
     if(data.success && data.msg==='BINGO!'){
       handleWin(data);
     } else {
+      if(data.allBlocked){
+        showAllBlockedOverlay(data);
+        return;
+      }
       if(data.blocked){
         isPlayerBlocked = true;
         if(window.Telegram?.WebApp?.HapticFeedback){
@@ -1368,6 +1372,74 @@ function showWinnerOverlay(data){
   },1000);
 }
 
+// ─── All Players Blocked Modal (No finishing line) ───
+function showAllBlockedOverlay(data){
+  if(winnerShown) return;
+  winnerShown = true;
+  if(pollInterval) clearInterval(pollInterval);
+
+  const bannerEl = document.querySelector('.winner-orange-banner');
+  if(bannerEl){
+    bannerEl.style.background = 'linear-gradient(135deg, #dc2626 0%, #991b1b 100%)';
+  }
+  const titleEl = document.querySelector('.winner-banner-title');
+  if(titleEl){
+    titleEl.textContent = '⛔ ALL PLAYERS BLOCKED ⛔';
+  }
+  const nameRow = document.getElementById('w-name-row');
+  if(nameRow){
+    nameRow.innerHTML = `
+      <div style="color:#fff; font-size:14px; font-weight:700; text-align:center; padding:2px 4px; line-height:1.4;">
+        All players broke the rule and are blocked, so the game is over.<br>
+        <span style="font-size:12px; opacity:0.9;">ሁሉም ተጫዋቾች ህጉን በመጣሳቸው ታግደዋል — ጨዋታው ተጠናቋል</span>
+      </div>
+    `;
+  }
+  const wonText = document.getElementById('w-won-text');
+  if(wonText) wonText.textContent = '';
+
+  const card = (myCards && myCards.length > 0) ? myCards[0] : null;
+  const boardNum = (card && card.boardNumber) || 111;
+  const boardNumEl = document.getElementById('w-board-num');
+  if(boardNumEl){
+    boardNumEl.innerHTML = `<span>Board Number ${boardNum}</span> <span style="background:rgba(239,68,68,0.25); color:#fca5a5; padding:2px 8px; border-radius:12px; font-size:11px; font-weight:700; border:1px solid rgba(239,68,68,0.4);">⛔ Blocked</span>`;
+  }
+
+  const tabsContainer = document.getElementById('winner-tabs');
+  if(tabsContainer) tabsContainer.style.display = 'none';
+
+  if(card && card.ticket){
+    const daubSet = new Set(card.daubed || []);
+    let html = '';
+    for(let r = 0; r < 5; r++){
+      for(let c = 0; c < 5; c++){
+        const num = card.ticket[r][c];
+        const isDaubed = (num === 0 || daubSet.has(num));
+        if(isDaubed){
+          html += `<div class="w-cell daubed-yellow">${num===0?'★':num}</div>`;
+        }else{
+          html += `<div class="w-cell">${num}</div>`;
+        }
+      }
+    }
+    document.getElementById('winner-ticket-grid').innerHTML = html;
+  }
+
+  document.getElementById('winner-overlay').classList.add('show');
+
+  let cnt=7;
+  const cdBtn=document.getElementById('w-countdown-btn');
+  cdBtn.textContent=cnt;
+  const cd=setInterval(()=>{
+    cnt--;
+    cdBtn.textContent=cnt;
+    if(cnt<=0){
+      clearInterval(cd);
+      window.location.href=`/boards.html?userId=${userId}&bet=${bet}&room=${room}`;
+    }
+  },1000);
+}
+
 // ─── Visual 4-Second Clockwork Timer ───
 let timerAnimId = null;
 function startTimerCountdown(nextDrawAt) {
@@ -1392,6 +1464,11 @@ function startTimerCountdown(nextDrawAt) {
 // ─── Process Full Game State ───
 function applyGameState(data) {
   if (!data) return;
+
+  if (data.allBlocked && !winnerShown) {
+    showAllBlockedOverlay(data);
+    return;
+  }
 
   if (data.isSpectator || (!data.inGame && data.gameState === 'PLAYING')) {
     isSpectator = true;
@@ -1641,6 +1718,10 @@ function initSSE() {
 
     evtSource.addEventListener('winner', (e) => {
       try { applyWinnerEvent(JSON.parse(e.data)); } catch (err) {}
+    });
+
+    evtSource.addEventListener('all_blocked', (e) => {
+      try { showAllBlockedOverlay(JSON.parse(e.data)); } catch (err) {}
     });
 
     evtSource.addEventListener('reset', () => {

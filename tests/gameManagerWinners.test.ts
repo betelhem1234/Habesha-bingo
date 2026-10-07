@@ -57,15 +57,27 @@ describe('GameManager Winner and Claim Mechanics', () => {
         const ticket = generateTicket(50);
 
         gm.state = 'PLAYING';
-        gm.players = [{
-            userId,
-            ticket,
-            boardNumber: 1,
-            cards: [{ boardNumber: 1, ticket, daubed: new Set() }],
-            daubed: new Set(),
-            fee: 10,
-            lastSeen: Date.now()
-        }];
+        const otherUser = 99999n;
+        gm.players = [
+            {
+                userId,
+                ticket,
+                boardNumber: 1,
+                cards: [{ boardNumber: 1, ticket, daubed: new Set() }],
+                daubed: new Set(),
+                fee: 10,
+                lastSeen: Date.now()
+            },
+            {
+                userId: otherUser,
+                ticket: generateTicket(51),
+                boardNumber: 2,
+                cards: [{ boardNumber: 2, ticket: generateTicket(51), daubed: new Set() }],
+                daubed: new Set(),
+                fee: 10,
+                lastSeen: Date.now()
+            }
+        ];
 
         const ticketNums = new Set<number>();
         for (let r = 0; r < 5; r++) {
@@ -94,15 +106,27 @@ describe('GameManager Winner and Claim Mechanics', () => {
         const ticket = generateTicket(50);
 
         gm.state = 'PLAYING';
-        gm.players = [{
-            userId,
-            ticket,
-            boardNumber: 1,
-            cards: [{ boardNumber: 1, ticket, daubed: new Set() }],
-            daubed: new Set(),
-            fee: 10,
-            lastSeen: Date.now()
-        }];
+        const otherUser = 99999n;
+        gm.players = [
+            {
+                userId,
+                ticket,
+                boardNumber: 1,
+                cards: [{ boardNumber: 1, ticket, daubed: new Set() }],
+                daubed: new Set(),
+                fee: 10,
+                lastSeen: Date.now()
+            },
+            {
+                userId: otherUser,
+                ticket: generateTicket(51),
+                boardNumber: 2,
+                cards: [{ boardNumber: 2, ticket: generateTicket(51), daubed: new Set() }],
+                daubed: new Set(),
+                fee: 10,
+                lastSeen: Date.now()
+            }
+        ];
 
         // Only 10 numbers drawn
         for (let i = 1; i <= 10; i++) {
@@ -175,15 +199,27 @@ describe('GameManager Winner and Claim Mechanics', () => {
         const ticket = generateTicket(44);
 
         gm.state = 'PLAYING';
-        gm.players = [{
-            userId,
-            ticket,
-            boardNumber: 1,
-            cards: [{ boardNumber: 1, ticket, daubed: new Set() }],
-            daubed: new Set(),
-            fee: 10,
-            lastSeen: Date.now()
-        }];
+        const otherUser = 99999n;
+        gm.players = [
+            {
+                userId,
+                ticket,
+                boardNumber: 1,
+                cards: [{ boardNumber: 1, ticket, daubed: new Set() }],
+                daubed: new Set(),
+                fee: 10,
+                lastSeen: Date.now()
+            },
+            {
+                userId: otherUser,
+                ticket: generateTicket(45),
+                boardNumber: 2,
+                cards: [{ boardNumber: 2, ticket: generateTicket(45), daubed: new Set() }],
+                daubed: new Set(),
+                fee: 10,
+                lastSeen: Date.now()
+            }
+        ];
 
         const ticketNums = new Set<number>();
         for (let r = 0; r < 5; r++) {

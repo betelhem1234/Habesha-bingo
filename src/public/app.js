@@ -286,9 +286,12 @@ async function fetchHouseIncome() {
                 }
 
                 let winnerDisplay = '—';
-                const hasTwoWinners = Boolean((i.winnerCount && i.winnerCount > 1) || i.winner2Id);
+                const isAllBlocked = Boolean(i.winnerCount === 0 || (!i.winnerId && !i.winner2Id));
+                const hasTwoWinners = Boolean(!isAllBlocked && ((i.winnerCount && i.winnerCount > 1) || i.winner2Id));
 
-                if (hasTwoWinners) {
+                if (isAllBlocked) {
+                    winnerDisplay = `<span style="color:#ef4444; font-weight:700;">⛔ All Blocked (No Winner)</span>`;
+                } else if (hasTwoWinners) {
                     const w1 = formatUserBadge(i.winnerName, i.winnerUsername, i.winnerId);
                     const w2 = formatUserBadge(i.winner2Name, i.winner2Username, i.winner2Id);
                     winnerDisplay = `<div style="display:flex; flex-direction:column; gap:4px;">
@@ -300,9 +303,11 @@ async function fetchHouseIncome() {
                     winnerDisplay = formatUserBadge(i.winnerName, i.winnerUsername, i.winnerId);
                 }
 
-                const payoutDisplay = hasTwoWinners
-                    ? `<strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span><br><span style="color:#94a3b8; font-size:11px; font-weight:600;">(${(i.splitPayout ?? Math.floor((i.winnerPayout || 0) / 2)).toLocaleString()} Birr each)</span>`
-                    : `<strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span>`;
+                const payoutDisplay = isAllBlocked
+                    ? `<strong style="color:#94a3b8;">0</strong> <span class="currency">Birr</span>`
+                    : (hasTwoWinners
+                        ? `<strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span><br><span style="color:#94a3b8; font-size:11px; font-weight:600;">(${(i.splitPayout ?? Math.floor((i.winnerPayout || 0) / 2)).toLocaleString()} Birr each)</span>`
+                        : `<strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span>`);
 
                 return `
                     <tr>

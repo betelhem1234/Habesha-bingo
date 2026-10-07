@@ -710,6 +710,16 @@ export class GameManager {
             if (p.cards) {
                 for (const c of p.cards) c.isBlocked = true;
             }
+            const allBlocked = this.players.length > 0 && this.players.every(pl => pl.isBlocked);
+            if (allBlocked) {
+                await this.endGameAllBlocked();
+                return {
+                    success: false,
+                    blocked: true,
+                    allBlocked: true,
+                    msg: 'All players broke the rule and are blocked. The game is over.'
+                };
+            }
             return {
                 success: false,
                 blocked: true,
@@ -744,6 +754,17 @@ export class GameManager {
             p.isBlocked = true;
             if (p.cards) {
                 for (const c of p.cards) c.isBlocked = true;
+            }
+            const allBlocked = this.players.length > 0 && this.players.every(pl => pl.isBlocked);
+            if (allBlocked) {
+                await this.endGameAllBlocked();
+                return {
+                    success: false,
+                    blocked: true,
+                    allBlocked: true,
+                    late: hasStaleLine,
+                    msg: 'All players broke the rule and are blocked. The game is over.'
+                };
             }
             const msg = hasStaleLine
                 ? 'Late Bingo! You missed your turn when your winning number was called. Cartella blocked for the current game.'
@@ -868,6 +889,90 @@ export class GameManager {
         return { success: true, keyboard: createTicketKeyboard(p.ticket, p.daubed, p.userId) };
     }
 
+    public async endGameAllBlocked() {
+        this.state = 'WAITING';
+        if (this.startTimeout) {
+            clearTimeout(this.startTimeout);
+            this.startTimeout = null;
+        }
+        if (this.gameLoopTimeout) {
+            clearTimeout(this.gameLoopTimeout);
+            this.gameLoopTimeout = null;
+        }
+        if (this.gameLoopInterval) {
+            clearInterval(this.gameLoopInterval);
+            this.gameLoopInterval = null;
+        }
+        if (this.resolutionTimeout) {
+            clearTimeout(this.resolutionTimeout);
+            this.resolutionTimeout = null;
+        }
+        this.pendingWinners = [];
+        const pot = this.getPot();
+
+        // When all players break the rules and are blocked:
+        // 100% of pot (80% prize + 20% house fee) is credited to house profit!
+        try {
+            await prisma.houseIncome.create({
+                data: {
+                    gameType: 'bingo',
+                    playerCount: this.players.length,
+                    totalCollected: pot,
+                    winnerPayout: 0,
+                    houseProfit: pot,
+                    winnerId: null,
+                    winner2Id: null,
+                    winnerCount: 0
+                }
+            });
+        } catch (e) {
+            console.error('Failed to log HouseIncome for all-blocked game:', e);
+        }
+
+        this.currentWinners = [];
+        this.currentWinner = null;
+
+        for (const p of this.players) {
+            try {
+                await prisma.gameHistory.create({
+                    data: {
+                        userId: p.userId,
+                        gameType: 'bingo',
+                        bet: p.fee,
+                        payout: 0,
+                        result: 'BLOCKED'
+                    }
+                });
+            } catch (e) {}
+
+            await this.editTicketMessage(
+                p,
+                `🏁 *Game Over — All Players Blocked!* ⛔\n\nAll players broke the rules and were blocked. The round has ended with no winners.`
+            );
+        }
+
+        // Broadcast SSE all_blocked event to all connected clients
+        this.broadcastSSE('all_blocked', {
+            allBlocked: true,
+            reason: 'ALL_BLOCKED',
+            message: 'All players broke the rule and are blocked, so the game is over.',
+            messageAm: 'ሁሉም ተጫዋቾች ህጉን በመጣሳቸው ታግደዋል — ጨዋታው ተጠናቋል!',
+            pot,
+            drawnNumbers: Array.from(this.drawnNumbers),
+            lastDrawn: Array.from(this.drawnNumbers).at(-1) || null
+        });
+
+        console.log(`[Game] All players blocked. Game ended with 100% house profit (${pot} Birr), lobby reset.`);
+        this.players = [];
+        this.drawnNumbers.clear();
+
+        if (this.lobbyInterval) {
+            clearInterval(this.lobbyInterval);
+            this.lobbyInterval = null;
+            this.lobbyCountdown = 0;
+        }
+    }
+
     private async endGame(winners: WinnerCandidate[] | null) {
         this.state = 'WAITING';
         if (this.startTimeout) {
@@ -984,6 +1089,22 @@ export class GameManager {
         } else {
             this.currentWinners = [];
             this.currentWinner = null;
+            try {
+                await prisma.houseIncome.create({
+                    data: {
+                        gameType: 'bingo',
+                        playerCount: this.players.length,
+                        totalCollected: pot,
+                        winnerPayout: 0,
+                        houseProfit: pot,
+                        winnerId: null,
+                        winner2Id: null,
+                        winnerCount: 0
+                    }
+                });
+            } catch (e) {
+                console.error('Failed to log HouseIncome for no-winner game:', e);
+            }
             for (const p of this.players) {
                 try {
                     await prisma.gameHistory.create({
