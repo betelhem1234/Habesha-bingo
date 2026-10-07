@@ -1,7 +1,7 @@
-# Habesha Bingo — System Architecture, Mechanics & Rules Documentation
+# Ethio Bingo — System Architecture, Mechanics & Rules Documentation
 
 ## 1. Executive Summary
-**Habesha Bingo** (@PlayMyBingoBot) is a real-time, multi-player Ethiopian 75-Ball Bingo gaming platform integrated with Telegram WebApps. It provides fair, transparent, and responsive gameplay with synchronous number calling, instant winning verification, automated shared-jackpot payouts, and a comprehensive administrative dashboard for financial and player management.
+**Ethio Bingo** (@PlayMyBingoBot) is a real-time, multi-player Ethiopian 75-Ball Bingo gaming platform integrated with Telegram WebApps. It provides fair, transparent, and responsive gameplay with synchronous number calling, instant winning verification, automated shared-jackpot payouts, and a comprehensive administrative dashboard for financial and player management.
 
 ---
 
@@ -198,7 +198,7 @@ When a player achieves a winning pattern, they tap the **BINGO** button:
 
 ### 5.1 የአማርኛ መመሪያ (Amharic)
 
-> 🎮 **Habesha Bingo — የቢንጎ ጨዋታ ህጎች**
+> 🎮 **Ethio Bingo — የቢንጎ ጨዋታ ህጎች**
 >
 > 🃏 **1. መጫወቻ ካርድ (Cartella Selection)**
 > • ጨዋታውን ለመጀመር ከሚመጣልን ከ1 እስከ 400 የመጫወቻ ካርድ ውስጥ አንዱን ወይም የሚፈልጉትን እንመርጣለን።

@@ -351,4 +351,71 @@ describe('GameManager Winner and Claim Mechanics', () => {
         assert.equal(res.success, true);
         assert.equal(res.msg, 'BINGO!');
     });
+
+    it('divides 80% jackpot equally between two simultaneous winners and credits each 50%', async () => {
+        const gm = new GameManager(mockBot);
+        const p1Id = 11111n;
+        const p2Id = 22222n;
+        const ticket1 = generateTicket(10);
+        const ticket2 = generateTicket(20);
+
+        gm.state = 'PLAYING';
+        gm.players = [
+            {
+                userId: p1Id,
+                firstName: 'Player One',
+                ticket: ticket1,
+                boardNumber: 1,
+                cards: [{ boardNumber: 1, ticket: ticket1, daubed: new Set() }],
+                daubed: new Set(),
+                fee: 50,
+                lastSeen: Date.now()
+            },
+            {
+                userId: p2Id,
+                firstName: 'Player Two',
+                ticket: ticket2,
+                boardNumber: 2,
+                cards: [{ boardNumber: 2, ticket: ticket2, daubed: new Set() }],
+                daubed: new Set(),
+                fee: 50,
+                lastSeen: Date.now()
+            }
+        ];
+
+        // Total pot = 100 Birr. Total 80% winner jackpot = 80 Birr.
+        assert.equal(gm.getPot(), 100);
+
+        const currentBall = 75;
+        // Draw 4 of 5 numbers for Row 0 of both tickets
+        for (let i = 0; i < 4; i++) {
+            gm.drawnNumbers.add(ticket1[0][i]);
+            gm.drawnNumbers.add(ticket2[0][i]);
+        }
+        // Overwrite 5th number so both tickets are freshly completed by currentBall
+        ticket1[0][4] = currentBall;
+        ticket2[0][4] = currentBall;
+        gm.drawnNumbers.add(currentBall);
+
+        // Player 1 claims
+        const claim1 = await gm.claimBingo(p1Id);
+        assert.equal(claim1.success, true);
+
+        // Player 2 claims simultaneously
+        const claim2 = await gm.claimBingo(p2Id);
+        assert.equal(claim2.success, true);
+
+        // Verify:
+        // 1. Both winners are recorded in currentWinners
+        assert.equal(gm.currentWinners.length, 2);
+        // 2. 80 Birr is split 50/50 -> 40 Birr each
+        assert.equal(gm.currentWinners[0].amount, 40);
+        assert.equal(gm.currentWinners[1].amount, 40);
+        // 3. User IDs match Player 1 and Player 2
+        assert.equal(gm.currentWinners[0].userId, p1Id.toString());
+        assert.equal(gm.currentWinners[1].userId, p2Id.toString());
+        // 4. Game state transitions to WAITING
+        assert.equal(gm.state, 'WAITING');
+    });
 });
+

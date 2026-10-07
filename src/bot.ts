@@ -15,9 +15,9 @@ const userLangs = new Map<string, string>();
 
 const TEXTS = {
     welcome: {
-        en: 'Welcome to **Habesha Bingo**! 🔥 FIRST JOIN 30 Birr BONUS 🔥',
-        am: 'እንኳን ወደ **Habesha Bingo** በደህና መጡ! 🔥 FIRST JOIN 30 Birr BONUS 🔥',
-        om: 'Baga nagaan gara **Habesha Bingo** dhuftan! 🔥 FIRST JOIN 30 Birr BONUS 🔥'
+        en: 'Welcome to **Ethio Bingo**! 🔥 FIRST JOIN 30 Birr BONUS 🔥',
+        am: 'እንኳን ወደ **Ethio Bingo** በደህና መጡ! 🔥 FIRST JOIN 30 Birr BONUS 🔥',
+        om: 'Baga nagaan gara **Ethio Bingo** dhuftan! 🔥 FIRST JOIN 30 Birr BONUS 🔥'
     },
     playBtn: {
         en: '🎮 PLAY NOW',
@@ -48,7 +48,7 @@ function escapeHtmlBot(str: string): string {
         .replace(/>/g, '&gt;');
 }
 
-const INSTRUCTIONS_TEXT = `🎮 *Habesha Bingo — የቢንጎ ጨዋታ ህጎች*
+const INSTRUCTIONS_TEXT = `🎮 *Ethio Bingo — የቢንጎ ጨዋታ ህጎች*
 
 🃏 *መጫወቻ ካርድ*
 ጨዋታውን ለመጀመር ከሚመጣልን ከ1-500 የመጫወቻ ካርድ ውስጥ አንዱን እንመርጣለን
@@ -119,11 +119,15 @@ export function getBroadcastKeyboard(userId: bigint | string) {
 }
 
 function getBannerPhoto(): InputFile | string {
+    const localEthioBanner = path.join(__dirname, 'public/images/ethio_bingo_banner.jpg');
+    if (existsSync(localEthioBanner)) {
+        return new InputFile(localEthioBanner);
+    }
     const localBanner = path.join(__dirname, 'public/images/habesha_bingo_banner.jpg');
     if (existsSync(localBanner)) {
         return new InputFile(localBanner);
     }
-    return `${config.BINGO_APP_URL}/images/habesha_bingo_banner.jpg`;
+    return `${config.BINGO_APP_URL}/images/ethio_bingo_banner.jpg`;
 }
 
 // --- Commands ---
@@ -237,7 +241,7 @@ bot.command('start', async (ctx: Context) => {
             .oneTime();
 
         await ctx.reply(
-            `👋 *Welcome to Habesha Bingo!*\n\n` +
+            `👋 *Welcome to Ethio Bingo!*\n\n` +
             `To get started and secure your account, please register by sharing your phone number below 👇`,
             {
                 parse_mode: 'Markdown',
@@ -725,7 +729,7 @@ bot.on('message:contact', async (ctx) => {
         data: { phone }
     });
 
-    await ctx.reply('✅ *Registration Complete!*\n\nWelcome to Habesha Bingo! Get ready to play and win.', {
+    await ctx.reply('✅ *Registration Complete!*\n\nWelcome to Ethio Bingo! Get ready to play and win.', {
         parse_mode: 'Markdown',
         reply_markup: { remove_keyboard: true }
     });
@@ -774,7 +778,7 @@ async function sendPlayBingoMenu(ctx: any) {
     }
     const token = signPlayerToken(userId);
     const kb = new InlineKeyboard()
-        .webApp('🎮 Play Habesha Bingo', `${BINGO_APP_URL}/index.html?userId=${userId}&token=${token}&v=${BINGO_APP_VERSION}`).row()
+        .webApp('🎮 Play Ethio Bingo', `${BINGO_APP_URL}/index.html?userId=${userId}&token=${token}&v=${BINGO_APP_VERSION}`).row()
         .webApp('📋 Select Boards', `${BINGO_APP_URL}/boards.html?userId=${userId}&token=${token}&v=${BINGO_APP_VERSION}`);
         
     await ctx.reply('🍀 Best of luck on your Bingo game adventure! 🎮', { reply_markup: kb });
@@ -966,7 +970,7 @@ bot.command('admin', async (ctx) => {
         .text(`🎙️ Voice: ${vText}`, 'menu_admin_voice');
 
     await ctx.reply(
-        "🔒 *Habesha Bingo Admin Portal*\n\n" +
+        "🔒 *Ethio Bingo Admin Portal*\n\n" +
         "• Click the buttons below for secure **1-Click Web Access**.\n" +
         "• `/requests` — view & approve/reject deposits/withdrawals\n" +
         "• `/banks` — manage payout accounts\n" +
@@ -1567,7 +1571,7 @@ bot.callbackQuery('main_menu', async (ctx) => {
         .text('🔗 My Referral Link', 'referral_link');
 
     await ctx.editMessageText(
-        `Welcome to *Habesha Bingo Bot*! 🎮💰\n\nPlay multiplayer Bingo, invite friends, and win big.`,
+        `Welcome to *Ethio Bingo Bot*! 🎮💰\n\nPlay multiplayer Bingo, invite friends, and win big.`,
         { parse_mode: "Markdown", reply_markup: keyboard }
     );
 });
