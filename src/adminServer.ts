@@ -902,6 +902,10 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             const request = await prisma.transactionRequest.findUnique({ where: { id } });
             if (!request) return res.status(404).json({ success: false, msg: 'Request not found.' });
 
+            if (request.status === 'APPROVED') {
+                return res.status(400).json({ success: false, msg: 'Approved requests are settled and cannot be deleted.' });
+            }
+
             if (request.proof) {
                 try {
                     const filePath = proofPath(request.proof);
@@ -928,7 +932,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         const numericIds = ids.map((i: any) => parseInt(String(i), 10)).filter(n => !isNaN(n));
         try {
             const requests = await prisma.transactionRequest.findMany({
-                where: { id: { in: numericIds } },
+                where: { id: { in: numericIds }, status: { in: ['PENDING', 'REJECTED'] } },
                 select: { id: true, proof: true }
             });
 
@@ -941,8 +945,13 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 }
             }
 
+            const validIds = requests.map(r => r.id);
+            if (validIds.length === 0) {
+                return res.json({ success: true, count: 0, msg: 'No eligible pending or rejected requests found to delete.' });
+            }
+
             const result = await prisma.transactionRequest.deleteMany({
-                where: { id: { in: numericIds } }
+                where: { id: { in: validIds } }
             });
             res.json({ success: true, count: result.count, msg: `${result.count} request(s) deleted successfully.` });
         } catch (e) {
@@ -960,6 +969,10 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         try {
             const existing = await prisma.transactionRequest.findUnique({ where: { id } });
             if (!existing) return res.status(404).json({ success: false, msg: 'Request not found.' });
+
+            if (existing.status === 'APPROVED') {
+                return res.status(400).json({ success: false, msg: 'Approved requests are settled and cannot be edited.' });
+            }
 
             const newAmount = (amount !== undefined && !isNaN(Number(amount)) && Number(amount) > 0)
                 ? Number(amount)

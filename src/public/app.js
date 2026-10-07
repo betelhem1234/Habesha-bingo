@@ -464,9 +464,10 @@ function initRequestFilters() {
             if (currentFilter !== 'ALL') {
                 filtered = allRequests.filter(r => r.status === currentFilter);
             }
+            const selectable = filtered.filter(r => r.status !== 'APPROVED');
 
             if (isChecked) {
-                filtered.forEach(r => selectedRequestIds.add(r.id));
+                selectable.forEach(r => selectedRequestIds.add(r.id));
             } else {
                 selectedRequestIds.clear();
             }
@@ -531,7 +532,8 @@ function updateBatchToolbar() {
         if (currentFilter !== 'ALL') {
             filtered = allRequests.filter(r => r.status === currentFilter);
         }
-        checkAll.checked = filtered.length > 0 && filtered.every(r => selectedRequestIds.has(r.id));
+        const selectable = filtered.filter(r => r.status !== 'APPROVED');
+        checkAll.checked = selectable.length > 0 && selectable.every(r => selectedRequestIds.has(r.id));
     }
 }
 
@@ -596,16 +598,30 @@ function renderRequests() {
             `;
         }
 
-        actionButtons += `
+        if (r.status === 'PENDING' || r.status === 'REJECTED') {
+            actionButtons += `
                 <button onclick="openEditModal(${r.id})" class="action-btn-sm" style="background:#3b82f6; color:#fff;" title="Edit request">✏️ Edit</button>
                 <button onclick="deleteSingleRequest(${r.id}, '${r.type}', ${r.amount})" class="action-btn-sm" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4);" title="Delete request">🗑</button>
+            `;
+        } else {
+            actionButtons += `
+                <span style="color:#64748b; font-size:12px; font-weight:600; padding:2px 4px;">🔒 Settled</span>
+            `;
+        }
+
+        actionButtons += `
             </div>
         `;
+
+        const isApproved = r.status === 'APPROVED';
+        const checkboxHtml = isApproved
+            ? `<input type="checkbox" disabled style="opacity:0.25; cursor:not-allowed;" title="Approved requests are settled and locked">`
+            : `<input type="checkbox" class="req-check" data-id="${r.id}" ${isChecked ? 'checked' : ''} onchange="toggleSelectRequest(${r.id}, this.checked)">`;
 
         return `
             <tr>
                 <td style="text-align:center;">
-                    <input type="checkbox" class="req-check" data-id="${r.id}" ${isChecked ? 'checked' : ''} onchange="toggleSelectRequest(${r.id}, this.checked)">
+                    ${checkboxHtml}
                 </td>
                 <td style="color:#94a3b8; font-family:monospace; font-size:13px;">#${escapeHtml(String(r.id))}</td>
                 <td>${userDisplay}</td>
@@ -622,6 +638,9 @@ function renderRequests() {
 }
 
 function toggleSelectRequest(id, checked) {
+    const req = allRequests.find(r => r.id === id);
+    if (req && req.status === 'APPROVED') return;
+
     if (checked) {
         selectedRequestIds.add(id);
     } else {
@@ -667,6 +686,12 @@ async function handleRequestAction(id, action, type, amount) {
 // ----------------------------------------------------
 async function deleteSingleRequest(id, type, amount) {
     if (isActionRunning) return;
+
+    const req = allRequests.find(r => r.id === id);
+    if (req && req.status === 'APPROVED') {
+        alert('Approved requests are settled and cannot be deleted.');
+        return;
+    }
 
     const ok = confirm(`⚠️ Are you sure you want to permanently DELETE ${type.toUpperCase()} request #${id} of ${amount} Birr?`);
     if (!ok) return;
@@ -834,6 +859,10 @@ function initEditModal() {
 function openEditModal(id) {
     const req = allRequests.find(r => r.id === id);
     if (!req) return;
+    if (req.status === 'APPROVED') {
+        alert('Approved requests are settled and cannot be edited.');
+        return;
+    }
 
     document.getElementById('edit-req-id').value = req.id;
     document.getElementById('edit-req-id-text').textContent = req.id;
