@@ -8,7 +8,9 @@ import { prisma } from './db';
 import { UPLOADS_DIR, proofPath, proofUrl } from './uploads';
 import { GameRooms } from './game/GameRooms';
 import { config } from './config';
-import { isValidAdminToken, generateAdminToken, revokeAdminToken } from './auth';
+import { isValidAdminToken, generateAdminToken, revokeAdminToken, verifyMasterPassword } from './auth';
+import { adminLoginLimiter, financialLimiter, generalApiLimiter } from './rateLimiter';
+import { requirePlayerOwnership, authenticateCaller } from './playerAuth';
 
 const upload = multer({
     storage: multer.diskStorage({
@@ -20,9 +22,11 @@ const upload = multer({
     }),
     limits: { fileSize: 10 * 1024 * 1024 },
     fileFilter: (_req, file, cb) => {
-        const ok = /^image\/(jpeg|jpg|png|webp|gif)$/.test(file.mimetype) || file.mimetype === 'application/pdf';
-        if (ok) cb(null, true);
-        else cb(new Error('Only image (JPG, PNG, WEBP, GIF) or PDF files are allowed.') as any, false);
+        const ext = path.extname(file.originalname).toLowerCase();
+        const allowedExts = ['.jpg', '.jpeg', '.png', '.webp', '.gif', '.pdf'];
+        const allowedMimes = /^image\/(jpeg|jpg|png|webp|gif)$/.test(file.mimetype) || file.mimetype === 'application/pdf';
+        if (allowedExts.includes(ext) && allowedMimes) cb(null, true);
+        else cb(new Error('Only valid image (JPG, PNG, WEBP, GIF) or PDF files are allowed.') as any, false);
     }
 });
 
@@ -30,6 +34,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     const app = express();
     app.use(cors());
     app.use(express.json());
+    app.use('/api', generalApiLimiter);
 
     async function notifyAdminNewRequest(id: number, type: string, amount: number, userId: bigint, proof?: string | null, accountText?: string) {
         try {
@@ -107,9 +112,9 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     }
 
     // Admin Auth Endpoints
-    app.post('/api/admin/login', (req, res) => {
+    app.post('/api/admin/login', adminLoginLimiter, (req, res) => {
         const { password } = req.body || {};
-        if (!password || password !== config.ADMIN_PASSWORD) {
+        if (!password || !verifyMasterPassword(password)) {
             return res.status(401).json({ success: false, msg: 'Invalid admin password.' });
         }
         const token = generateAdminToken();
@@ -430,7 +435,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Player profile (polled by profile.html)
-    app.get('/api/profile/:userId', async (req, res) => {
+    app.get('/api/profile/:userId', requirePlayerOwnership(req => req.params.userId), async (req, res) => {
         try {
             const user = await prisma.user.findUnique({
                 where: { id: BigInt(req.params.userId) },
@@ -483,7 +488,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Join a game by picking board numbers or a single boardNumber
-    app.post('/api/join', async (req, res) => {
+    app.post('/api/join', requirePlayerOwnership(req => req.body?.userId), async (req, res) => {
         const { userId, boardNumber, boards, bet, room } = req.body;
         if (!userId) {
             return res.status(400).json({ success: false, msg: 'userId is required.' });
@@ -505,7 +510,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         res.json(result);
     });
     
-    app.post('/api/daub', async (req, res) => {
+    app.post('/api/daub', requirePlayerOwnership(req => req.body?.userId), async (req, res) => {
         const { userId, number } = req.body;
         const gameManager = gameRooms.findPlayer(BigInt(userId));
         if (!gameManager) return res.json({ success: false, msg: 'You are not in a game.' });
@@ -513,7 +518,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         res.json(result);
     });
 
-    app.post('/api/claim', async (req, res) => {
+    app.post('/api/claim', requirePlayerOwnership(req => req.body?.userId), async (req, res) => {
         const { userId } = req.body;
         const gameManager = gameRooms.findPlayer(BigInt(userId));
         if (!gameManager) return res.json({ success: false, msg: 'You are not in a game.' });
@@ -522,7 +527,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Leave the bingo lobby before the game starts (releases the board, refunds the fee)
-    app.post('/api/leave', async (req, res) => {
+    app.post('/api/leave', requirePlayerOwnership(req => req.body?.userId), async (req, res) => {
         const { userId, bet, room } = req.body;
         if (!userId) {
             return res.status(400).json({ success: false, msg: 'userId is required.' });
@@ -551,7 +556,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     // -------------------- DEPOSIT / WITHDRAW REQUESTS (manual, until Telebirr) --------------------
 
     // Create a deposit request (agent will approve manually)
-    app.post('/api/request/deposit', (req, res) => {
+    app.post('/api/request/deposit', financialLimiter, (req, res) => {
         upload.single('proof')(req, res, async (err) => {
             if (err) {
                 const msg = (err as any).code === 'LIMIT_FILE_SIZE'
@@ -606,7 +611,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Create a withdraw request (agent will approve manually)
-    app.post('/api/request/withdraw', async (req, res) => {
+    app.post('/api/request/withdraw', financialLimiter, requirePlayerOwnership(req => req.body?.userId), async (req, res) => {
         const { userId, amount, phone, accountId, accountName } = req.body;
         if (!userId || !amount || isNaN(Number(amount)) || Number(amount) <= 0) {
             return res.status(400).json({ success: false, msg: 'A valid amount is required.' });
@@ -735,7 +740,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // List current user's requests (wallet page)
-    app.get('/api/requests/:userId', async (req, res) => {
+    app.get('/api/requests/:userId', requirePlayerOwnership(req => req.params.userId), async (req, res) => {
         try {
             const requests = await prisma.transactionRequest.findMany({
                 where: { userId: BigInt(req.params.userId) },

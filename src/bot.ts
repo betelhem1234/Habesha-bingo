@@ -8,6 +8,7 @@ import { proofPath, proofUrl } from './uploads';
 import { NEW_USER_BONUS } from './bonus';
 import { GameRooms } from './game/GameRooms';
 import { generateAdminToken } from './auth';
+import { signPlayerToken } from './playerAuth';
 
 // Simple in-memory language preference
 const userLangs = new Map<string, string>();
@@ -105,8 +106,9 @@ function clearState(userId: bigint) {
 }
 
 export function getBroadcastKeyboard(userId: bigint | string) {
+    const token = signPlayerToken(userId);
     const kb = new InlineKeyboard()
-        .webApp('🎮 ይጫወቱ', `${config.BINGO_APP_URL}/index.html?userId=${userId.toString()}`).row()
+        .webApp('🎮 ይጫወቱ', `${config.BINGO_APP_URL}/index.html?userId=${userId.toString()}&token=${token}`).row()
         .text('💰 ገንዘብ አስገባ', 'menu_deposit').row();
 
     if (config.CHANNEL_URL) {
@@ -128,7 +130,8 @@ function getBannerPhoto(): InputFile | string {
 
 async function sendMainMenu(ctx: Context, user: { id: bigint; phone?: string | null }) {
     const userId = user.id;
-    const playUrl = `${config.BINGO_APP_URL}/index.html?userId=${userId}&v=${Date.now()}`;
+    const token = signPlayerToken(userId);
+    const playUrl = `${config.BINGO_APP_URL}/index.html?userId=${userId}&token=${token}&v=${Date.now()}`;
     console.log(`[BOT] Sending PLAY NOW URL: ${playUrl}`);
 
     const kb = new InlineKeyboard()
@@ -256,9 +259,9 @@ bot.callbackQuery(/^lang_(en|am|om)$/, async (ctx) => {
     
     // Trigger start logic again manually since they picked language
     // But we need to use a clean context or just resend the start menu
-    const t = lang;
+    const token = signPlayerToken(ctx.from.id);
     const kb = new InlineKeyboard()
-        .webApp(TEXTS.playBtn[t], `${config.BINGO_APP_URL}/index.html?userId=${ctx.from.id}`).row()
+        .webApp(TEXTS.playBtn[t], `${config.BINGO_APP_URL}/index.html?userId=${ctx.from.id}&token=${token}`).row()
         .text('💰 Deposit', 'menu_deposit')
         .text('💸 Withdraw', 'menu_withdraw').row()
         .text('💼 Balance', 'menu_balance')
@@ -769,9 +772,10 @@ async function sendPlayBingoMenu(ctx: any) {
             { parse_mode: 'Markdown', reply_markup: regKb }
         );
     }
+    const token = signPlayerToken(userId);
     const kb = new InlineKeyboard()
-        .webApp('🎮 Play Habesha Bingo', `${BINGO_APP_URL}/index.html?userId=${userId}&v=${BINGO_APP_VERSION}`).row()
-        .webApp('📋 Select Boards', `${BINGO_APP_URL}/boards.html?userId=${userId}&v=${BINGO_APP_VERSION}`);
+        .webApp('🎮 Play Habesha Bingo', `${BINGO_APP_URL}/index.html?userId=${userId}&token=${token}&v=${BINGO_APP_VERSION}`).row()
+        .webApp('📋 Select Boards', `${BINGO_APP_URL}/boards.html?userId=${userId}&token=${token}&v=${BINGO_APP_VERSION}`);
         
     await ctx.reply('🍀 Best of luck on your Bingo game adventure! 🎮', { reply_markup: kb });
 }
@@ -779,16 +783,17 @@ async function sendPlayBingoMenu(ctx: any) {
 bot.callbackQuery('menu_deposit', async (ctx) => {
     await ctx.answerCallbackQuery();
     if (!ctx.from) return;
+    const userToken = signPlayerToken(ctx.from.id);
     const accounts = await prisma.paymentAccount.findMany({ where: { isActive: true }, orderBy: { createdAt: 'asc' } });
     if (accounts.length === 0) {
         return ctx.reply(
-            `💳 *Deposit*\n\nNo payout account is configured yet. Please contact support.\n\n👉 Open wallet: ${BINGO_APP_URL}/wallet.html?userId=${ctx.from.id}`,
+            `💳 *Deposit*\n\nNo payout account is configured yet. Please contact support.\n\n👉 Open wallet: ${BINGO_APP_URL}/wallet.html?userId=${ctx.from.id}&token=${userToken}`,
             { parse_mode: 'Markdown' }
         );
     }
     const kb = new InlineKeyboard();
     accounts.forEach(a => { kb.text(`🏦 ${a.bankName}`, `dep_bank_${a.id}`); kb.row(); });
-    kb.webApp('📲 Open Deposit Page', `${BINGO_APP_URL}/deposit.html?userId=${ctx.from.id}`);
+    kb.webApp('📲 Open Deposit Page', `${BINGO_APP_URL}/deposit.html?userId=${ctx.from.id}&token=${userToken}`);
     await ctx.reply(
         `💳 *Deposit*\n\nChoose the account you will send the money to, then open the deposit page to submit the amount and your payment screenshot.\n\nSelect an account:`,
         { parse_mode: 'Markdown', reply_markup: kb }
@@ -803,7 +808,8 @@ bot.callbackQuery(/^dep_bank_(\d+)$/, async (ctx) => {
     if (!account || !account.isActive) {
         return ctx.reply('⚠️ This account is no longer available. Pick another:').then(() => ctx.reply('/start'));
     }
-    const url = `${BINGO_APP_URL}/deposit.html?userId=${ctx.from.id}&acct=${id}`;
+    const userToken = signPlayerToken(ctx.from.id);
+    const url = `${BINGO_APP_URL}/deposit.html?userId=${ctx.from.id}&acct=${id}&token=${userToken}`;
     const kb = new InlineKeyboard()
         .webApp('📲 Open Deposit Page', url).row()
         .text('🔙 Change account', 'menu_deposit');
@@ -826,7 +832,9 @@ bot.callbackQuery('menu_balance', async (ctx) => {
 
 bot.callbackQuery(['menu_instructions', 'menu_support'], async (ctx) => {
     await ctx.answerCallbackQuery();
-    const playUrl = `${config.BINGO_APP_URL}/index.html?userId=${ctx.from?.id}&v=${Date.now()}`;
+    const uid = ctx.from?.id ? ctx.from.id.toString() : '0';
+    const token = signPlayerToken(uid);
+    const playUrl = `${config.BINGO_APP_URL}/index.html?userId=${uid}&token=${token}&v=${Date.now()}`;
     const kb = new InlineKeyboard()
         .webApp('🎮 አሁኑኑ ይጫወቱ (Play Now)', playUrl).row()
         .text('✍️ አስተያየት መስጫ (Feedback)', 'menu_feedback');
@@ -838,7 +846,9 @@ bot.callbackQuery(['menu_instructions', 'menu_support'], async (ctx) => {
 });
 
 bot.command(['instructions', 'rules', 'heg'], async (ctx) => {
-    const playUrl = `${config.BINGO_APP_URL}/index.html?userId=${ctx.from?.id}&v=${Date.now()}`;
+    const uid = ctx.from?.id ? ctx.from.id.toString() : '0';
+    const token = signPlayerToken(uid);
+    const playUrl = `${config.BINGO_APP_URL}/index.html?userId=${uid}&token=${token}&v=${Date.now()}`;
     const kb = new InlineKeyboard()
         .webApp('🎮 አሁኑኑ ይጫወቱ (Play Now)', playUrl).row()
         .text('✍️ አስተያየት መስጫ (Feedback)', 'menu_feedback');
@@ -1498,9 +1508,10 @@ bot.callbackQuery('wallet', async (ctx) => {
     if (!user) return ctx.answerCallbackQuery("User not found.");
 
     const bonusText = user.bonus.toNumber() > 0 ? `\n🎁 *Bonus:* ${user.bonus} Birr` : '';
+    const userToken = signPlayerToken(ctx.from.id);
     const keyboard = new InlineKeyboard()
-        .url('⬇️ Deposit', `${BINGO_APP_URL}/deposit.html?userId=${ctx.from.id}`)
-        .url('⬆️ Withdraw', `${BINGO_APP_URL}/withdraw.html?userId=${ctx.from.id}`).row()
+        .url('⬇️ Deposit', `${BINGO_APP_URL}/deposit.html?userId=${ctx.from.id}&token=${userToken}`)
+        .url('⬆️ Withdraw', `${BINGO_APP_URL}/withdraw.html?userId=${ctx.from.id}&token=${userToken}`).row()
         .text('🔙 Back', 'main_menu');
 
     await ctx.editMessageText(
@@ -1512,7 +1523,8 @@ bot.callbackQuery('wallet', async (ctx) => {
 bot.callbackQuery('deposit', async (ctx) => {
     if (!ctx.from) return;
     await ctx.answerCallbackQuery();
-    await ctx.reply(`Open the deposit page to submit a request:\n${BINGO_APP_URL}/deposit.html?userId=${ctx.from.id}`);
+    const userToken = signPlayerToken(ctx.from.id);
+    await ctx.reply(`Open the deposit page to submit a request:\n${BINGO_APP_URL}/deposit.html?userId=${ctx.from.id}&token=${userToken}`);
 });
 
 bot.callbackQuery('withdraw', async (ctx) => {
@@ -1525,7 +1537,8 @@ bot.callbackQuery('withdraw', async (ctx) => {
     }
 
     await ctx.answerCallbackQuery();
-    await ctx.reply(`Open the withdrawal page to submit a request:\n${BINGO_APP_URL}/withdraw.html?userId=${ctx.from.id}`);
+    const userToken = signPlayerToken(ctx.from.id);
+    await ctx.reply(`Open the withdrawal page to submit a request:\n${BINGO_APP_URL}/withdraw.html?userId=${ctx.from.id}&token=${userToken}`);
 });
 
 bot.callbackQuery('referral_link', async (ctx) => {

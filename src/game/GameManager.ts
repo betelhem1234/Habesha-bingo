@@ -149,6 +149,7 @@ export class GameManager {
         const newCount = boardNumbers.length;
         const countDiff = newCount - prevCount;
 
+        let additionalBonusUsed = 0;
         if (countDiff > 0 && feePerBoard > 0) {
             const addFee = countDiff * feePerBoard;
             const res = await deductFee(userId, addFee);
@@ -159,13 +160,25 @@ export class GameManager {
                     boards: existingPlayer && existingPlayer.cards ? existingPlayer.cards.map(c => c.boardNumber) : []
                 };
             }
+            additionalBonusUsed = res.bonusUsed;
         } else if (countDiff < 0 && feePerBoard > 0) {
-            // Refund unselected board
+            // Refund unselected board - restore bonus first if bonus was consumed
             const refundAmount = Math.abs(countDiff) * feePerBoard;
+            const currentBonusUsed = existingPlayer?.bonusUsed || 0;
+            const bonusRefund = Math.min(currentBonusUsed, refundAmount);
+            const balanceRefund = refundAmount - bonusRefund;
+
+            if (existingPlayer) {
+                existingPlayer.bonusUsed = Math.max(0, currentBonusUsed - bonusRefund);
+            }
+
             try {
                 await prisma.user.update({
                     where: { id: userId },
-                    data: { balance: { increment: refundAmount } }
+                    data: {
+                        ...(balanceRefund > 0 ? { balance: { increment: balanceRefund } } : {}),
+                        ...(bonusRefund > 0 ? { bonus: { increment: bonusRefund } } : {})
+                    }
                 });
             } catch (e) {}
         }
@@ -182,6 +195,7 @@ export class GameManager {
             existingPlayer.ticket = cards[0].ticket;
             existingPlayer.daubed = cards[0].daubed;
             existingPlayer.fee = newCount * feePerBoard;
+            existingPlayer.bonusUsed = (existingPlayer.bonusUsed || 0) + additionalBonusUsed;
             existingPlayer.lastSeen = Date.now();
         } else {
             const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -192,6 +206,7 @@ export class GameManager {
                 daubed: cards[0].daubed,
                 boardNumber: cards[0].boardNumber,
                 fee: newCount * feePerBoard,
+                bonusUsed: additionalBonusUsed,
                 firstName: user?.firstName ?? undefined,
                 username: user?.username ?? undefined,
                 lastSeen: Date.now()

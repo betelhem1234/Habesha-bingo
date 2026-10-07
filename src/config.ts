@@ -5,7 +5,7 @@ export const config = {
     BOT_TOKEN: process.env.BOT_TOKEN || '',
     DATABASE_URL: process.env.DATABASE_URL || '',
     ADMIN_USER_ID: process.env.ADMIN_USER_ID || '',
-    ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || 'habesha_bingo_admin_2026',
+    ADMIN_PASSWORD: process.env.ADMIN_PASSWORD || 'eBFqKW8mpvp528ApSKQ&zWpfM4t&',
     BINGO_APP_URL: process.env.BINGO_APP_URL || 'https://localhost:3001',
     PORT: process.env.PORT || '3001',
     CHANNEL_URL: process.env.CHANNEL_URL || 'https://t.me/ethioBingoOne',

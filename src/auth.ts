@@ -15,6 +15,17 @@ export function generateAdminToken(ttlHours = 720): string {
 }
 
 /**
+ * Safely verify provided password against configured admin password using timingSafeEqual
+ */
+export function verifyMasterPassword(provided: string | null | undefined): boolean {
+    if (!provided || !config.ADMIN_PASSWORD) return false;
+    const a = Buffer.from(provided.trim());
+    const b = Buffer.from(config.ADMIN_PASSWORD.trim());
+    if (a.length !== b.length) return false;
+    return crypto.timingSafeEqual(a, b);
+}
+
+/**
  * Verify if a given token is a valid active admin session.
  */
 export function isValidAdminToken(token: string | null | undefined): boolean {
@@ -32,7 +43,7 @@ export function isValidAdminToken(token: string | null | undefined): boolean {
     }
 
     // Allow master admin password as a valid bearer token
-    if (config.ADMIN_PASSWORD && clean === config.ADMIN_PASSWORD) {
+    if (config.ADMIN_PASSWORD && verifyMasterPassword(clean)) {
         return true;
     }
 
