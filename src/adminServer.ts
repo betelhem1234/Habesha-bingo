@@ -456,6 +456,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 totalBalance,
                 referredBy: user.referredById ? user.referredById.toString() : null,
                 referrals: user._count.referrals,
+                referralLink: `https://t.me/PlayMyBingoBot?start=${user.id}`,
                 createdAt: user.createdAt,
                 user: {
                     id: user.id.toString(),

@@ -6,6 +6,7 @@ export interface DeductResult {
 }
 
 export const NEW_USER_BONUS = 10;
+export const REFERRAL_BONUS = 5;
 
 // Deducts an entry fee preferring the user's bonus first, then their balance.
 // New users get a 10 Birr bonus which is consumed on their first paid game,

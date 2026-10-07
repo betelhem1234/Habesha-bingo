@@ -5,7 +5,7 @@ import { Bot, Context, InlineKeyboard, Keyboard, InputFile } from 'grammy';
 import { config } from './config';
 import { prisma } from './db';
 import { proofPath, proofUrl } from './uploads';
-import { NEW_USER_BONUS } from './bonus';
+import { NEW_USER_BONUS, REFERRAL_BONUS } from './bonus';
 import { GameRooms } from './game/GameRooms';
 import { generateAdminToken } from './auth';
 import { signPlayerToken } from './playerAuth';
@@ -15,9 +15,9 @@ const userLangs = new Map<string, string>();
 
 const TEXTS = {
     welcome: {
-        en: 'Welcome to **Ethio Bingo**! 🔥 FIRST JOIN 30 Birr BONUS 🔥',
-        am: 'እንኳን ወደ **Ethio Bingo** በደህና መጡ! 🔥 FIRST JOIN 30 Birr BONUS 🔥',
-        om: 'Baga nagaan gara **Ethio Bingo** dhuftan! 🔥 FIRST JOIN 30 Birr BONUS 🔥'
+        en: 'Welcome to **Ethio Bingo**! 🔥 FIRST JOIN 10 Birr BONUS 🔥',
+        am: 'እንኳን ወደ **Ethio Bingo** በደህና መጡ! 🔥 FIRST JOIN 10 Birr BONUS 🔥',
+        om: 'Baga nagaan gara **Ethio Bingo** dhuftan! 🔥 FIRST JOIN 10 Birr BONUS 🔥'
     },
     playBtn: {
         en: '🎮 PLAY NOW',
@@ -193,7 +193,7 @@ bot.command('resetme', async (ctx: Context) => {
 bot.command('start', async (ctx: Context) => {
     if (!ctx.from) return;
 
-    const startParam = String(ctx.match ?? '');
+    const startParam = String(ctx.match ?? '').trim().replace(/^ref_?/, '');
     const refId = /^\d+$/.test(startParam) ? BigInt(startParam) : null;
 
     // Check if user exists
@@ -206,24 +206,23 @@ bot.command('start', async (ctx: Context) => {
                 firstName: ctx.from.first_name,
                 lastName: ctx.from.last_name ?? null,
                 balance: 0, // Balance starts at 0 — credited after the user deposits
-                bonus: NEW_USER_BONUS,    // Starting bonus: used for the first paid game
+                bonus: NEW_USER_BONUS,    // Starting 10 Birr bonus: credited for any new user
                 referredById: refId ?? undefined
             }
         });
 
-        // Reward the referrer with 5 Birr when their invite joins
+        // Reward the referrer with 5 Birr bonus when their invite joins
         if (refId && refId !== user.id) {
             try {
                 const referrer = await prisma.user.findUnique({ where: { id: refId } });
                 if (referrer) {
-                    const REFERRAL_BONUS = 5; // Birr paid to the referrer when their invite joins
                     await prisma.user.update({
                         where: { id: refId },
-                        data: { balance: { increment: REFERRAL_BONUS } }
+                        data: { bonus: { increment: REFERRAL_BONUS } }
                     });
                     try {
                         await bot.api.sendMessage(Number(refId),
-                            `🎉 *Referral Bonus Earned!*\n\n${ctx.from.first_name || 'Your friend'} joined through your invite link. You earned *${REFERRAL_BONUS} Birr*!`,
+                            `🎉 *Referral Bonus Earned!*\n\n${ctx.from.first_name || 'Your friend'} joined through your invite link. You earned *${REFERRAL_BONUS} Birr Bonus*! 🎁`,
                             { parse_mode: "Markdown" });
                     } catch (e) {}
                 }
@@ -242,6 +241,7 @@ bot.command('start', async (ctx: Context) => {
 
         await ctx.reply(
             `👋 *Welcome to Ethio Bingo!*\n\n` +
+            `🎁 You have received *${NEW_USER_BONUS} Birr Welcome Bonus*!\n` +
             `To get started and secure your account, please register by sharing your phone number below 👇`,
             {
                 parse_mode: 'Markdown',
@@ -729,7 +729,7 @@ bot.on('message:contact', async (ctx) => {
         data: { phone }
     });
 
-    await ctx.reply('✅ *Registration Complete!*\n\nWelcome to Ethio Bingo! Get ready to play and win.', {
+    await ctx.reply(`✅ *Registration Complete!*\n\n🎁 Your *${NEW_USER_BONUS} Birr Welcome Bonus* is active! Welcome to Ethio Bingo! Get ready to play and win.`, {
         parse_mode: 'Markdown',
         reply_markup: { remove_keyboard: true }
     });
@@ -746,7 +746,7 @@ bot.callbackQuery('menu_invite', async (ctx) => {
 
     await ctx.reply(
         `🔗 *Invite Friends & Earn!*\n\n` +
-        `Share this referral link with your friends. When they join using your link, you get *5 Birr*! 🎉\n\n` +
+        `Share this referral link with your friends. When they join using your link, they receive a *${NEW_USER_BONUS} Birr Welcome Bonus* and you earn a *${REFERRAL_BONUS} Birr Bonus*! 🎁🎉\n\n` +
         `\`${link}\`\n\n` +
         `👉 Share it now and grow your team!`,
         { parse_mode: "Markdown" }
@@ -1556,7 +1556,7 @@ bot.callbackQuery('referral_link', async (ctx) => {
     const keyboard = new InlineKeyboard().text('🔙 Back', 'main_menu');
     
     await ctx.editMessageText(
-        `🔗 *Your Referral Link*\n\nShare this link with your friends. For every friend who joins, you will earn *5 Birr*!\n\n\`${link}\``,
+        `🔗 *Your Referral Link*\n\nShare this link with your friends. When they join, they receive a *${NEW_USER_BONUS} Birr Welcome Bonus* and you earn a *${REFERRAL_BONUS} Birr Bonus*! 🎁\n\n\`${link}\``,
         { parse_mode: "Markdown", reply_markup: keyboard }
     );
 });

@@ -353,8 +353,7 @@
                 document.getElementById('pjoined').textContent = new Date(p.createdAt).toLocaleDateString();
                 document.getElementById('preferred').textContent = p.referredBy ? `User ${p.referredBy}` : '—';
 
-                const botName = window.Telegram?.WebApp?.initDataUnsafe?.user?.username;
-                const link = `https://t.me/${botName || 'PlayMyBingoBot'}?start=${p.id}`;
+                const link = p.referralLink || `https://t.me/PlayMyBingoBot?start=${p.id}`;
                 document.getElementById('ref-link').textContent = link;
             } catch (e) {
                 document.getElementById('pname').textContent = 'Player Profile';
