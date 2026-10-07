@@ -1,11 +1,35 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import { NEW_USER_BONUS, REFERRAL_BONUS } from '../src/bonus';
+import { NEW_USER_BONUS, REFERRAL_BONUS, getNewUserBonus, getReferralBonus, setBonusSettings } from '../src/bonus';
 
 test('Referral and Welcome Bonus System Tests', async (t) => {
     await t.test('constants guarantee 10 Birr welcome bonus and 5 Birr referral bonus', () => {
-        assert.equal(NEW_USER_BONUS, 10, 'New user welcome bonus must be 10 Birr');
-        assert.equal(REFERRAL_BONUS, 5, 'Referrer invite bonus must be 5 Birr');
+        // Ensure standard default values
+        setBonusSettings(10, 5);
+        assert.equal(getNewUserBonus(), 10, 'New user welcome bonus must default to 10 Birr');
+        assert.equal(getReferralBonus(), 5, 'Referrer invite bonus must default to 5 Birr');
+        assert.equal(NEW_USER_BONUS, 10, 'NEW_USER_BONUS export is in sync');
+        assert.equal(REFERRAL_BONUS, 5, 'REFERRAL_BONUS export is in sync');
+    });
+
+    await t.test('setBonusSettings updates bonus rates dynamically and validates input', () => {
+        const updated = setBonusSettings(25, 15);
+        assert.equal(updated.newUserBonus, 25);
+        assert.equal(updated.referralBonus, 15);
+        assert.equal(getNewUserBonus(), 25);
+        assert.equal(getReferralBonus(), 15);
+        assert.equal(NEW_USER_BONUS, 25);
+        assert.equal(REFERRAL_BONUS, 15);
+
+        // Validation rejects negative numbers and NaN
+        assert.throws(() => setBonusSettings(-5, 10), /Invalid newUserBonus/);
+        assert.throws(() => setBonusSettings(10, -2), /Invalid referralBonus/);
+        assert.throws(() => setBonusSettings(NaN, 5), /Invalid newUserBonus/);
+
+        // Reset back to defaults for subsequent test cases
+        setBonusSettings(10, 5);
+        assert.equal(getNewUserBonus(), 10);
+        assert.equal(getReferralBonus(), 5);
     });
 
     await t.test('referral start parameter parser safely extracts valid inviter ID', () => {
@@ -32,7 +56,7 @@ test('Referral and Welcome Bonus System Tests', async (t) => {
         assert.equal(parseRefId('abc123xyz'), null);
     });
 
-    await t.test('direct bot join grants 10 Birr bonus to new member and no referrer reward', () => {
+    await t.test('direct bot join grants active bonus to new member and no referrer reward', () => {
         const users = new Map<string, { id: bigint; balance: number; bonus: number; referredById?: bigint }>();
 
         function handleJoin(userId: bigint, startParamMatch: string) {
@@ -46,7 +70,7 @@ test('Referral and Welcome Bonus System Tests', async (t) => {
             const newUser = {
                 id: userId,
                 balance: 0,
-                bonus: NEW_USER_BONUS,
+                bonus: getNewUserBonus(),
                 referredById: refId ?? undefined
             };
             users.set(userId.toString(), newUser);
@@ -54,7 +78,7 @@ test('Referral and Welcome Bonus System Tests', async (t) => {
             if (refId && refId !== userId) {
                 const referrer = users.get(refId.toString());
                 if (referrer) {
-                    referrer.bonus += REFERRAL_BONUS;
+                    referrer.bonus += getReferralBonus();
                 }
             }
 
@@ -70,7 +94,10 @@ test('Referral and Welcome Bonus System Tests', async (t) => {
         assert.equal(res.user.referredById, undefined);
     });
 
-    await t.test('invite join grants 10 Birr bonus to new member and 5 Birr bonus to inviter', () => {
+    await t.test('invite join grants configured bonuses dynamically', () => {
+        // Set promotional rate
+        setBonusSettings(20, 10);
+
         const users = new Map<string, { id: bigint; balance: number; bonus: number; referredById?: bigint }>();
 
         // Create inviter
@@ -88,7 +115,7 @@ test('Referral and Welcome Bonus System Tests', async (t) => {
             const newUser = {
                 id: userId,
                 balance: 0,
-                bonus: NEW_USER_BONUS,
+                bonus: getNewUserBonus(),
                 referredById: refId ?? undefined
             };
             users.set(userId.toString(), newUser);
@@ -96,7 +123,7 @@ test('Referral and Welcome Bonus System Tests', async (t) => {
             if (refId && refId !== userId) {
                 const referrer = users.get(refId.toString());
                 if (referrer) {
-                    referrer.bonus += REFERRAL_BONUS;
+                    referrer.bonus += getReferralBonus();
                 }
             }
 
@@ -107,14 +134,17 @@ test('Referral and Welcome Bonus System Tests', async (t) => {
         const res = handleJoin(newPlayerId, '1001');
 
         assert.equal(res.isNew, true);
-        // New player gets 10 Birr bonus
-        assert.equal(res.user.bonus, 10);
+        // New player gets promotional 20 Birr welcome bonus
+        assert.equal(res.user.bonus, 20);
         assert.equal(res.user.referredById, 1001n);
 
-        // Inviter gets 5 Birr bonus (credited to bonus, cash balance untouched)
+        // Inviter gets promotional 10 Birr referral bonus
         const inviter = users.get(inviterId.toString())!;
-        assert.equal(inviter.bonus, 5, 'Inviter received 5 Birr bonus');
+        assert.equal(inviter.bonus, 10, 'Inviter received 10 Birr promo bonus');
         assert.equal(inviter.balance, 20, 'Inviter cash balance remains intact');
+
+        // Reset back to standard rates
+        setBonusSettings(10, 5);
     });
 
     await t.test('self-referral does not award extra bonus to user', () => {
@@ -131,7 +161,7 @@ test('Referral and Welcome Bonus System Tests', async (t) => {
             const newUser = {
                 id: userId,
                 balance: 0,
-                bonus: NEW_USER_BONUS,
+                bonus: getNewUserBonus(),
                 referredById: refId ?? undefined
             };
             users.set(userId.toString(), newUser);
@@ -139,7 +169,7 @@ test('Referral and Welcome Bonus System Tests', async (t) => {
             if (refId && refId !== userId) {
                 const referrer = users.get(refId.toString());
                 if (referrer) {
-                    referrer.bonus += REFERRAL_BONUS;
+                    referrer.bonus += getReferralBonus();
                 }
             }
 

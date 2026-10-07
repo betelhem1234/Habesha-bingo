@@ -1,3 +1,5 @@
 {
-  "callerVoice": "male"
+  "callerVoice": "male",
+  "newUserBonus": 10,
+  "referralBonus": 5
 }

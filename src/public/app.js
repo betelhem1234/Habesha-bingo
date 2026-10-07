@@ -176,7 +176,8 @@ async function refreshAllData() {
         fetchHouseIncome(),
         fetchStats(),
         fetchUsers(searchQuery),
-        fetchRequests()
+        fetchRequests(),
+        fetchBonusSettings()
     ]);
 }
 
@@ -1092,6 +1093,80 @@ function escapeHtml(str) {
         .replace(/'/g, '&#039;');
 }
 
+// ----------------------------------------------------
+// Promotional Bonus Settings Controller
+// ----------------------------------------------------
+async function fetchBonusSettings() {
+    try {
+        const res = await authFetch('/api/admin/bonus');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.success) {
+            const inputNewUser = document.getElementById('input-new-user-bonus');
+            const inputReferral = document.getElementById('input-referral-bonus');
+            if (inputNewUser && document.activeElement !== inputNewUser && data.newUserBonus !== undefined) {
+                inputNewUser.value = data.newUserBonus;
+            }
+            if (inputReferral && document.activeElement !== inputReferral && data.referralBonus !== undefined) {
+                inputReferral.value = data.referralBonus;
+            }
+        }
+    } catch (err) {
+        console.error('Error fetching bonus settings:', err);
+    }
+}
+
+async function saveBonusSettings() {
+    const inputNewUser = document.getElementById('input-new-user-bonus');
+    const inputReferral = document.getElementById('input-referral-bonus');
+    const statusEl = document.getElementById('bonus-save-status');
+
+    if (!inputNewUser || !inputReferral) return;
+
+    const newUserBonus = parseInt(inputNewUser.value, 10);
+    const referralBonus = parseInt(inputReferral.value, 10);
+
+    if (isNaN(newUserBonus) || newUserBonus < 0 || isNaN(referralBonus) || referralBonus < 0) {
+        if (statusEl) {
+            statusEl.textContent = '❌ Enter valid non-negative numbers';
+            statusEl.style.color = '#ef4444';
+        }
+        return;
+    }
+
+    if (statusEl) {
+        statusEl.textContent = '⏳ Saving...';
+        statusEl.style.color = '#38bdf8';
+    }
+
+    try {
+        const res = await authFetch('/api/admin/bonus', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ newUserBonus, referralBonus })
+        });
+        const data = await res.json();
+        if (data.success) {
+            if (statusEl) {
+                statusEl.textContent = `✅ Saved! Welcome: ${data.newUserBonus} Birr | Referral: ${data.referralBonus} Birr`;
+                statusEl.style.color = '#10b981';
+                setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 4000);
+            }
+        } else {
+            if (statusEl) {
+                statusEl.textContent = `❌ ${data.msg || 'Save failed'}`;
+                statusEl.style.color = '#ef4444';
+            }
+        }
+    } catch (err) {
+        console.error('Error saving bonus settings:', err);
+        if (statusEl) {
+            statusEl.textContent = '❌ Failed to save bonus settings.';
+            statusEl.style.color = '#ef4444';
+        }
+    }
+}
+
 // Global exports for inline HTML event attributes
 window.openEditUserModal = openEditUserModal;
 window.closeEditUserModal = closeEditUserModal;
@@ -1103,3 +1178,6 @@ window.deleteSingleRequest = deleteSingleRequest;
 window.openEditModal = openEditModal;
 window.closeEditModal = closeEditModal;
 window.toggleSelectRequest = toggleSelectRequest;
+window.fetchBonusSettings = fetchBonusSettings;
+window.saveBonusSettings = saveBonusSettings;
+

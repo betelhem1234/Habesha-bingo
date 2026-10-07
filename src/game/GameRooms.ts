@@ -33,7 +33,14 @@ export class GameRooms {
         try {
             const dir = path.dirname(this.settingsFilePath);
             if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            fs.writeFileSync(this.settingsFilePath, JSON.stringify({ callerVoice: this.callerVoice }, null, 2), 'utf8');
+            let currentData: any = {};
+            if (fs.existsSync(this.settingsFilePath)) {
+                try {
+                    currentData = JSON.parse(fs.readFileSync(this.settingsFilePath, 'utf8'));
+                } catch {}
+            }
+            currentData.callerVoice = this.callerVoice;
+            fs.writeFileSync(this.settingsFilePath, JSON.stringify(currentData, null, 2), 'utf8');
         } catch (e) {
             console.error('[GameRooms] Error saving settings file:', e);
         }

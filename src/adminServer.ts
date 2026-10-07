@@ -11,6 +11,7 @@ import { config } from './config';
 import { isValidAdminToken, generateAdminToken, revokeAdminToken, verifyMasterPassword } from './auth';
 import { adminLoginLimiter, financialLimiter, generalApiLimiter } from './rateLimiter';
 import { requirePlayerOwnership, authenticateCaller } from './playerAuth';
+import { getNewUserBonus, getReferralBonus, setBonusSettings } from './bonus';
 
 const upload = multer({
     storage: multer.diskStorage({
@@ -1403,6 +1404,40 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         gameRooms.setCallerVoice(voice);
         console.log(`[Admin] Caller voice changed to "${voice}" by admin`);
         res.json({ success: true, voice: gameRooms.getCallerVoice() });
+    });
+
+    // Promotional Bonus Admin API
+    app.get('/api/admin/bonus', adminAuthMiddleware, (_req, res) => {
+        res.json({
+            success: true,
+            newUserBonus: getNewUserBonus(),
+            referralBonus: getReferralBonus()
+        });
+    });
+
+    app.post('/api/admin/bonus', adminAuthMiddleware, (req, res) => {
+        const { newUserBonus, referralBonus } = req.body || {};
+        const parsedNewUser = Number(newUserBonus);
+        const parsedReferral = Number(referralBonus);
+
+        if (isNaN(parsedNewUser) || parsedNewUser < 0 || isNaN(parsedReferral) || parsedReferral < 0) {
+            return res.status(400).json({
+                success: false,
+                msg: 'Invalid bonus values. Both must be numbers greater than or equal to 0.'
+            });
+        }
+
+        try {
+            const updated = setBonusSettings(parsedNewUser, parsedReferral);
+            console.log(`[Admin] Promotional bonus updated: Welcome=${updated.newUserBonus} Birr, Referral=${updated.referralBonus} Birr`);
+            res.json({
+                success: true,
+                newUserBonus: updated.newUserBonus,
+                referralBonus: updated.referralBonus
+            });
+        } catch (e: any) {
+            res.status(500).json({ success: false, msg: e?.message || 'Failed to save bonus settings' });
+        }
     });
 
 

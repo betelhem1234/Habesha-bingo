@@ -5,7 +5,7 @@ import { Bot, Context, InlineKeyboard, Keyboard, InputFile } from 'grammy';
 import { config } from './config';
 import { prisma } from './db';
 import { proofPath, proofUrl } from './uploads';
-import { NEW_USER_BONUS, REFERRAL_BONUS } from './bonus';
+import { NEW_USER_BONUS, REFERRAL_BONUS, getNewUserBonus, getReferralBonus, setBonusSettings } from './bonus';
 import { GameRooms } from './game/GameRooms';
 import { generateAdminToken } from './auth';
 import { signPlayerToken } from './playerAuth';
@@ -13,11 +13,22 @@ import { signPlayerToken } from './playerAuth';
 // Simple in-memory language preference
 const userLangs = new Map<string, string>();
 
+function getWelcomeText(lang: string = 'en') {
+    const bonus = getNewUserBonus();
+    if (lang === 'am') {
+        return `እንኳን ወደ **Ethio Bingo** በደህና መጡ! 🔥 FIRST JOIN ${bonus} Birr BONUS 🔥`;
+    }
+    if (lang === 'om') {
+        return `Baga nagaan gara **Ethio Bingo** dhuftan! 🔥 FIRST JOIN ${bonus} Birr BONUS 🔥`;
+    }
+    return `Welcome to **Ethio Bingo**! 🔥 FIRST JOIN ${bonus} Birr BONUS 🔥`;
+}
+
 const TEXTS = {
     welcome: {
-        en: 'Welcome to **Ethio Bingo**! 🔥 FIRST JOIN 10 Birr BONUS 🔥',
-        am: 'እንኳን ወደ **Ethio Bingo** በደህና መጡ! 🔥 FIRST JOIN 10 Birr BONUS 🔥',
-        om: 'Baga nagaan gara **Ethio Bingo** dhuftan! 🔥 FIRST JOIN 10 Birr BONUS 🔥'
+        get en() { return getWelcomeText('en'); },
+        get am() { return getWelcomeText('am'); },
+        get om() { return getWelcomeText('om'); },
     },
     playBtn: {
         en: '🎮 PLAY NOW',
@@ -206,23 +217,24 @@ bot.command('start', async (ctx: Context) => {
                 firstName: ctx.from.first_name,
                 lastName: ctx.from.last_name ?? null,
                 balance: 0, // Balance starts at 0 — credited after the user deposits
-                bonus: NEW_USER_BONUS,    // Starting 10 Birr bonus: credited for any new user
+                bonus: getNewUserBonus(),    // Starting welcome bonus: credited for any new user
                 referredById: refId ?? undefined
             }
         });
 
-        // Reward the referrer with 5 Birr bonus when their invite joins
+        // Reward the referrer with bonus when their invite joins
         if (refId && refId !== user.id) {
             try {
                 const referrer = await prisma.user.findUnique({ where: { id: refId } });
                 if (referrer) {
+                    const refBonus = getReferralBonus();
                     await prisma.user.update({
                         where: { id: refId },
-                        data: { bonus: { increment: REFERRAL_BONUS } }
+                        data: { bonus: { increment: refBonus } }
                     });
                     try {
                         await bot.api.sendMessage(Number(refId),
-                            `🎉 *Referral Bonus Earned!*\n\n${ctx.from.first_name || 'Your friend'} joined through your invite link. You earned *${REFERRAL_BONUS} Birr Bonus*! 🎁`,
+                            `🎉 *Referral Bonus Earned!*\n\n${ctx.from.first_name || 'Your friend'} joined through your invite link. You earned *${refBonus} Birr Bonus*! 🎁`,
                             { parse_mode: "Markdown" });
                     } catch (e) {}
                 }
@@ -241,7 +253,7 @@ bot.command('start', async (ctx: Context) => {
 
         await ctx.reply(
             `👋 *Welcome to Ethio Bingo!*\n\n` +
-            `🎁 You have received *${NEW_USER_BONUS} Birr Welcome Bonus*!\n` +
+            `🎁 You have received *${getNewUserBonus()} Birr Welcome Bonus*!\n` +
             `To get started and secure your account, please register by sharing your phone number below 👇`,
             {
                 parse_mode: 'Markdown',
@@ -587,6 +599,53 @@ bot.callbackQuery(/^voice_set_(male|female)$/, async (ctx) => {
     );
 });
 
+function getBonusPresetsKeyboard() {
+    return new InlineKeyboard()
+        .text('🔥 20 / 10 Birr (Promo)', 'bonus_preset_20_10')
+        .text('🚀 15 / 10 Birr', 'bonus_preset_15_10').row()
+        .text('🔄 10 / 5 Birr (Default)', 'bonus_preset_10_5');
+}
+
+bot.callbackQuery('menu_admin_bonus', async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.answerCallbackQuery({ text: '⛔ Admin only.', show_alert: true });
+    }
+    await ctx.answerCallbackQuery();
+    const currentNewUser = getNewUserBonus();
+    const currentRef = getReferralBonus();
+    const kb = getBonusPresetsKeyboard();
+    await ctx.reply(
+        `🎁 *Promotional Bonus Settings*\n\n` +
+        `• *New User Welcome Bonus:* *${currentNewUser} Birr*\n` +
+        `• *Referral Invite Bonus:* *${currentRef} Birr*\n\n` +
+        `Dynamically increase bonus amounts for promotions when player activity is low, or lower them anytime.\n\n` +
+        `To set custom amounts:\n\`/setbonus <welcome> <referral>\` (e.g. \`/setbonus 25 15\`)\n\n` +
+        `Or choose a quick preset below 👇`,
+        { parse_mode: 'Markdown', reply_markup: kb }
+    );
+});
+
+bot.callbackQuery(/^bonus_preset_(\d+)_(\d+)$/, async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.answerCallbackQuery({ text: '⛔ Admin only.', show_alert: true });
+    }
+    const match = ctx.callbackQuery.data.match(/^bonus_preset_(\d+)_(\d+)$/);
+    if (!match) return ctx.answerCallbackQuery();
+
+    const newUser = Number(match[1]);
+    const ref = Number(match[2]);
+    const updated = setBonusSettings(newUser, ref);
+
+    await ctx.answerCallbackQuery({ text: `✅ Bonus updated: ${newUser}/${ref} Birr!`, show_alert: true });
+    await ctx.reply(
+        `🎁 *Promotional Bonus Settings Updated!*\n\n` +
+        `• *New User Welcome Bonus:* *${updated.newUserBonus} Birr*\n` +
+        `• *Referral Invite Bonus:* *${updated.referralBonus} Birr*\n\n` +
+        `All new player registrations and referral invites will immediately use these rates.`,
+        { parse_mode: 'Markdown' }
+    );
+});
+
 // --- Admin: payout account (bank) management ---
 
 async function adminBanksList(ctx: any, msgId?: number) {
@@ -729,7 +788,7 @@ bot.on('message:contact', async (ctx) => {
         data: { phone }
     });
 
-    await ctx.reply(`✅ *Registration Complete!*\n\n🎁 Your *${NEW_USER_BONUS} Birr Welcome Bonus* is active! Welcome to Ethio Bingo! Get ready to play and win.`, {
+    await ctx.reply(`✅ *Registration Complete!*\n\n🎁 Your *${getNewUserBonus()} Birr Welcome Bonus* is active! Welcome to Ethio Bingo! Get ready to play and win.`, {
         parse_mode: 'Markdown',
         reply_markup: { remove_keyboard: true }
     });
@@ -746,7 +805,7 @@ bot.callbackQuery('menu_invite', async (ctx) => {
 
     await ctx.reply(
         `🔗 *Invite Friends & Earn!*\n\n` +
-        `Share this referral link with your friends. When they join using your link, they receive a *${NEW_USER_BONUS} Birr Welcome Bonus* and you earn a *${REFERRAL_BONUS} Birr Bonus*! 🎁🎉\n\n` +
+        `Share this referral link with your friends. When they join using your link, they receive a *${getNewUserBonus()} Birr Welcome Bonus* and you earn a *${getReferralBonus()} Birr Bonus*! 🎁🎉\n\n` +
         `\`${link}\`\n\n` +
         `👉 Share it now and grow your team!`,
         { parse_mode: "Markdown" }
@@ -958,6 +1017,8 @@ bot.command('admin', async (ctx) => {
 
     const v = gameRooms.getCallerVoice();
     const vText = v === 'female' ? '👩 Female (ሴት)' : '👨 Male (ወንድ)';
+    const curWelcome = getNewUserBonus();
+    const curRef = getReferralBonus();
     const kb = new InlineKeyboard()
         .url('🚀 Open Admin Dashboard (1-Click Login)', adminUrl).row()
         .url('📊 Open Stats & Analytics', statsUrl).row()
@@ -967,7 +1028,8 @@ bot.command('admin', async (ctx) => {
         .text('📣 Broadcast', 'menu_admin_broadcast').row()
         .text('▶️ Start Game', 'menu_admin_start')
         .text('⏹ Stop Game', 'menu_admin_stop').row()
-        .text(`🎙️ Voice: ${vText}`, 'menu_admin_voice');
+        .text(`🎙️ Voice: ${vText}`, 'menu_admin_voice')
+        .text(`🎁 Bonus: ${curWelcome}/${curRef} Birr`, 'menu_admin_bonus');
 
     await ctx.reply(
         "🔒 *Ethio Bingo Admin Portal*\n\n" +
@@ -975,10 +1037,13 @@ bot.command('admin', async (ctx) => {
         "• `/requests` — view & approve/reject deposits/withdrawals\n" +
         "• `/banks` — manage payout accounts\n" +
         "• `/voice [male|female]` — switch caller voice for all players\n" +
+        "• `/bonus` — configure promotional bonus rates\n" +
+        "• `/setbonus <welcome> <referral>` — set custom promo bonus (e.g. `/setbonus 20 10`)\n" +
         "• `/broadcast <msg>` — send an announcement to all users\n" +
         "• `/start_game` — force start games\n" +
         "• `/stop_game` — stop running games\n\n" +
-        `🎙️ *Active Caller Voice:* *${vText}*`,
+        `🎙️ *Active Caller Voice:* *${vText}*\n` +
+        `🎁 *Active Promotional Bonuses:* Welcome: *${curWelcome} Birr* | Referral: *${curRef} Birr*`,
         { parse_mode: "Markdown", reply_markup: kb }
     );
 });
@@ -1006,6 +1071,62 @@ bot.command(['voice', 'caller'], async (ctx) => {
         `Current active voice for all players: *${curLabel}*\n\n` +
         `Tap a button below to switch the voice immediately:`,
         { parse_mode: 'Markdown', reply_markup: kb }
+    );
+});
+
+bot.command('setbonus', async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.reply("⛔ This command is admin-only.");
+    }
+    const parts = (ctx.match || '').toString().trim().split(/\s+/).filter(Boolean);
+    if (parts.length < 2) {
+        return ctx.reply(
+            `ℹ️ *Usage:*\n\`/setbonus <welcome_bonus> <referral_bonus>\`\n\n` +
+            `*Current:* Welcome: *${getNewUserBonus()} Birr*, Referral: *${getReferralBonus()} Birr*\n` +
+            `*Example:* \`/setbonus 20 10\` (doubles promo rates)\n` +
+            `*Example:* \`/setbonus 10 5\` (standard rates)`,
+            { parse_mode: 'Markdown' }
+        );
+    }
+
+    const newUser = Number(parts[0]);
+    const ref = Number(parts[1]);
+
+    if (isNaN(newUser) || newUser < 0 || isNaN(ref) || ref < 0) {
+        return ctx.reply('❌ Invalid bonus values. Both must be positive numbers or 0.');
+    }
+
+    try {
+        const updated = setBonusSettings(newUser, ref);
+        await ctx.reply(
+            `✅ *Promotional Bonus Updated Successfully!*\n\n` +
+            `🎁 *New User Welcome Bonus:* *${updated.newUserBonus} Birr*\n` +
+            `👥 *Referral Invite Bonus:* *${updated.referralBonus} Birr*\n\n` +
+            `All new registrations and invites will immediately receive these amounts.`,
+            { parse_mode: 'Markdown' }
+        );
+    } catch (e: any) {
+        await ctx.reply(`❌ Failed to update bonus: ${e?.message || 'Unknown error'}`);
+    }
+});
+
+bot.command('bonus', async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.reply("⛔ This command is admin-only.");
+    }
+    const currentNewUser = getNewUserBonus();
+    const currentRef = getReferralBonus();
+    await ctx.reply(
+        `🎁 *Promotional Bonus Settings*\n\n` +
+        `• *New User Welcome Bonus:* *${currentNewUser} Birr*\n` +
+        `• *Referral Invite Bonus:* *${currentRef} Birr*\n\n` +
+        `Dynamically increase bonus amounts for promotions when player activity is low, or lower them anytime.\n\n` +
+        `To set custom amounts:\n\`/setbonus <welcome> <referral>\` (e.g. \`/setbonus 25 15\`)\n\n` +
+        `Or choose a quick preset below 👇`,
+        {
+            parse_mode: 'Markdown',
+            reply_markup: getBonusPresetsKeyboard()
+        }
     );
 });
 
@@ -1556,7 +1677,7 @@ bot.callbackQuery('referral_link', async (ctx) => {
     const keyboard = new InlineKeyboard().text('🔙 Back', 'main_menu');
     
     await ctx.editMessageText(
-        `🔗 *Your Referral Link*\n\nShare this link with your friends. When they join, they receive a *${NEW_USER_BONUS} Birr Welcome Bonus* and you earn a *${REFERRAL_BONUS} Birr Bonus*! 🎁\n\n\`${link}\``,
+        `🔗 *Your Referral Link*\n\nShare this link with your friends. When they join, they receive a *${getNewUserBonus()} Birr Welcome Bonus* and you earn a *${getReferralBonus()} Birr Bonus*! 🎁\n\n\`${link}\``,
         { parse_mode: "Markdown", reply_markup: keyboard }
     );
 });
