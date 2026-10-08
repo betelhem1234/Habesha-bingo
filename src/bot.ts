@@ -1,10 +1,10 @@
 
-import { readFileSync, existsSync } from 'fs';
+import { existsSync } from 'fs';
 import path from 'path';
 import { Bot, Context, InlineKeyboard, Keyboard, InputFile } from 'grammy';
 import { config } from './config';
 import { prisma } from './db';
-import { proofPath, proofUrl } from './uploads';
+import { proofUrl } from './uploads';
 import { NEW_USER_BONUS, REFERRAL_BONUS, getNewUserBonus, getReferralBonus, setBonusSettings } from './bonus';
 import { GameRooms } from './game/GameRooms';
 import { generateAdminToken } from './auth';
@@ -1188,7 +1188,6 @@ async function sendRequests(ctx: any, offset: number) {
         for (const r of requests) {
             const { text, kb } = renderRow(r);
             await ctx.reply(text, { parse_mode: 'HTML', reply_markup: kb });
-            await sendProofPhoto(ctx, r);
         }
 
         // Pagination hint
@@ -1228,17 +1227,6 @@ function renderRow(r: any) {
     return { text, kb };
 }
 
-async function sendProofPhoto(ctx: any, r: any) {
-    if (r.type !== 'deposit' || !r.proof) return;
-    try {
-        const file = readFileSync(proofPath(r.proof));
-        await ctx.replyWithPhoto(new InputFile(file), { caption: `📎 Deposit proof for request #${r.id}` });
-    } catch (e) {
-        console.error('sendProofPhoto failed', e);
-        await ctx.reply(`📎 Proof for #${r.id}: ${proofUrl(r.proof)}`).catch(() => {});
-    }
-}
-
 bot.callbackQuery(/^req_none$/, async (ctx) => {
     await ctx.answerCallbackQuery();
 });
@@ -1266,7 +1254,6 @@ bot.callbackQuery(/^req_page_(\d+)$/, async (ctx) => {
         for (const r of requests) {
             const { text, kb } = renderRow(r);
             await ctx.reply(text, { parse_mode: 'HTML', reply_markup: kb });
-            await sendProofPhoto(ctx, r);
         }
 
         const page = Math.floor(offset / 10);
@@ -1316,18 +1303,26 @@ bot.callbackQuery(/^req_(approve|reject)_(\d+)$/, async (ctx) => {
             }
             try { await bot.api.sendMessage(Number(request.userId), `✅ *Your ${request.type} request of ${request.amount.toNumber()} Birr has been approved!*`, { parse_mode: "Markdown" }); } catch (e) {}
             await ctx.answerCallbackQuery({ text: `✅ Approved ${request.type} request #${id}.` });
-            await ctx.editMessageText(
-                `✅ <s>${stripHtml(ctx.update.callback_query.message?.text || '')}</s>\n\n<b>Approved by admin</b>`,
-                { parse_mode: 'HTML', reply_markup: undefined }
-            ).catch(() => {});
+            const msg = ctx.update.callback_query?.message;
+            const originalText = stripHtml(msg?.text || msg?.caption || '');
+            const newContent = `✅ <s>${originalText}</s>\n\n<b>Approved by admin</b>`;
+            if (msg?.caption !== undefined) {
+                await ctx.editMessageCaption({ caption: newContent, parse_mode: 'HTML', reply_markup: undefined }).catch(() => {});
+            } else {
+                await ctx.editMessageText(newContent, { parse_mode: 'HTML', reply_markup: undefined }).catch(() => {});
+            }
         } else {
             await prisma.transactionRequest.update({ where: { id }, data: { status: 'REJECTED' } });
             try { await bot.api.sendMessage(Number(request.userId), `❌ *Your ${request.type} request of ${request.amount.toNumber()} Birr was rejected.*\nPlease contact support if you have questions.`, { parse_mode: "Markdown" }); } catch (e) {}
             await ctx.answerCallbackQuery({ text: `❌ Rejected ${request.type} request #${id}.` });
-            await ctx.editMessageText(
-                `❌ <s>${stripHtml(ctx.update.callback_query.message?.text || '')}</s>\n\n<b>Rejected by admin</b>`,
-                { parse_mode: 'HTML', reply_markup: undefined }
-            ).catch(() => {});
+            const msg = ctx.update.callback_query?.message;
+            const originalText = stripHtml(msg?.text || msg?.caption || '');
+            const newContent = `❌ <s>${originalText}</s>\n\n<b>Rejected by admin</b>`;
+            if (msg?.caption !== undefined) {
+                await ctx.editMessageCaption({ caption: newContent, parse_mode: 'HTML', reply_markup: undefined }).catch(() => {});
+            } else {
+                await ctx.editMessageText(newContent, { parse_mode: 'HTML', reply_markup: undefined }).catch(() => {});
+            }
         }
     } catch (e) {
         console.error('Handle request error', e);
