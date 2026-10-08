@@ -538,6 +538,16 @@ async function exitGame(){
   window.location.href=`/index.html?userId=${userId}`;
 }
 
+// Automatically release board if user closes Telegram WebApp or browser tab
+window.addEventListener('pagehide', () => {
+  if (selectedBoards.length > 0 && !redirected && userId && userId !== '0') {
+    const payload = JSON.stringify({ userId, bet, room });
+    if (navigator.sendBeacon) {
+      navigator.sendBeacon('/api/leave', new Blob([payload], { type: 'application/json' }));
+    }
+  }
+});
+
 function updateCountdownTarget(serverSecs){
   const s = parseInt(serverSecs, 10) || 0;
   const now = Date.now();

@@ -13,7 +13,7 @@ export class GameRooms {
     constructor(private bot: Bot) {
         this.loadSettings();
         // Periodically release boards/fees left by players who abandoned the lobby.
-        setInterval(() => this.sweepStalePlayers(), 30000).unref();
+        setInterval(() => this.sweepStalePlayers(), 5000).unref();
     }
 
     private loadSettings() {
@@ -129,5 +129,49 @@ export class GameRooms {
             pot: all.reduce((s, gm) => s + gm.getPot(), 0),
             drawnCount: all.reduce((s, gm) => s + gm.drawnNumbers.size, 0)
         };
+    }
+
+    getActivePlayersDetails(): Array<{
+        fee: number;
+        room: number;
+        gameState: 'WAITING' | 'PLAYING';
+        lobbyCountdown: number;
+        drawnCount: number;
+        player: {
+            userId: string;
+            firstName?: string;
+            username?: string;
+            boards: number[];
+            fee: number;
+            bonusUsed: number;
+            lastSeen: number;
+            isBlocked: boolean;
+        };
+    }> {
+        const list = [];
+        for (const [key, gm] of this.rooms.entries()) {
+            const fee = Math.floor(key / 1000);
+            const room = key % 1000;
+            for (const p of gm.players) {
+                list.push({
+                    fee,
+                    room,
+                    gameState: gm.state,
+                    lobbyCountdown: gm.lobbyCountdown,
+                    drawnCount: gm.drawnNumbers.size,
+                    player: {
+                        userId: p.userId.toString(),
+                        firstName: p.firstName,
+                        username: p.username,
+                        boards: p.cards && p.cards.length > 0 ? p.cards.map(c => c.boardNumber) : (p.boardNumber !== undefined ? [p.boardNumber] : []),
+                        fee: p.fee,
+                        bonusUsed: p.bonusUsed || 0,
+                        lastSeen: p.lastSeen,
+                        isBlocked: !!p.isBlocked
+                    }
+                });
+            }
+        }
+        return list;
     }
 }

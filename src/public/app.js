@@ -1167,6 +1167,122 @@ async function saveBonusSettings() {
     }
 }
 
+// ----------------------------------------------------
+// 9. Active Players Inspector Modal
+// ----------------------------------------------------
+let activePlayersPollInterval = null;
+
+async function openActivePlayersModal() {
+    const modal = document.getElementById('active-players-modal');
+    if (!modal) return;
+    modal.style.display = 'flex';
+    await fetchActivePlayers();
+    if (activePlayersPollInterval) clearInterval(activePlayersPollInterval);
+    activePlayersPollInterval = setInterval(fetchActivePlayers, 3000);
+}
+
+function closeActivePlayersModal() {
+    const modal = document.getElementById('active-players-modal');
+    if (modal) modal.style.display = 'none';
+    if (activePlayersPollInterval) {
+        clearInterval(activePlayersPollInterval);
+        activePlayersPollInterval = null;
+    }
+}
+
+async function fetchActivePlayers() {
+    const loadingEl = document.getElementById('active-players-loading');
+    const emptyEl = document.getElementById('active-players-empty');
+    const tableEl = document.getElementById('active-players-table');
+    const tbodyEl = document.getElementById('active-players-tbody');
+    const countBadge = document.getElementById('active-players-count-badge');
+
+    try {
+        const res = await authFetch('/api/admin/active-players');
+        if (!res.ok) throw new Error('Failed to load active players');
+        const data = await res.json();
+        const players = data.players || [];
+
+        if (countBadge) countBadge.textContent = players.length;
+        if (loadingEl) loadingEl.style.display = 'none';
+
+        if (players.length === 0) {
+            if (emptyEl) emptyEl.style.display = 'block';
+            if (tableEl) tableEl.style.display = 'none';
+            return;
+        }
+
+        if (emptyEl) emptyEl.style.display = 'none';
+        if (tableEl) tableEl.style.display = 'table';
+
+        if (tbodyEl) {
+            tbodyEl.innerHTML = players.map(item => {
+                const p = item.player;
+                const boardsHtml = (p.boards && p.boards.length > 0)
+                    ? p.boards.map(b => `<span style="background:rgba(56,189,248,0.2); color:#38bdf8; padding:2px 8px; border-radius:6px; font-weight:700; margin-right:4px;">#${b}</span>`).join('')
+                    : '<span style="color:#64748b;">None</span>';
+                
+                const roomText = item.fee > 0 ? `${item.fee} Birr (Room #${item.room})` : `Free Demo`;
+                const isPlaying = item.gameState === 'PLAYING';
+                const stateBadge = isPlaying
+                    ? `<span style="background:rgba(74,222,128,0.15); color:#4ade80; padding:3px 8px; border-radius:6px; font-weight:700; font-size:11px;">🟢 PLAYING (Called: ${item.drawnCount})</span>`
+                    : `<span style="background:rgba(250,204,21,0.15); color:#facc15; padding:3px 8px; border-radius:6px; font-weight:700; font-size:11px;">🟡 LOBBY (${item.lobbyCountdown}s)</span>`;
+
+                const isIdle = p.idleSeconds > 10;
+                const lastSeenHtml = isIdle
+                    ? `<span style="color:#f87171; font-size:12px;">🔴 Inactive ${p.idleSeconds}s ago</span>`
+                    : `<span style="color:#4ade80; font-size:12px;">🟢 Active ${p.idleSeconds}s ago</span>`;
+
+                const kickBtn = (!isPlaying)
+                    ? `<button onclick="kickActivePlayer('${p.userId}', ${item.fee}, ${item.room})" style="background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.4); color:#f87171; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;" title="Kick player and release board">👢 Kick & Free</button>`
+                    : `<span style="color:#64748b; font-size:11px;">In Game</span>`;
+
+                return `
+                    <tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
+                        <td style="padding:12px 8px;">
+                            <div style="font-weight:700; color:#f8fafc;">${escapeHtml(p.firstName || 'Player')}</div>
+                            <div style="font-size:11px; color:#94a3b8;">${p.username ? '@' + escapeHtml(p.username) + ' • ' : ''}ID: <code>${p.userId}</code></div>
+                            ${p.phone ? `<div style="font-size:11px; color:#38bdf8;">📱 ${escapeHtml(p.phone)}</div>` : ''}
+                        </td>
+                        <td style="padding:12px 8px; font-weight:600; color:#cbd5e1;">${roomText}</td>
+                        <td style="padding:12px 8px;">${boardsHtml}</td>
+                        <td style="padding:12px 8px;">${stateBadge}</td>
+                        <td style="padding:12px 8px;">${lastSeenHtml}</td>
+                        <td style="padding:12px 8px; text-align:right;">${kickBtn}</td>
+                    </tr>
+                `;
+            }).join('');
+        }
+    } catch (err) {
+        console.error('Error fetching active players:', err);
+        if (loadingEl) {
+            loadingEl.style.display = 'block';
+            loadingEl.innerHTML = `<span style="color:#f87171;">Failed to load active players.</span>`;
+        }
+    }
+}
+
+async function kickActivePlayer(userId, fee, room) {
+    if (!confirm(`Are you sure you want to kick player #${userId} from this room? Their entry fee will be refunded and their board released.`)) return;
+
+    try {
+        const res = await authFetch('/api/admin/kick-player', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ userId, fee, room })
+        });
+        const data = await res.json();
+        if (data.success) {
+            await fetchActivePlayers();
+            fetchStats();
+        } else {
+            alert(data.msg || 'Failed to kick player.');
+        }
+    } catch (err) {
+        alert('Network error while kicking player.');
+    }
+}
+
 // Global exports for inline HTML event attributes
 window.openEditUserModal = openEditUserModal;
 window.closeEditUserModal = closeEditUserModal;
@@ -1180,4 +1296,9 @@ window.closeEditModal = closeEditModal;
 window.toggleSelectRequest = toggleSelectRequest;
 window.fetchBonusSettings = fetchBonusSettings;
 window.saveBonusSettings = saveBonusSettings;
+window.openActivePlayersModal = openActivePlayersModal;
+window.closeActivePlayersModal = closeActivePlayersModal;
+window.fetchActivePlayers = fetchActivePlayers;
+window.kickActivePlayer = kickActivePlayer;
+
 

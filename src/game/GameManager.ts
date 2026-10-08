@@ -265,6 +265,12 @@ export class GameManager {
 
         this.lobbyInterval = setInterval(async () => {
             this.lobbyCountdown -= 1;
+
+            // Periodically evict any players who closed the app or stopped polling
+            if (this.lobbyCountdown > 0 && this.lobbyCountdown % 5 === 0) {
+                await this.removeStalePlayers(15000);
+            }
+
             this.broadcastSSE('lobby', {
                 lobbyCountdown: this.lobbyCountdown,
                 playerCount: this.players.length,
@@ -277,11 +283,14 @@ export class GameManager {
                 this.lobbyInterval = null;
                 this.lobbyCountdown = 0;
                 
+                // Pre-game verification sweep: evict anyone who abandoned the lobby in the last 15s
+                await this.removeStalePlayers(15000);
+
                 if (this.players.length >= 1) {
-                    console.log(`[Game] Lobby 30s timer expired! Auto-starting with ${this.players.length} player(s)`);
+                    console.log(`[Game] Lobby auto-starting with ${this.players.length} active player(s)`);
                     await this.startGame();
                 } else {
-                    console.log('[Game] Not enough players to auto-start.');
+                    console.log('[Game] Not enough players to auto-start after stale player eviction.');
                     this.state = 'WAITING';
                 }
             }
@@ -335,7 +344,7 @@ export class GameManager {
     }
 
     // Auto-remove players who haven't been seen recently (closed the page/app) while waiting.
-    async removeStalePlayers(maxIdleMs: number = 120000): Promise<number> {
+    async removeStalePlayers(maxIdleMs: number = 15000): Promise<number> {
         if (this.state !== 'WAITING') return 0;
         const now = Date.now();
         const stale = this.players.filter(p => now - p.lastSeen > maxIdleMs);
@@ -344,7 +353,15 @@ export class GameManager {
             const res = await this.removePlayer(p.userId, false);
             if (res.success) removed++;
         }
-        if (removed > 0) console.log(`[Game] Removed ${removed} stale player(s) from lobby.`);
+        if (removed > 0) {
+            console.log(`[Game] Removed ${removed} stale player(s) from lobby.`);
+            this.broadcastSSE('lobby', {
+                lobbyCountdown: this.lobbyCountdown,
+                playerCount: this.players.length,
+                pot: this.getPot(),
+                gameState: this.state
+            });
+        }
         return removed;
     }
 
@@ -380,20 +397,21 @@ export class GameManager {
 
         const remaining = this.players.length;
 
-        // Not enough players to ever start: refund everyone left and reset the lobby.
-        if (remaining < 2) {
+        if (remaining < 1) {
             if (this.lobbyInterval) {
                 clearInterval(this.lobbyInterval);
                 this.lobbyInterval = null;
             }
             this.lobbyCountdown = 0;
-            await this.refundAll();
-            for (const other of this.players) {
-                await this.editTicketMessage(other, `😔 *Not Enough Players!*\n\nAnother player left the lobby.\n\nYour *${other.fee} Birr* entry fee has been refunded to your wallet.\n\nClick Play Bingo to try again.`);
-            }
             this.players = [];
         } else {
             // Still enough players - keep the lobby alive and notify the rest.
+            this.broadcastSSE('lobby', {
+                lobbyCountdown: this.lobbyCountdown,
+                playerCount: this.players.length,
+                pot: this.getPot(),
+                gameState: this.state
+            });
             for (const other of this.players) {
                 await this.editTicketMessage(other, `👥 *Players: ${this.players.length}*\n\nA player left the lobby. ${this.lobbyCountdown > 0 ? `⏳ Auto-starting in *${this.lobbyCountdown} seconds*...` : '⏳ Waiting for more players...'}\n\n👇 Your board:`);
             }

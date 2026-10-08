@@ -158,6 +158,60 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             drawnCount: admin.drawnCount
         });
     });
+
+    // Detailed Active Players list across all rooms (Protected)
+    app.get('/api/admin/active-players', adminAuthMiddleware, async (_req, res) => {
+        try {
+            const rawList = gameRooms.getActivePlayersDetails();
+            if (rawList.length === 0) {
+                return res.json({ total: 0, players: [] });
+            }
+            const userIds = Array.from(new Set(rawList.map(r => BigInt(r.player.userId))));
+            const dbUsers = await prisma.user.findMany({
+                where: { id: { in: userIds } },
+                select: { id: true, firstName: true, username: true, phone: true, balance: true, bonus: true }
+            });
+            const userMap = new Map(dbUsers.map(u => [u.id.toString(), u]));
+
+            const enriched = rawList.map(item => {
+                const dbU = userMap.get(item.player.userId);
+                const idleSecs = Math.max(0, Math.floor((Date.now() - item.player.lastSeen) / 1000));
+                return {
+                    ...item,
+                    player: {
+                        ...item.player,
+                        firstName: dbU?.firstName || item.player.firstName || 'Player',
+                        username: dbU?.username || item.player.username || null,
+                        phone: dbU?.phone || null,
+                        balance: dbU ? dbU.balance.toNumber() : 0,
+                        bonus: dbU ? dbU.bonus.toNumber() : 0,
+                        idleSeconds: idleSecs
+                    }
+                };
+            });
+
+            res.json({ total: enriched.length, players: enriched });
+        } catch (e: any) {
+            console.error('Fetch active players error:', e);
+            res.status(500).json({ error: e?.message || 'Failed to fetch active players' });
+        }
+    });
+
+    // Kick/evict a player from a room lobby (Protected)
+    app.post('/api/admin/kick-player', adminAuthMiddleware, async (req, res) => {
+        try {
+            const { userId, fee, room } = req.body;
+            if (!userId) {
+                return res.status(400).json({ success: false, msg: 'userId is required' });
+            }
+            const gm = gameRooms.findPlayer(BigInt(userId)) || gameRooms.getRoom(Number(fee || 10), Number(room || 1));
+            const result = await gm.leaveGame(BigInt(userId));
+            res.json(result);
+        } catch (e: any) {
+            console.error('Kick player error:', e);
+            res.status(500).json({ success: false, msg: e?.message || 'Failed to kick player' });
+        }
+    });
     
     // Users management list (Protected)
     const handleGetUsers = async (req: any, res: any) => {
