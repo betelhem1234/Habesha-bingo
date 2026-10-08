@@ -125,4 +125,83 @@ test('Active Players Inspector and Lobby Hardening Tests', async (t) => {
         assert.equal(gm.players.length, 0);
         assert.equal(gm.getBoards().find(b => b.number === 88)?.taken, false);
     });
+
+    await t.test('sanitizePlayers and getPot accurately deduplicate duplicate player entries', () => {
+        const gm = new GameManager(mockBot);
+
+        // Simulate duplicate player entries (e.g. from rapid concurrent taps)
+        gm.players.push({
+            userId: 8684362724n,
+            cards: [{ boardNumber: 455, ticket: [] as any, daubed: new Set() }],
+            ticket: [] as any,
+            daubed: new Set(),
+            boardNumber: 455,
+            fee: 10,
+            firstName: 'Tilku Bro',
+            lastSeen: Date.now()
+        });
+
+        gm.players.push({
+            userId: 8684362724n,
+            cards: [
+                { boardNumber: 455, ticket: [] as any, daubed: new Set() },
+                { boardNumber: 456, ticket: [] as any, daubed: new Set() }
+            ],
+            ticket: [] as any,
+            daubed: new Set(),
+            boardNumber: 455,
+            fee: 20,
+            firstName: 'Tilku Bro',
+            lastSeen: Date.now() - 10000
+        });
+
+        gm.players.push({
+            userId: 1783441823n,
+            cards: [{ boardNumber: 52, ticket: [] as any, daubed: new Set() }],
+            ticket: [] as any,
+            daubed: new Set(),
+            boardNumber: 52,
+            fee: 10,
+            firstName: 'Tinshu Bro',
+            lastSeen: Date.now()
+        });
+
+        assert.equal(gm.players.length, 3);
+
+        // Sanitize and check pot
+        gm.sanitizePlayers();
+        assert.equal(gm.players.length, 2);
+        assert.equal(gm.getPot(), 20); // 10 (Tilku) + 10 (Tinshu)
+    });
+
+    await t.test('getActivePlayersDetails returns unique players per room', () => {
+        const gameRooms = new GameRooms(mockBot);
+        const room = gameRooms.getRoom(10, 1);
+
+        // Insert duplicate for same user
+        room.players.push({
+            userId: 999n,
+            cards: [{ boardNumber: 1, ticket: [] as any, daubed: new Set() }],
+            ticket: [] as any,
+            daubed: new Set(),
+            boardNumber: 1,
+            fee: 10,
+            firstName: 'DuplicateUser',
+            lastSeen: Date.now()
+        });
+        room.players.push({
+            userId: 999n,
+            cards: [{ boardNumber: 1, ticket: [] as any, daubed: new Set() }, { boardNumber: 2, ticket: [] as any, daubed: new Set() }],
+            ticket: [] as any,
+            daubed: new Set(),
+            boardNumber: 1,
+            fee: 20,
+            firstName: 'DuplicateUser',
+            lastSeen: Date.now() - 5000
+        });
+
+        const details = gameRooms.getActivePlayersDetails();
+        assert.equal(details.length, 1);
+        assert.equal(details[0].player.userId, '999');
+    });
 });

@@ -69,6 +69,45 @@ export class GameManager {
     // Auto-start Lobby Timer Variables
     public lobbyCountdown: number = 0;
     private lobbyInterval: NodeJS.Timeout | null = null;
+    private userLocks: Map<string, Promise<any>> = new Map();
+
+    private async runWithUserLock<T>(userId: bigint, fn: () => Promise<T>): Promise<T> {
+        const key = userId.toString();
+        const currentLock = this.userLocks.get(key) || Promise.resolve();
+        let releaseLock: () => void;
+        const nextLock = new Promise<void>((resolve) => { releaseLock = resolve; });
+        this.userLocks.set(key, currentLock.then(() => nextLock).catch(() => nextLock));
+
+        try {
+            await currentLock;
+            return await fn();
+        } finally {
+            releaseLock!();
+            if (this.userLocks.get(key) === nextLock) {
+                this.userLocks.delete(key);
+            }
+        }
+    }
+
+    public sanitizePlayers(): void {
+        const seen = new Set<string>();
+        const unique: Player[] = [];
+        for (const p of this.players) {
+            const idStr = p.userId.toString();
+            if (!seen.has(idStr)) {
+                seen.add(idStr);
+                unique.push(p);
+            } else {
+                console.warn(`[Game] Pruned duplicate entry for user ${idStr}`);
+            }
+        }
+        this.players = unique;
+    }
+
+    public getPlayer(userId: bigint): Player | undefined {
+        const idStr = userId.toString();
+        return this.players.find(p => p.userId.toString() === idStr);
+    }
 
     constructor(private bot: Bot) {
         this.heartbeatInterval = setInterval(() => {
@@ -119,121 +158,134 @@ export class GameManager {
     }
 
     async selectBoards(userId: bigint, boardNumbers: number[], feePerBoard: number = 10): Promise<{ success: boolean; msg: string; boards: number[] }> {
-        if (this.state !== 'WAITING') {
-            return { success: false, msg: 'A game is already in progress. Please wait.', boards: [] };
-        }
-        if (!Array.isArray(boardNumbers) || boardNumbers.length === 0) {
-            await this.removePlayer(userId, false);
-            return { success: true, msg: 'Boards deselected and fee refunded.', boards: [] };
-        }
-        if (boardNumbers.length > 2) {
-            return { success: false, msg: 'You can select up to 2 boards maximum.', boards: [] };
-        }
-        if (boardNumbers.length === 2 && boardNumbers[0] === boardNumbers[1]) {
-            return { success: false, msg: 'Please choose two different boards.', boards: [] };
-        }
-
-        // Validate board numbers 1-500
-        for (const bn of boardNumbers) {
-            if (bn < 1 || bn > 500) {
-                return { success: false, msg: 'Board numbers must be between 1 and 500.', boards: [] };
+        return this.runWithUserLock(userId, async () => {
+            if (this.state !== 'WAITING') {
+                return { success: false, msg: 'A game is already in progress. Please wait.', boards: [] };
             }
-            const takenByOther = this.players.find(p => p.userId !== userId && (p.cards ? p.cards.some(c => c.boardNumber === bn) : p.boardNumber === bn));
-            if (takenByOther) {
-                return { success: false, msg: `Board #${bn} is already taken by another player.`, boards: [] };
+            if (!Array.isArray(boardNumbers) || boardNumbers.length === 0) {
+                await this.removePlayer(userId, false);
+                return { success: true, msg: 'Boards deselected and fee refunded.', boards: [] };
             }
-        }
-
-        const existingPlayer = this.players.find(p => p.userId === userId);
-        const prevCount = existingPlayer ? (existingPlayer.cards?.length || 1) : 0;
-        const newCount = boardNumbers.length;
-        const countDiff = newCount - prevCount;
-
-        let additionalBonusUsed = 0;
-        if (countDiff > 0 && feePerBoard > 0) {
-            const addFee = countDiff * feePerBoard;
-            const res = await deductFee(userId, addFee);
-            if (!res.success) {
-                return {
-                    success: false,
-                    msg: `You need at least ${addFee} Birr to select ${countDiff === 1 ? 'an additional board' : 'these boards'}.`,
-                    boards: existingPlayer && existingPlayer.cards ? existingPlayer.cards.map(c => c.boardNumber) : []
-                };
+            if (boardNumbers.length > 2) {
+                return { success: false, msg: 'You can select up to 2 boards maximum.', boards: [] };
             }
-            additionalBonusUsed = res.bonusUsed;
-        } else if (countDiff < 0 && feePerBoard > 0) {
-            // Refund unselected board - restore bonus first if bonus was consumed
-            const refundAmount = Math.abs(countDiff) * feePerBoard;
-            const currentBonusUsed = existingPlayer?.bonusUsed || 0;
-            const bonusRefund = Math.min(currentBonusUsed, refundAmount);
-            const balanceRefund = refundAmount - bonusRefund;
-
-            if (existingPlayer) {
-                existingPlayer.bonusUsed = Math.max(0, currentBonusUsed - bonusRefund);
+            if (boardNumbers.length === 2 && boardNumbers[0] === boardNumbers[1]) {
+                return { success: false, msg: 'Please choose two different boards.', boards: [] };
             }
 
-            try {
-                await prisma.user.update({
-                    where: { id: userId },
-                    data: {
-                        ...(balanceRefund > 0 ? { balance: { increment: balanceRefund } } : {}),
-                        ...(bonusRefund > 0 ? { bonus: { increment: bonusRefund } } : {})
-                    }
+            const userIdStr = userId.toString();
+
+            // Validate board numbers 1-500
+            for (const bn of boardNumbers) {
+                if (bn < 1 || bn > 500) {
+                    return { success: false, msg: 'Board numbers must be between 1 and 500.', boards: [] };
+                }
+                const takenByOther = this.players.find(p => p.userId.toString() !== userIdStr && (p.cards ? p.cards.some(c => c.boardNumber === bn) : p.boardNumber === bn));
+                if (takenByOther) {
+                    return { success: false, msg: `Board #${bn} is already taken by another player.`, boards: [] };
+                }
+            }
+
+            // Clean up any potential duplicate player records before diffing
+            this.sanitizePlayers();
+
+            const existingPlayer = this.players.find(p => p.userId.toString() === userIdStr);
+            const prevCount = existingPlayer ? (existingPlayer.cards?.length || 1) : 0;
+            const newCount = boardNumbers.length;
+            const countDiff = newCount - prevCount;
+
+            let additionalBonusUsed = 0;
+            if (countDiff > 0 && feePerBoard > 0) {
+                const addFee = countDiff * feePerBoard;
+                const res = await deductFee(userId, addFee);
+                if (!res.success) {
+                    return {
+                        success: false,
+                        msg: `You need at least ${addFee} Birr to select ${countDiff === 1 ? 'an additional board' : 'these boards'}.`,
+                        boards: existingPlayer && existingPlayer.cards ? existingPlayer.cards.map(c => c.boardNumber) : []
+                    };
+                }
+                additionalBonusUsed = res.bonusUsed;
+            } else if (countDiff < 0 && feePerBoard > 0) {
+                // Refund unselected board - restore bonus first if bonus was consumed
+                const refundAmount = Math.abs(countDiff) * feePerBoard;
+                const currentBonusUsed = existingPlayer?.bonusUsed || 0;
+                const bonusRefund = Math.min(currentBonusUsed, refundAmount);
+                const balanceRefund = refundAmount - bonusRefund;
+
+                if (existingPlayer) {
+                    existingPlayer.bonusUsed = Math.max(0, currentBonusUsed - bonusRefund);
+                }
+
+                try {
+                    await prisma.user.update({
+                        where: { id: userId },
+                        data: {
+                            ...(balanceRefund > 0 ? { balance: { increment: balanceRefund } } : {}),
+                            ...(bonusRefund > 0 ? { bonus: { increment: bonusRefund } } : {})
+                        }
+                    });
+                } catch (e) {}
+            }
+
+            const cards: PlayerCard[] = boardNumbers.map(bn => ({
+                boardNumber: bn,
+                ticket: generateTicket(bn),
+                daubed: new Set<number>()
+            }));
+
+            // Re-check after async database calls within lock
+            const activePlayer = this.players.find(p => p.userId.toString() === userIdStr);
+
+            if (activePlayer) {
+                activePlayer.cards = cards;
+                activePlayer.boardNumber = cards[0].boardNumber;
+                activePlayer.ticket = cards[0].ticket;
+                activePlayer.daubed = cards[0].daubed;
+                activePlayer.fee = newCount * feePerBoard;
+                activePlayer.bonusUsed = (activePlayer.bonusUsed || 0) + additionalBonusUsed;
+                activePlayer.lastSeen = Date.now();
+            } else {
+                const user = await prisma.user.findUnique({ where: { id: userId } });
+                this.players.push({
+                    userId,
+                    cards,
+                    ticket: cards[0].ticket,
+                    daubed: cards[0].daubed,
+                    boardNumber: cards[0].boardNumber,
+                    fee: newCount * feePerBoard,
+                    bonusUsed: additionalBonusUsed,
+                    firstName: user?.firstName ?? undefined,
+                    username: user?.username ?? undefined,
+                    lastSeen: Date.now()
                 });
-            } catch (e) {}
-        }
 
-        const cards: PlayerCard[] = boardNumbers.map(bn => ({
-            boardNumber: bn,
-            ticket: generateTicket(bn),
-            daubed: new Set<number>()
-        }));
-
-        if (existingPlayer) {
-            existingPlayer.cards = cards;
-            existingPlayer.boardNumber = cards[0].boardNumber;
-            existingPlayer.ticket = cards[0].ticket;
-            existingPlayer.daubed = cards[0].daubed;
-            existingPlayer.fee = newCount * feePerBoard;
-            existingPlayer.bonusUsed = (existingPlayer.bonusUsed || 0) + additionalBonusUsed;
-            existingPlayer.lastSeen = Date.now();
-        } else {
-            const user = await prisma.user.findUnique({ where: { id: userId } });
-            this.players.push({
-                userId,
-                cards,
-                ticket: cards[0].ticket,
-                daubed: cards[0].daubed,
-                boardNumber: cards[0].boardNumber,
-                fee: newCount * feePerBoard,
-                bonusUsed: additionalBonusUsed,
-                firstName: user?.firstName ?? undefined,
-                username: user?.username ?? undefined,
-                lastSeen: Date.now()
-            });
-
-            if (this.players.length >= 1 && !this.lobbyInterval) {
-                this.startLobbyTimer();
+                if (this.players.length >= 1 && !this.lobbyInterval) {
+                    this.startLobbyTimer();
+                }
             }
-        }
 
-        // If all 500 boards are taken, start the game right away
-        const totalCards = this.players.reduce((sum, p) => sum + (p.cards?.length || 1), 0);
-        if (totalCards >= 500) {
-            setTimeout(() => this.startGame(), 1000);
-        }
+            // Defensively ensure no duplicate entries ever persist in memory
+            this.sanitizePlayers();
 
-        return {
-            success: true,
-            msg: `Selected ${newCount} board${newCount > 1 ? 's' : ''}: ${boardNumbers.map(n => '#' + n).join(', ')}`,
-            boards: boardNumbers
-        };
+            // If all 500 boards are taken, start the game right away
+            const totalCards = this.players.reduce((sum, p) => sum + (p.cards?.length || 1), 0);
+            if (totalCards >= 500) {
+                setTimeout(() => this.startGame(), 1000);
+            }
+
+            return {
+                success: true,
+                msg: `Selected ${newCount} board${newCount > 1 ? 's' : ''}: ${boardNumbers.map(n => '#' + n).join(', ')}`,
+                boards: boardNumbers
+            };
+        });
     }
 
     async joinGame(userId: bigint, boardNumber?: number, fee: number = 10): Promise<{ success: boolean; msg: string; keyboard?: InlineKeyboard }> {
         if (boardNumber !== undefined) {
             const res = await this.selectBoards(userId, [boardNumber], fee);
-            const p = this.players.find(p => p.userId === userId);
+            const p = this.getPlayer(userId);
             return {
                 success: res.success,
                 msg: res.msg,
@@ -244,6 +296,7 @@ export class GameManager {
     }
 
     getBoards(): { number: number; taken: boolean }[] {
+        this.sanitizePlayers();
         const boards = [];
         for (let i = 1; i <= 500; i++) {
             const taken = this.players.some(p => p.cards ? p.cards.some(c => c.boardNumber === i) : p.boardNumber === i);
@@ -254,6 +307,7 @@ export class GameManager {
 
 
     getPot(): number {
+        this.sanitizePlayers();
         return this.players.reduce((sum, p) => sum + p.fee, 0);
     }
 
@@ -298,7 +352,7 @@ export class GameManager {
     }
 
     setPlayerMessageId(userId: bigint, messageId: number) {
-        const p = this.players.find(p => p.userId === userId);
+        const p = this.getPlayer(userId);
         if (p) {
             p.ticketMessageId = messageId;
             console.log(`[Game] Saved messageId ${messageId} for user ${userId}`);
@@ -307,8 +361,10 @@ export class GameManager {
 
     // Mark a player as active (called on web polling / interactions)
     touch(userId: bigint) {
-        const p = this.players.find(p => p.userId === userId);
-        if (p) p.lastSeen = Date.now();
+        const idStr = userId.toString();
+        for (const p of this.players) {
+            if (p.userId.toString() === idStr) p.lastSeen = Date.now();
+        }
     }
 
     async forceReset(): Promise<{ success: boolean; msg: string }> {
@@ -337,10 +393,12 @@ export class GameManager {
 
     // Explicitly leave the lobby before the game starts (fee is refunded).
     async leaveGame(userId: bigint): Promise<{ success: boolean; msg: string }> {
-        if (this.state === 'PLAYING') {
-            return { success: false, msg: 'A game is already in progress. You cannot leave now.' };
-        }
-        return this.removePlayer(userId, true);
+        return this.runWithUserLock(userId, async () => {
+            if (this.state === 'PLAYING') {
+                return { success: false, msg: 'A game is already in progress. You cannot leave now.' };
+            }
+            return this.removePlayer(userId, true);
+        });
     }
 
     // Auto-remove players who haven't been seen recently (closed the page/app) while waiting.
@@ -388,13 +446,17 @@ export class GameManager {
     }
 
     private async removePlayer(userId: bigint, notifyLeaver: boolean): Promise<{ success: boolean; msg: string }> {
-        const idx = this.players.findIndex(p => p.userId === userId);
-        if (idx === -1) return { success: false, msg: 'You are not in this game.' };
-        const [leaver] = this.players.splice(idx, 1);
-        if (!leaver) return { success: false, msg: 'You are not in this game.' };
+        const idStr = userId.toString();
+        const toRemove = this.players.filter(p => p.userId.toString() === idStr);
+        if (toRemove.length === 0) return { success: false, msg: 'You are not in this game.' };
 
-        await this.refundPlayer(leaver);
+        this.players = this.players.filter(p => p.userId.toString() !== idStr);
 
+        for (const leaver of toRemove) {
+            await this.refundPlayer(leaver);
+        }
+
+        const leaver = toRemove[0];
         const remaining = this.players.length;
 
         if (remaining < 1) {
@@ -491,6 +553,7 @@ export class GameManager {
             console.log('[Game] Already playing, ignoring startGame.');
             return;
         }
+        this.sanitizePlayers();
         if (this.players.length < 1) {
             console.log('[Game] At least 1 player is needed to start.');
             return;
@@ -711,7 +774,7 @@ export class GameManager {
         drawnNumbers?: number[];
         winners?: WinnerRecord[];
     }> {
-        const p = this.players.find(p => p.userId === userId);
+        const p = this.getPlayer(userId);
         if (!p) return { success: false, msg: 'Player not found.' };
 
         if (this.state !== 'PLAYING') {
@@ -878,7 +941,7 @@ export class GameManager {
         msg?: string;
         keyboard?: InlineKeyboard;
     }> {
-        const p = this.players.find(p => p.userId === userId);
+        const p = this.getPlayer(userId);
         if (!p) return { success: false, msg: 'You are not in the current game.' };
         p.lastSeen = Date.now();
 

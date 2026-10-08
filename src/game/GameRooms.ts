@@ -152,7 +152,12 @@ export class GameRooms {
         for (const [key, gm] of this.rooms.entries()) {
             const fee = Math.floor(key / 1000);
             const room = key % 1000;
+            gm.sanitizePlayers();
+            const seenInRoom = new Set<string>();
             for (const p of gm.players) {
+                const uId = p.userId.toString();
+                if (seenInRoom.has(uId)) continue;
+                seenInRoom.add(uId);
                 list.push({
                     fee,
                     room,
@@ -160,7 +165,7 @@ export class GameRooms {
                     lobbyCountdown: gm.lobbyCountdown,
                     drawnCount: gm.drawnNumbers.size,
                     player: {
-                        userId: p.userId.toString(),
+                        userId: uId,
                         firstName: p.firstName,
                         username: p.username,
                         boards: p.cards && p.cards.length > 0 ? p.cards.map(c => c.boardNumber) : (p.boardNumber !== undefined ? [p.boardNumber] : []),
