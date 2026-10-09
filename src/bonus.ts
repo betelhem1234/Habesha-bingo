@@ -5,6 +5,7 @@ import { prisma } from './db';
 export interface DeductResult {
     success: boolean;
     bonusUsed: number;
+    withdrawableUsed: number;
 }
 
 const SETTINGS_PATH = path.join(process.cwd(), 'data', 'settings.json');
@@ -74,25 +75,31 @@ export function setBonusSettings(newUserBonus: number, referralBonus: number): {
 // New users get a welcome bonus which is consumed on their first paid game,
 // after which normal balance is used. Demo (fee <= 0) is always free.
 export async function deductFee(userId: bigint, fee: number): Promise<DeductResult> {
-    if (fee <= 0) return { success: true, bonusUsed: 0 };
+    if (fee <= 0) return { success: true, bonusUsed: 0, withdrawableUsed: 0 };
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user) return { success: false, bonusUsed: 0 };
+    if (!user) return { success: false, bonusUsed: 0, withdrawableUsed: 0 };
 
     const bonus = user.bonus.toNumber();
     const balance = user.balance.toNumber();
-    if (balance + bonus < fee) return { success: false, bonusUsed: 0 };
+    if (balance + bonus < fee) return { success: false, bonusUsed: 0, withdrawableUsed: 0 };
 
     const bonusUsed = Math.min(bonus, fee);
     const fromBalance = fee - bonusUsed;
+
+    const currentWithdrawable = user.withdrawableBalance ? user.withdrawableBalance.toNumber() : 0;
+    const newBalance = Math.max(0, balance - fromBalance);
+    const newWithdrawable = Math.max(0, Math.min(newBalance, currentWithdrawable));
+    const withdrawableUsed = Math.max(0, currentWithdrawable - newWithdrawable);
 
     await prisma.user.update({
         where: { id: userId },
         data: {
             balance: { decrement: fromBalance },
-            bonus: { decrement: bonusUsed }
+            bonus: { decrement: bonusUsed },
+            withdrawableBalance: { set: newWithdrawable }
         }
     });
 
-    return { success: true, bonusUsed };
+    return { success: true, bonusUsed, withdrawableUsed };
 }

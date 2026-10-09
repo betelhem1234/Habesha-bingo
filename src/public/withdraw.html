@@ -116,8 +116,20 @@
 
     <div class="container">
         <div class="balance-card">
-            <div class="lbl">YOUR BALANCE</div>
-            <div class="val" id="balance">0.00</div>
+            <div style="display:flex; justify-content:space-around; align-items:center; flex-wrap:wrap; gap:12px;">
+                <div>
+                    <div class="lbl" style="color:#27ae60;">🏆 WITHDRAWABLE WINNINGS</div>
+                    <div class="val" id="withdrawable-val" style="color:#27ae60; font-size:2.2rem;">0.00</div>
+                    <div style="font-size:0.75rem; color:#27ae60; font-weight:700;">Eligible for Payout</div>
+                </div>
+                <div style="border-left:1.5px solid #dcd0ea; padding-left:14px; text-align:left;">
+                    <div style="font-size:0.75rem; color:#555; font-weight:700;">💰 Total Balance: <strong id="balance" style="color:#6a0dad;">0.00</strong> Birr</div>
+                    <div style="font-size:0.75rem; color:#777; font-weight:700; margin-top:4px;">🔒 In-Play (Deposit/Bonus): <strong id="locked-val" style="color:#e67e22;">0.00</strong> Birr</div>
+                </div>
+            </div>
+            <div style="margin-top:12px; font-size:0.75rem; color:#6a0dad; background:#f4ecf9; padding:8px 12px; border-radius:10px; font-weight:700; border:1px dashed #d4b8ee;">
+                ℹ️ Anti-Abuse Rule: Only net game winnings can be withdrawn. Deposited funds & bonuses are for playing.
+            </div>
         </div>
 
     <div class="msg" id="msg"></div>
@@ -129,11 +141,12 @@
         <div id="withdraw-form" style="display:none; margin-top:20px; border-top:1px solid rgba(255,255,255,0.1); padding-top:16px;">
             <div class="field-lbl" id="lbl-amount">2️⃣ AMOUNT (BIRR)</div>
             <input type="number" class="amount-input" id="amount" min="10" placeholder="100" inputmode="decimal">
-            <div class="qty-row">
-                <button class="qty" onclick="setAmount(20)">20</button>
-                <button class="qty" onclick="setAmount(50)">50</button>
-                <button class="qty" onclick="setAmount(100)">100</button>
-                <button class="qty" onclick="setAmount(500)">500</button>
+            <div class="qty-row" style="grid-template-columns: repeat(5, 1fr);">
+                <button class="qty" type="button" onclick="setAmount(20)">20</button>
+                <button class="qty" type="button" onclick="setAmount(50)">50</button>
+                <button class="qty" type="button" onclick="setAmount(100)">100</button>
+                <button class="qty" type="button" onclick="setAmount(500)">500</button>
+                <button class="qty" type="button" onclick="setMaxAmount()" style="background:#eafaf1; color:#27ae60; border-color:#2ecc40;">MAX</button>
             </div>
 
             <div class="field-lbl field-gap" id="lbl-account">3️⃣ ACCOUNT OR PHONE NUMBER</div>
@@ -159,7 +172,13 @@
         const userId = params.get('userId');
         const API_BASE = window.location.origin + '/api';
 
+        let maxWithdrawable = 0;
         function setAmount(v) { document.getElementById('amount').value = v; }
+        function setMaxAmount() {
+            if (maxWithdrawable > 0) {
+                document.getElementById('amount').value = Math.floor(maxWithdrawable);
+            }
+        }
 
         let accounts = [];
         let selectedAccount = null;
@@ -209,7 +228,14 @@
                 ]);
                 const lob = await lobRes.json();
                 const requests = await reqRes.json();
-                document.getElementById('balance').textContent = parseFloat(lob.balance).toFixed(2);
+                const balNum = parseFloat(lob.balance || 0);
+                const withNum = parseFloat(lob.withdrawableBalance || 0);
+                const lockedNum = Math.max(0, balNum - withNum);
+
+                document.getElementById('balance').textContent = balNum.toFixed(2);
+                document.getElementById('withdrawable-val').textContent = withNum.toFixed(2);
+                document.getElementById('locked-val').textContent = lockedNum.toFixed(2);
+                maxWithdrawable = withNum;
 
                 const pending = requests.filter(r => r.type === 'withdraw');
                 const card = document.getElementById('pending-card');
@@ -238,6 +264,10 @@
             
             if (!amount || amount < 10) {
                 show('err', 'Minimum withdrawal is 10 Birr.');
+                return;
+            }
+            if (amount > maxWithdrawable) {
+                show('err', `You can only withdraw game winnings (${maxWithdrawable.toFixed(2)} Birr available). Deposited funds and bonuses must be played in games.`);
                 return;
             }
             if (!phone || phone.length < 4) {

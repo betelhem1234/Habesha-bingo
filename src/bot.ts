@@ -1362,9 +1362,10 @@ bot.callbackQuery(/^req_(approve|appr|reject|rej)_(\d+)$/, async (ctx) => {
 
     const isMasterAdmin = ctx.from.id.toString() === config.ADMIN_USER_ID;
     let isAffiliateAdmin = false;
+    let adminProf: any = null;
     if (!isMasterAdmin) {
         try {
-            const adminProf = await prisma.adminProfile.findUnique({
+            adminProf = await prisma.adminProfile.findUnique({
                 where: { userId: BigInt(ctx.from.id) }
             });
             if (adminProf && adminProf.isActive) {
@@ -1386,6 +1387,17 @@ bot.callbackQuery(/^req_(approve|appr|reject|rej)_(\d+)$/, async (ctx) => {
         if (!request) return ctx.answerCallbackQuery({ text: "Request not found.", show_alert: true });
         if (request.status !== 'PENDING') return ctx.answerCallbackQuery({ text: "This request was already handled.", show_alert: true });
 
+        // Restrict withdrawal approvals exclusively to Master Admin or Duty Withdrawal Admin
+        if (request.type === 'withdraw') {
+            const isDutyWithdrawalAdmin = isAffiliateAdmin && adminProf?.isWithdrawalAdmin === true;
+            if (!isMasterAdmin && !isDutyWithdrawalAdmin) {
+                return ctx.answerCallbackQuery({
+                    text: "⛔ Only the designated Duty Withdrawal Admin can handle withdrawals.",
+                    show_alert: true
+                });
+            }
+        }
+
         if (isApprove) {
             if (request.type === 'deposit') {
                 await prisma.$transaction([
@@ -1397,8 +1409,19 @@ bot.callbackQuery(/^req_(approve|appr|reject|rej)_(\d+)$/, async (ctx) => {
                 if (!user || user.balance.toNumber() < request.amount.toNumber()) {
                     return ctx.answerCallbackQuery({ text: "❌ User has insufficient balance for this withdrawal.", show_alert: true });
                 }
+                const currentWithdrawable = user.withdrawableBalance ? user.withdrawableBalance.toNumber() : 0;
+                if (request.amount.toNumber() > currentWithdrawable) {
+                    return ctx.answerCallbackQuery({ text: "❌ User does not have enough withdrawable game winnings for this withdrawal.", show_alert: true });
+                }
+                const newWithdrawable = Math.max(0, currentWithdrawable - request.amount.toNumber());
                 await prisma.$transaction([
-                    prisma.user.update({ where: { id: request.userId }, data: { balance: { decrement: request.amount } } }),
+                    prisma.user.update({
+                        where: { id: request.userId },
+                        data: {
+                            balance: { decrement: request.amount },
+                            withdrawableBalance: { set: newWithdrawable }
+                        }
+                    }),
                     prisma.transactionRequest.update({ where: { id }, data: { status: 'APPROVED' } })
                 ]);
             }

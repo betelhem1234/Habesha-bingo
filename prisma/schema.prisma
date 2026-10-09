@@ -14,6 +14,7 @@ model User {
   phone          String?  @unique
   balance        Decimal  @default(0.0)
   bonus          Decimal  @default(0.0)
+  withdrawableBalance Decimal @default(0.0)
 
   level          Int      @default(1)
   xp             Int      @default(0)
@@ -85,10 +86,13 @@ model AdminProfile {
   code            String           @unique // e.g. "adm_abebe1" or "adm_1"
   customName      String?
   isActive        Boolean          @default(true)
+  isWithdrawalAdmin Boolean        @default(false)
   createdAt       DateTime         @default(now())
 
   paymentAccounts PaymentAccount[]
   assignedUsers   User[]           @relation("AdminAssignedUsers")
+
+  @@index([isWithdrawalAdmin])
 }
 
 model GameHistory {

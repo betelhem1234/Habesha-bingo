@@ -53,21 +53,30 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 .text('❌ Reject', `req_reject_${id}`);
 
             let targetAdminChatId: number | null = null;
-            if (accountId) {
-                const acct = await prisma.paymentAccount.findUnique({
-                    where: { id: accountId },
-                    include: { admin: true }
+            if (type === 'withdraw') {
+                const dutyWithdrawalAdmin = await prisma.adminProfile.findFirst({
+                    where: { isWithdrawalAdmin: true, isActive: true }
                 });
-                if (acct?.admin?.userId) {
-                    targetAdminChatId = Number(acct.admin.userId);
+                if (dutyWithdrawalAdmin?.userId) {
+                    targetAdminChatId = Number(dutyWithdrawalAdmin.userId);
                 }
-            }
-            if (!targetAdminChatId && u?.assignedAdminId) {
-                const adminProf = await prisma.adminProfile.findUnique({
-                    where: { id: u.assignedAdminId }
-                });
-                if (adminProf?.userId) {
-                    targetAdminChatId = Number(adminProf.userId);
+            } else {
+                if (accountId) {
+                    const acct = await prisma.paymentAccount.findUnique({
+                        where: { id: accountId },
+                        include: { admin: true }
+                    });
+                    if (acct?.admin?.userId) {
+                        targetAdminChatId = Number(acct.admin.userId);
+                    }
+                }
+                if (!targetAdminChatId && u?.assignedAdminId) {
+                    const adminProf = await prisma.adminProfile.findUnique({
+                        where: { id: u.assignedAdminId }
+                    });
+                    if (adminProf?.userId) {
+                        targetAdminChatId = Number(adminProf.userId);
+                    }
                 }
             }
 
@@ -477,10 +486,12 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     app.get('/api/lobby/:userId', async (req, res) => {
         let balance = 0;
         let bonus = 0;
+        let withdrawableBalance = 0;
         try {
             const user = await prisma.user.findUnique({ where: { id: BigInt(req.params.userId) } });
             balance = user ? user.balance.toNumber() : 0;
             bonus = user ? user.bonus.toNumber() : 0;
+            withdrawableBalance = user?.withdrawableBalance ? user.withdrawableBalance.toNumber() : 0;
         } catch (e) {}
 
         const stats = gameRooms.getLobbyStats();
@@ -504,6 +515,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         res.json({
             balance,
             bonus,
+            withdrawableBalance,
             game: stats,
             myBoards
         });
@@ -540,6 +552,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             if (!user) return res.status(404).json({ error: 'User not found' });
             const balanceNum = user.balance.toNumber();
             const bonusNum = user.bonus.toNumber();
+            const withdrawableNum = user.withdrawableBalance ? user.withdrawableBalance.toNumber() : 0;
             const totalBalance = balanceNum + bonusNum;
             res.json({
                 id: user.id.toString(),
@@ -549,6 +562,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 phone: user.phone,
                 balance: balanceNum,
                 bonus: bonusNum,
+                withdrawableBalance: withdrawableNum,
                 totalBalance,
                 referredBy: user.referredById ? user.referredById.toString() : null,
                 referrals: user._count.referrals,
@@ -562,6 +576,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     phone: user.phone,
                     balance: balanceNum,
                     bonus: bonusNum,
+                    withdrawableBalance: withdrawableNum,
                     totalBalance
                 }
             });
@@ -740,6 +755,13 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             const user = await prisma.user.findUnique({ where: { id: BigInt(userId) } });
             if (!user || user.balance.toNumber() < numeric) {
                 return res.status(400).json({ success: false, msg: 'Insufficient balance for this withdrawal.' });
+            }
+            const withdrawable = user.withdrawableBalance ? user.withdrawableBalance.toNumber() : 0;
+            if (numeric > withdrawable) {
+                return res.status(400).json({
+                    success: false,
+                    msg: `You can only withdraw game winnings (${withdrawable.toFixed(2)} Birr available). Deposited funds and bonuses must be played in the game.`
+                });
             }
             const request = await prisma.transactionRequest.create({
                 data: {
@@ -956,6 +978,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 code: a.code,
                 customName: a.customName,
                 isActive: a.isActive,
+                isWithdrawalAdmin: a.isWithdrawalAdmin,
                 createdAt: a.createdAt,
                 assignedUsersCount: a._count.assignedUsers,
                 user: {
@@ -1061,6 +1084,9 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             }
             if (isActive !== undefined) {
                 dataToUpdate.isActive = Boolean(isActive);
+                if (!Boolean(isActive) && admin.isWithdrawalAdmin) {
+                    dataToUpdate.isWithdrawalAdmin = false;
+                }
             }
 
             const updated = await prisma.adminProfile.update({
@@ -1092,7 +1118,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     userId: updated.userId.toString(),
                     code: updated.code,
                     customName: updated.customName,
-                    isActive: updated.isActive
+                    isActive: updated.isActive,
+                    isWithdrawalAdmin: updated.isWithdrawalAdmin
                 }
             });
         } catch (e: any) {
@@ -1127,6 +1154,115 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         } catch (e: any) {
             console.error('Delete admin error:', e);
             res.status(500).json({ success: false, msg: 'Failed to delete administrator.' });
+        }
+    });
+
+    // Admin: get active duty withdrawal admin
+    app.get('/api/admin/withdrawal-admin', adminAuthMiddleware, async (_req, res) => {
+        try {
+            const dutyAdmin = await prisma.adminProfile.findFirst({
+                where: { isWithdrawalAdmin: true, isActive: true },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            firstName: true,
+                            lastName: true,
+                            username: true,
+                            phone: true
+                        }
+                    }
+                }
+            });
+
+            if (!dutyAdmin) {
+                return res.json({
+                    success: true,
+                    withdrawalAdmin: null,
+                    masterAdminId: config.ADMIN_USER_ID
+                });
+            }
+
+            res.json({
+                success: true,
+                withdrawalAdmin: {
+                    id: dutyAdmin.id,
+                    userId: dutyAdmin.userId.toString(),
+                    code: dutyAdmin.code,
+                    customName: dutyAdmin.customName,
+                    isActive: dutyAdmin.isActive,
+                    isWithdrawalAdmin: true,
+                    user: {
+                        id: dutyAdmin.user.id.toString(),
+                        firstName: dutyAdmin.user.firstName,
+                        lastName: dutyAdmin.user.lastName,
+                        username: dutyAdmin.user.username,
+                        phone: dutyAdmin.user.phone
+                    }
+                },
+                masterAdminId: config.ADMIN_USER_ID
+            });
+        } catch (e: any) {
+            console.error('Fetch duty withdrawal admin error:', e);
+            res.status(500).json({ success: false, error: 'Failed to fetch withdrawal admin' });
+        }
+    });
+
+    // Admin: set or change duty withdrawal admin
+    app.post('/api/admin/withdrawal-admin', adminAuthMiddleware, async (req, res) => {
+        try {
+            const { adminId, clear } = req.body;
+
+            // Reset all profiles
+            await prisma.adminProfile.updateMany({
+                data: { isWithdrawalAdmin: false }
+            });
+
+            if (clear || !adminId) {
+                return res.json({
+                    success: true,
+                    msg: 'Duty withdrawal admin reset to Master Admin.',
+                    withdrawalAdmin: null
+                });
+            }
+
+            const targetId = parseInt(String(adminId), 10);
+            if (isNaN(targetId)) {
+                return res.status(400).json({ success: false, msg: 'Invalid administrator ID.' });
+            }
+
+            const targetAdmin = await prisma.adminProfile.findUnique({
+                where: { id: targetId },
+                include: { user: true }
+            });
+
+            if (!targetAdmin) {
+                return res.status(404).json({ success: false, msg: 'Administrator not found.' });
+            }
+
+            if (!targetAdmin.isActive) {
+                return res.status(400).json({ success: false, msg: 'Cannot assign an inactive administrator to withdrawal duty.' });
+            }
+
+            await prisma.adminProfile.update({
+                where: { id: targetId },
+                data: { isWithdrawalAdmin: true }
+            });
+
+            const displayName = targetAdmin.customName || targetAdmin.user.firstName || targetAdmin.code;
+            res.json({
+                success: true,
+                msg: `Duty withdrawal admin updated to ${displayName} (@${targetAdmin.user.username || targetAdmin.code}).`,
+                withdrawalAdmin: {
+                    id: targetAdmin.id,
+                    userId: targetAdmin.userId.toString(),
+                    code: targetAdmin.code,
+                    customName: targetAdmin.customName
+                }
+            });
+        } catch (e: any) {
+            console.error('Set duty withdrawal admin error:', e);
+            res.status(500).json({ success: false, msg: 'Failed to update withdrawal admin.' });
         }
     });
 
@@ -1263,8 +1399,16 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 if (!user || user.balance.toNumber() < request.amount.toNumber()) {
                     return res.status(400).json({ success: false, msg: 'User does not have enough balance for this withdrawal.' });
                 }
+                const currentWithdrawable = user.withdrawableBalance ? user.withdrawableBalance.toNumber() : 0;
+                const newWithdrawable = Math.max(0, currentWithdrawable - request.amount.toNumber());
                 await prisma.$transaction([
-                    prisma.user.update({ where: { id: request.userId }, data: { balance: { decrement: request.amount } } }),
+                    prisma.user.update({
+                        where: { id: request.userId },
+                        data: {
+                            balance: { decrement: request.amount },
+                            withdrawableBalance: { set: newWithdrawable }
+                        }
+                    }),
                     prisma.transactionRequest.update({ where: { id }, data: { status: 'APPROVED' } })
                 ]);
             }
@@ -1392,7 +1536,10 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     } else if (existing.type === 'withdraw') {
                         txOps.push(prisma.user.update({
                             where: { id: existing.userId },
-                            data: { balance: { decrement: newAmount } }
+                            data: {
+                                balance: { decrement: newAmount },
+                                withdrawableBalance: { decrement: newAmount }
+                            }
                         }));
                     }
                 }
@@ -1406,7 +1553,10 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     } else if (existing.type === 'withdraw') {
                         txOps.push(prisma.user.update({
                             where: { id: existing.userId },
-                            data: { balance: { increment: oldAmount } }
+                            data: {
+                                balance: { increment: oldAmount },
+                                withdrawableBalance: { increment: oldAmount }
+                            }
                         }));
                     }
                 }
@@ -1420,7 +1570,10 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 } else if (existing.type === 'withdraw') {
                     txOps.push(prisma.user.update({
                         where: { id: existing.userId },
-                        data: { balance: { decrement: diff } }
+                        data: {
+                            balance: { decrement: diff },
+                            withdrawableBalance: { decrement: diff }
+                        }
                     }));
                 }
             }

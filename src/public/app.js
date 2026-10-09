@@ -46,6 +46,7 @@ function switchAdminTab(tabId) {
     if (tabId === 'tab-admins') {
         fetchAdmins();
         fetchAdminBanks();
+        fetchDutyWithdrawalAdmin();
     }
 }
 window.switchAdminTab = switchAdminTab;
@@ -1333,9 +1334,17 @@ async function fetchAdmins() {
                 ? a.paymentAccounts.map(b => `<span style="display:inline-block; margin:2px; padding:2px 8px; border-radius:10px; background:rgba(14,165,233,0.18); border:1px solid rgba(14,165,233,0.3); color:#38bdf8; font-size:11px; font-weight:600;">🏦 ${escapeHtml(b.bankName)}: ${escapeHtml(b.accountNumber)}</span>`).join('')
                 : `<span style="color:#94a3b8; font-size:12px;">⚠️ No banks linked</span>`;
 
-            const statusHtml = a.isActive
+            const dutyBadge = a.isWithdrawalAdmin
+                ? `<div style="margin-top:4px;"><span class="badge" style="background:rgba(245,158,11,0.25); color:#fbbf24; border:1px solid rgba(245,158,11,0.5); font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; box-shadow:0 0 8px rgba(245,158,11,0.4);">💸 Withdrawal Duty</span></div>`
+                : '';
+
+            const statusHtml = (a.isActive
                 ? `<span class="badge-active">Active</span>`
-                : `<span class="badge-banned">Inactive</span>`;
+                : `<span class="badge-banned">Inactive</span>`) + dutyBadge;
+
+            const dutyBtn = (!a.isWithdrawalAdmin && a.isActive)
+                ? `<button onclick="setDutyWithdrawalAdmin(${a.id})" class="action-btn-sm" style="background:rgba(14,165,233,0.18); color:#38bdf8; border:1px solid rgba(14,165,233,0.4);" title="Assign as Duty Withdrawal Admin">💸 Payouts</button>`
+                : '';
 
             return `
                 <tr>
@@ -1347,7 +1356,8 @@ async function fetchAdmins() {
                     <td><strong style="color:#4ade80;">${a.assignedUsersCount ?? 0}</strong> <span style="font-size:11px; color:#94a3b8;">players</span></td>
                     <td>${statusHtml}</td>
                     <td>
-                        <div style="display:flex; gap:6px;">
+                        <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                            ${dutyBtn}
                             <button onclick="openEditAdminProfileModal(${a.id})" class="action-btn-sm" style="background:#3b82f6; color:#fff;" title="Edit Administrator">✏️ Edit</button>
                             <button onclick="deleteAdminProfile(${a.id})" class="action-btn-sm" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4);" title="Remove Administrator">🗑</button>
                         </div>
@@ -1355,6 +1365,7 @@ async function fetchAdmins() {
                 </tr>
             `;
         }).join('');
+        fetchDutyWithdrawalAdmin();
     } catch (err) {
         console.error('Error fetching admins:', err);
     }
@@ -1737,5 +1748,110 @@ window.openEditBankModal = openEditBankModal;
 window.closeBankModal = closeBankModal;
 window.saveBankAccount = saveBankAccount;
 window.toggleBankActive = toggleBankActive;
+
+// Duty Withdrawal Admin management
+let currentDutyWithdrawalAdmin = null;
+
+async function fetchDutyWithdrawalAdmin() {
+    try {
+        const res = await authFetch('/api/admin/withdrawal-admin');
+        if (!res.ok) return;
+        const data = await res.json();
+        currentDutyWithdrawalAdmin = data.withdrawalAdmin || null;
+        const nameEl = document.getElementById('duty-withdrawal-admin-name');
+        if (!nameEl) return;
+        if (data.withdrawalAdmin) {
+            const w = data.withdrawalAdmin;
+            const disp = w.customName || w.user?.firstName || w.code;
+            const uname = w.user?.username ? ` (@${w.user.username})` : '';
+            nameEl.innerHTML = `<span style="color:#fbbf24;">⭐ ${escapeHtml(disp)}${escapeHtml(uname)}</span> &bull; Code: <code style="color:#a78bfa;">${escapeHtml(w.code)}</code>`;
+        } else {
+            nameEl.innerHTML = `<span style="color:#38bdf8;">👑 Master Admin (Super-Admin default #${escapeHtml(data.masterAdminId || 'Master')})</span>`;
+        }
+    } catch (e) {
+        console.error('Error fetching duty withdrawal admin:', e);
+    }
+}
+
+function openChangeWithdrawalAdminModal() {
+    const modal = document.getElementById('withdrawal-admin-modal');
+    if (!modal) return;
+    const select = document.getElementById('select-withdrawal-admin');
+    if (!select) return;
+
+    let opts = '<option value="">👑 Master Admin (Super-Admin default)</option>';
+    allAdmins.filter(a => a.isActive).forEach(a => {
+        const name = a.customName || a.user?.firstName || 'Admin';
+        const uname = a.user?.username ? ` (@${a.user.username})` : '';
+        const selected = a.isWithdrawalAdmin ? 'selected' : '';
+        opts += `<option value="${a.id}" ${selected}>${escapeHtml(name)}${escapeHtml(uname)} — Code: ${escapeHtml(a.code)} (#${a.id})</option>`;
+    });
+
+    select.innerHTML = opts;
+    modal.style.display = 'flex';
+}
+
+function closeChangeWithdrawalAdminModal() {
+    const modal = document.getElementById('withdrawal-admin-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function saveDutyWithdrawalAdmin(event) {
+    if (event) event.preventDefault();
+    const select = document.getElementById('select-withdrawal-admin');
+    if (!select) return;
+
+    const adminId = select.value ? parseInt(select.value, 10) : null;
+    try {
+        const res = await authFetch('/api/admin/withdrawal-admin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ adminId, clear: !adminId })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            alert(data.msg || 'Failed to update duty withdrawal admin.');
+            return;
+        }
+        closeChangeWithdrawalAdminModal();
+        await fetchAdmins();
+        await fetchDutyWithdrawalAdmin();
+        alert(data.msg || 'Duty withdrawal admin successfully assigned.');
+    } catch (e) {
+        alert('Network error while assigning withdrawal admin.');
+    }
+}
+
+async function setDutyWithdrawalAdmin(adminId) {
+    const target = allAdmins.find(a => a.id === adminId);
+    const name = target ? (target.customName || target.user?.firstName || target.code) : `Admin #${adminId}`;
+    if (!confirm(`Are you sure you want to assign "${name}" as the Duty Withdrawal Admin?\n\nAll player withdrawals will route to their personal Telegram chat for 1-click approval.`)) {
+        return;
+    }
+
+    try {
+        const res = await authFetch('/api/admin/withdrawal-admin', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ adminId })
+        });
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            alert(data.msg || 'Failed to update duty withdrawal admin.');
+            return;
+        }
+        await fetchAdmins();
+        await fetchDutyWithdrawalAdmin();
+        alert(data.msg || 'Duty withdrawal admin updated!');
+    } catch (e) {
+        alert('Network error while setting duty withdrawal admin.');
+    }
+}
+
+window.fetchDutyWithdrawalAdmin = fetchDutyWithdrawalAdmin;
+window.openChangeWithdrawalAdminModal = openChangeWithdrawalAdminModal;
+window.closeChangeWithdrawalAdminModal = closeChangeWithdrawalAdminModal;
+window.saveDutyWithdrawalAdmin = saveDutyWithdrawalAdmin;
+window.setDutyWithdrawalAdmin = setDutyWithdrawalAdmin;
 
 

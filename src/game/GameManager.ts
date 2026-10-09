@@ -19,6 +19,7 @@ export interface Player {
     boardNumber?: number;
     fee: number;
     bonusUsed?: number;
+    withdrawableUsed?: number;
     firstName?: string;
     username?: string;
     lastSeen: number;
@@ -195,6 +196,7 @@ export class GameManager {
             const countDiff = newCount - prevCount;
 
             let additionalBonusUsed = 0;
+            let additionalWithdrawableUsed = 0;
             if (countDiff > 0 && feePerBoard > 0) {
                 const addFee = countDiff * feePerBoard;
                 const res = await deductFee(userId, addFee);
@@ -206,6 +208,7 @@ export class GameManager {
                     };
                 }
                 additionalBonusUsed = res.bonusUsed;
+                additionalWithdrawableUsed = res.withdrawableUsed;
             } else if (countDiff < 0 && feePerBoard > 0) {
                 // Refund unselected board - restore bonus first if bonus was consumed
                 const refundAmount = Math.abs(countDiff) * feePerBoard;
@@ -213,8 +216,12 @@ export class GameManager {
                 const bonusRefund = Math.min(currentBonusUsed, refundAmount);
                 const balanceRefund = refundAmount - bonusRefund;
 
+                const currentWithdrawableUsed = existingPlayer?.withdrawableUsed || 0;
+                const withdrawableRefund = Math.min(currentWithdrawableUsed, balanceRefund);
+
                 if (existingPlayer) {
                     existingPlayer.bonusUsed = Math.max(0, currentBonusUsed - bonusRefund);
+                    existingPlayer.withdrawableUsed = Math.max(0, currentWithdrawableUsed - withdrawableRefund);
                 }
 
                 try {
@@ -222,6 +229,7 @@ export class GameManager {
                         where: { id: userId },
                         data: {
                             ...(balanceRefund > 0 ? { balance: { increment: balanceRefund } } : {}),
+                            ...(withdrawableRefund > 0 ? { withdrawableBalance: { increment: withdrawableRefund } } : {}),
                             ...(bonusRefund > 0 ? { bonus: { increment: bonusRefund } } : {})
                         }
                     });
@@ -244,6 +252,7 @@ export class GameManager {
                 activePlayer.daubed = cards[0].daubed;
                 activePlayer.fee = newCount * feePerBoard;
                 activePlayer.bonusUsed = (activePlayer.bonusUsed || 0) + additionalBonusUsed;
+                activePlayer.withdrawableUsed = (activePlayer.withdrawableUsed || 0) + additionalWithdrawableUsed;
                 activePlayer.lastSeen = Date.now();
             } else {
                 const user = await prisma.user.findUnique({ where: { id: userId } });
@@ -255,6 +264,7 @@ export class GameManager {
                     boardNumber: cards[0].boardNumber,
                     fee: newCount * feePerBoard,
                     bonusUsed: additionalBonusUsed,
+                    withdrawableUsed: additionalWithdrawableUsed,
                     firstName: user?.firstName ?? undefined,
                     username: user?.username ?? undefined,
                     lastSeen: Date.now()
@@ -428,11 +438,13 @@ export class GameManager {
             try {
                 const bonusUsed = p.bonusUsed || 0;
                 const balanceRefund = p.fee - bonusUsed;
+                const withdrawableRefund = Math.min(p.withdrawableUsed || 0, balanceRefund);
                 await prisma.user.update({
                     where: { id: p.userId },
                     data: {
                         ...(bonusUsed > 0 ? { bonus: { increment: bonusUsed } } : {}),
-                        ...(balanceRefund > 0 ? { balance: { increment: balanceRefund } } : {})
+                        ...(balanceRefund > 0 ? { balance: { increment: balanceRefund } } : {}),
+                        ...(withdrawableRefund > 0 ? { withdrawableBalance: { increment: withdrawableRefund } } : {})
                     }
                 });
             } catch (e) {
@@ -1105,7 +1117,10 @@ export class GameManager {
                 try {
                     await prisma.user.update({
                         where: { id: w.player.userId },
-                        data: { balance: { increment: payoutPerWinner } }
+                        data: {
+                            balance: { increment: payoutPerWinner },
+                            withdrawableBalance: { increment: payoutPerWinner }
+                        }
                     });
                 } catch (e) {
                     console.error(`Failed to credit winner ${w.player.userId}:`, e);

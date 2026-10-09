@@ -227,9 +227,18 @@
     <!-- ─── Main Content ─── -->
     <div class="content">
         <div class="balance-card">
-            <div class="lbl" data-i18n="main_balance">MAIN BALANCE</div>
+            <div class="lbl" data-i18n="main_balance">TOTAL BALANCE</div>
             <div class="val" id="balance">0.00</div>
-            <div class="sub"><span class="bonus-chip" id="bonus">🎁 Bonus: 0.00</span></div>
+            
+            <div style="display:flex; justify-content:center; gap:8px; margin-top:10px; flex-wrap:wrap;">
+                <span style="display:inline-block; background:#eafaf1; border:1px solid #2ecc40; color:#27ae60; padding:4px 12px; border-radius:20px; font-size:0.78rem; font-weight:800;">
+                    🏆 Withdrawable: <strong id="withdrawable-val">0.00</strong> Birr
+                </span>
+                <span class="bonus-chip" id="bonus">🎁 Bonus: 0.00</span>
+            </div>
+            <div style="font-size:0.72rem; color:#888; font-weight:700; margin-top:8px;">
+                🔒 In-Play Deposit: <strong id="in-play-deposit" style="color:#e67e22;">0.00</strong> Birr
+            </div>
         </div>
 
         <div class="actions">
@@ -238,10 +247,10 @@
         </div>
 
         <div class="panel">
-            <div class="panel-title" data-i18n="how_deposit">ℹ️ HOW DEPOSIT WORKS</div>
+            <div class="panel-title" data-i18n="how_deposit">ℹ️ HOW DEPOSIT & WITHDRAW WORK</div>
             <div class="tip" data-i18n="deposit_tip1">Click <b>Deposit</b>, select your preferred bank account, send the money, then enter the amount and upload your payment screenshot.</div>
             <div class="tip" data-i18n="deposit_tip2">The admin will quickly verify and approve it. Your balance will be credited right away.</div>
-            <div class="tip divider" data-i18n="deposit_tip3">To withdraw, tap <b>Withdraw</b>, enter the amount and your Telebirr / CBE account. Funds will be transferred once approved.</div>
+            <div class="tip divider" data-i18n="deposit_tip3">To withdraw, tap <b>Withdraw</b>. Only net game winnings can be cashed out; deposited funds and bonuses are for entering games.</div>
         </div>
 
         <div class="panel">
@@ -305,8 +314,15 @@
                 const lob = await lobRes.json();
                 const history = await histRes.json();
 
-                document.getElementById('balance').textContent = parseFloat(lob.balance || 0).toFixed(2);
+                const bal = parseFloat(lob.balance || 0);
+                const withVal = parseFloat(lob.withdrawableBalance || 0);
+                const inPlay = Math.max(0, bal - withVal);
+
+                document.getElementById('balance').textContent = bal.toFixed(2);
+                document.getElementById('withdrawable-val').textContent = withVal.toFixed(2);
                 document.getElementById('bonus').textContent = `🎁 Bonus: ${parseFloat(lob.bonus || 0).toFixed(2)}`;
+                const inPlayEl = document.getElementById('in-play-deposit');
+                if (inPlayEl) inPlayEl.textContent = inPlay.toFixed(2);
 
                 const el = document.getElementById('activity-list');
                 if (!history.length) {

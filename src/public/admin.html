@@ -215,6 +215,28 @@
                         </div>
                     </div>
 
+                    <!-- Duty Withdrawal Admin of the Day Card -->
+                    <div style="background: linear-gradient(135deg, rgba(14, 165, 233, 0.15), rgba(99, 102, 241, 0.1)); border: 1px solid rgba(56, 189, 248, 0.4); border-radius: 12px; padding: 16px 20px; margin-bottom: 20px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 14px;">
+                        <div>
+                            <div style="display: flex; align-items: center; gap: 8px;">
+                                <span style="font-size: 1.3rem;">💸</span>
+                                <h3 style="margin: 0; color: #38bdf8; font-size: 1.1rem; font-weight: 700;">Duty Withdrawal Admin (የዕለቱ የክፍያ አስተዳዳሪ)</h3>
+                                <span id="duty-withdrawal-badge" class="badge" style="background: rgba(16, 185, 129, 0.2); color: #34d399; border: 1px solid rgba(16, 185, 129, 0.4); font-size: 11px; padding: 2px 8px; border-radius: 6px;">Active Duty</span>
+                            </div>
+                            <p style="font-size: 12px; color: #94a3b8; margin: 4px 0 6px 0;">
+                                Player deposits are routed to the affiliate admin who invited them. All withdrawals are handled exclusively by the assigned duty officer below.
+                            </p>
+                            <div style="font-size: 14px; color: #e2e8f0;">
+                                Currently Assigned: <strong id="duty-withdrawal-admin-name" style="color: #fbbf24; font-size: 15px;">Loading...</strong>
+                            </div>
+                        </div>
+                        <div style="display: flex; gap: 10px;">
+                            <button onclick="openChangeWithdrawalAdminModal()" class="action-btn-sm" style="background: #0284c7; color: #fff; padding: 9px 18px; font-weight: 700; border-radius: 8px; font-size: 13px; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(2, 132, 199, 0.3);">
+                                🔄 Select / Change Withdrawal Admin
+                            </button>
+                        </div>
+                    </div>
+
                     <div class="table-container" style="margin-bottom: 30px;">
                         <table id="admins-table">
                             <thead>
@@ -576,6 +598,31 @@
                 <div style="display:flex; justify-content:flex-end; gap:10px;">
                     <button type="button" onclick="closeBankModal()" class="btn-primary" style="margin:0; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">Cancel</button>
                     <button type="submit" class="btn-primary" style="margin:0; background:#0ea5e9; font-weight:700;">💾 Save Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Change Duty Withdrawal Admin Modal -->
+    <div id="withdrawal-admin-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:#1e293b; border:1px solid rgba(56,189,248,0.4); border-radius:18px; padding:24px; width:90%; max-width:480px; box-shadow:0 25px 50px rgba(0,0,0,0.7);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 style="font-size:1.2rem; color:#f8fafc; font-weight:700; margin:0;">💸 Select Duty Withdrawal Admin</h3>
+                <button type="button" onclick="closeChangeWithdrawalAdminModal()" style="background:none; border:none; color:#94a3b8; font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <p style="font-size:13px; color:#94a3b8; margin:0 0 16px 0; line-height:1.5;">
+                Choose which administrator will handle all player withdrawals today. Only this admin (and super-admin) will receive withdrawal notifications on Telegram with 1-click Approve/Reject buttons.
+            </p>
+            <form id="withdrawal-admin-form" onsubmit="saveDutyWithdrawalAdmin(event)">
+                <div style="margin-bottom:18px;">
+                    <label style="display:block; font-size:12px; color:#cbd5e1; margin-bottom:6px; font-weight:700;">SELECT DUTY PAYOUT ADMIN:</label>
+                    <select id="select-withdrawal-admin" style="width:100%; padding:11px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:#0f172a; color:#fff; font-size:14px; box-sizing:border-box;">
+                        <!-- Populated by JS -->
+                    </select>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:10px;">
+                    <button type="button" onclick="closeChangeWithdrawalAdminModal()" class="btn-primary" style="margin:0; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">Cancel</button>
+                    <button type="submit" class="btn-primary" style="margin:0; background:#0284c7; font-weight:700;">💾 Save Duty Assignment</button>
                 </div>
             </form>
         </div>
