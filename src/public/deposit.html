@@ -186,7 +186,8 @@
         async function loadBanks() {
             const wrap = document.getElementById('bank-wrap');
             try {
-                const res = await fetch(`${API_BASE}/banks`);
+                const url = userId ? `${API_BASE}/banks?userId=${encodeURIComponent(userId)}` : `${API_BASE}/banks`;
+                const res = await fetch(url);
                 accounts = await res.json();
             } catch (e) { accounts = []; console.error(e); }
             if (!accounts.length) {

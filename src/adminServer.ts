@@ -37,7 +37,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     app.use(express.json());
     app.use('/api', generalApiLimiter);
 
-    async function notifyAdminNewRequest(id: number, type: string, amount: number, userId: bigint, proof?: string | null, accountText?: string) {
+    async function notifyAdminNewRequest(id: number, type: string, amount: number, userId: bigint, proof?: string | null, accountText?: string, accountId?: number | null) {
         try {
             const u = await prisma.user.findUnique({ where: { id: userId } });
             const icon = type === 'deposit' ? '💳 DEPOSIT' : '⬆️ WITHDRAW';
@@ -46,20 +46,61 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 `👤 ${u?.firstName || 'Player'} (@\`${u?.username || id}\`)\n` +
                 `💰 Amount: *${amount} Birr*\n` +
                 (accountText ? `🏦 Paid to: *${accountText}*\n` : '') +
-                `\nRun /requests to approve or reject.`;
+                `\nTap below to approve or reject:`;
+
+            const replyMarkup = new InlineKeyboard()
+                .text('✅ Approve', `req_approve_${id}`)
+                .text('❌ Reject', `req_reject_${id}`);
+
+            let targetAdminChatId: number | null = null;
+            if (accountId) {
+                const acct = await prisma.paymentAccount.findUnique({
+                    where: { id: accountId },
+                    include: { admin: true }
+                });
+                if (acct?.admin?.userId) {
+                    targetAdminChatId = Number(acct.admin.userId);
+                }
+            }
+            if (!targetAdminChatId && u?.assignedAdminId) {
+                const adminProf = await prisma.adminProfile.findUnique({
+                    where: { id: u.assignedAdminId }
+                });
+                if (adminProf?.userId) {
+                    targetAdminChatId = Number(adminProf.userId);
+                }
+            }
+
+            const masterChatId = Number(config.ADMIN_USER_ID);
+            const targetChatIds = new Set<number>();
+            if (!isNaN(masterChatId) && masterChatId > 0) targetChatIds.add(masterChatId);
+            if (targetAdminChatId && !isNaN(targetAdminChatId) && targetAdminChatId > 0) targetChatIds.add(targetAdminChatId);
 
             const url = proof ? proofUrl(proof) : null;
-            if (type === 'deposit' && proof) {
+            for (const chatId of targetChatIds) {
                 try {
-                    const file = fs.readFileSync(proofPath(proof));
-                    await bot.api.sendPhoto(Number(config.ADMIN_USER_ID), new InputFile(file),
-                        { caption: text, parse_mode: 'Markdown' });
-                    return;
-                } catch (e) { console.error('sendProofPhoto failed', e); }
+                    if (type === 'deposit' && proof) {
+                        try {
+                            const file = fs.readFileSync(proofPath(proof));
+                            await bot.api.sendPhoto(chatId, new InputFile(file), {
+                                caption: text,
+                                parse_mode: 'Markdown',
+                                reply_markup: replyMarkup
+                            });
+                            continue;
+                        } catch (e) {
+                            console.error(`sendProofPhoto to ${chatId} failed:`, e);
+                        }
+                    }
+                    await bot.api.sendMessage(
+                        chatId,
+                        proof && type === 'deposit' ? `${text}\n📎 Proof: ${url}` : text,
+                        { parse_mode: 'Markdown', reply_markup: replyMarkup }
+                    );
+                } catch (sendErr) {
+                    console.error(`notifyAdminNewRequest delivery to ${chatId} failed:`, sendErr);
+                }
             }
-            await bot.api.sendMessage(Number(config.ADMIN_USER_ID),
-                proof && type === 'deposit' ? `${text}\n📎 Proof: ${url}` : text,
-                { parse_mode: 'Markdown' });
         } catch (e) { console.error('notifyAdminNewRequest failed', e); }
     }
 
@@ -657,7 +698,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     }
                 });
                 const accountText = account ? `${account.bankName} (${account.accountNumber})` : undefined;
-                notifyAdminNewRequest(request.id, 'deposit', numeric, BigInt(userId), proofFile.filename, accountText);
+                notifyAdminNewRequest(request.id, 'deposit', numeric, BigInt(userId), proofFile.filename, accountText, account?.id);
                 res.json({ success: true, msg: `Deposit request of ${numeric} Birr submitted with proof. Please wait for admin approval.`, requestId: request.id });
             } catch (e) {
                 console.error('Create deposit request error:', e);
@@ -711,7 +752,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     bankName: targetBankName
                 }
             });
-            notifyAdminNewRequest(request.id, 'withdraw', numeric, BigInt(userId), null, targetBankName ? `${targetBankName} - ${finalPhone}` : finalPhone);
+            notifyAdminNewRequest(request.id, 'withdraw', numeric, BigInt(userId), null, targetBankName ? `${targetBankName} - ${finalPhone}` : finalPhone, accountId ? parseInt(String(accountId), 10) : null);
             res.json({ success: true, msg: `Withdrawal request of ${numeric} Birr submitted. Admin will review and send the money to ${acctStr}.`, requestId: request.id });
         } catch (e) {
             console.error('Create withdraw request error:', e);
@@ -721,30 +762,74 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
 
     // -------------------- PAYMENT ACCOUNTS (bank selection) --------------------
 
-    // Active payout accounts users can send money to (shown on the deposit page)
-    app.get('/api/banks', async (_req, res) => {
+    // Active payout accounts users can send money to (scoped to user's assigned admin)
+    app.get('/api/banks', async (req, res) => {
         try {
-            const accounts = await prisma.paymentAccount.findMany({
-                where: { isActive: true },
-                orderBy: { createdAt: 'asc' }
-            });
+            const userIdParam = req.query.userId ? String(req.query.userId).trim() : null;
+            let assignedAdminId: number | null = null;
+            if (userIdParam) {
+                try {
+                    const u = await prisma.user.findUnique({
+                        where: { id: BigInt(userIdParam) },
+                        select: { assignedAdminId: true }
+                    });
+                    if (u?.assignedAdminId) {
+                        assignedAdminId = u.assignedAdminId;
+                    }
+                } catch (err) {}
+            }
+
+            let accounts: any[] = [];
+            if (assignedAdminId) {
+                accounts = await prisma.paymentAccount.findMany({
+                    where: { isActive: true, adminId: assignedAdminId },
+                    orderBy: { createdAt: 'asc' }
+                });
+            }
+
+            // Fallback: If player's assigned admin has no active accounts yet (or no admin assigned),
+            // show active accounts so deposits are never blocked
+            if (accounts.length === 0) {
+                accounts = await prisma.paymentAccount.findMany({
+                    where: { isActive: true },
+                    orderBy: { createdAt: 'asc' }
+                });
+            }
+
             res.json(accounts.map(a => ({
                 id: a.id,
                 bankName: a.bankName,
                 accountNumber: a.accountNumber,
-                accountName: a.accountName
+                accountName: a.accountName,
+                adminId: a.adminId
             })));
         } catch (e) {
+            console.error('Fetch banks error:', e);
             res.status(500).json({ error: 'Failed to load accounts' });
         }
     });
 
-    // Admin: list all accounts (including inactive)
+    // Admin: list all accounts (including inactive & attached admin info)
     app.get('/api/admin/banks', adminAuthMiddleware, async (_req, res) => {
         try {
             const accounts = await prisma.paymentAccount.findMany({
                 orderBy: { createdAt: 'desc' },
-                include: { _count: { select: { requests: true } } }
+                include: {
+                    _count: { select: { requests: true } },
+                    admin: {
+                        select: {
+                            id: true,
+                            code: true,
+                            customName: true,
+                            user: {
+                                select: {
+                                    firstName: true,
+                                    username: true
+                                }
+                            }
+                        }
+                    }
+                }
             });
             res.json(accounts.map(a => ({
                 id: a.id,
@@ -752,17 +837,25 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 accountNumber: a.accountNumber,
                 accountName: a.accountName,
                 isActive: a.isActive,
+                adminId: a.adminId,
+                admin: a.admin ? {
+                    id: a.admin.id,
+                    code: a.admin.code,
+                    name: a.admin.customName || a.admin.user?.firstName || a.admin.code,
+                    username: a.admin.user?.username
+                } : null,
                 requestCount: a._count.requests,
                 createdAt: a.createdAt
             })));
         } catch (e) {
+            console.error('Fetch admin banks error:', e);
             res.status(500).json({ error: 'Failed to load accounts' });
         }
     });
 
     // Admin: add an account
     app.post('/api/admin/banks', adminAuthMiddleware, async (req, res) => {
-        const { bankName, accountNumber, accountName } = req.body;
+        const { bankName, accountNumber, accountName, adminId } = req.body;
         if (!bankName || !accountNumber) {
             return res.status(400).json({ success: false, msg: 'bankName and accountNumber are required.' });
         }
@@ -771,7 +864,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 data: {
                     bankName: String(bankName).trim(),
                     accountNumber: String(accountNumber).trim(),
-                    accountName: accountName ? String(accountName).trim() : null
+                    accountName: accountName ? String(accountName).trim() : null,
+                    adminId: adminId ? parseInt(String(adminId), 10) : null
                 }
             });
             res.json({ success: true, account });
@@ -781,7 +875,33 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         }
     });
 
-    // Admin: deactivate an account
+    // Admin: edit an account
+    app.put('/api/admin/banks/:id', adminAuthMiddleware, async (req, res) => {
+        const id = parseInt(req.params.id, 10);
+        if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid id.' });
+        const { bankName, accountNumber, accountName, isActive, adminId } = req.body;
+        try {
+            const existing = await prisma.paymentAccount.findUnique({ where: { id } });
+            if (!existing) return res.status(404).json({ success: false, msg: 'Account not found.' });
+
+            const updated = await prisma.paymentAccount.update({
+                where: { id },
+                data: {
+                    bankName: bankName !== undefined ? String(bankName).trim() : undefined,
+                    accountNumber: accountNumber !== undefined ? String(accountNumber).trim() : undefined,
+                    accountName: accountName !== undefined ? (accountName ? String(accountName).trim() : null) : undefined,
+                    isActive: isActive !== undefined ? Boolean(isActive) : undefined,
+                    adminId: adminId !== undefined ? (adminId ? parseInt(String(adminId), 10) : null) : undefined
+                }
+            });
+            res.json({ success: true, account: updated });
+        } catch (e) {
+            console.error('Update bank error:', e);
+            res.status(500).json({ success: false, msg: 'Failed to update account.' });
+        }
+    });
+
+    // Admin: toggle active state of an account
     app.delete('/api/admin/banks/:id', adminAuthMiddleware, async (req, res) => {
         const id = parseInt(req.params.id, 10);
         if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid id.' });
@@ -792,6 +912,221 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             res.json({ success: true, msg: `Account #${id} ${account.isActive ? 'deactivated' : 'activated'}.` });
         } catch (e) {
             res.status(500).json({ success: false, msg: 'Failed to update account.' });
+        }
+    });
+
+    // -------------------- ADMIN AFFILIATES & LINEAGE --------------------
+
+    // Admin: list all admin affiliates
+    app.get('/api/admin/admins', adminAuthMiddleware, async (_req, res) => {
+        try {
+            const admins = await prisma.adminProfile.findMany({
+                orderBy: { id: 'asc' },
+                include: {
+                    user: {
+                        select: {
+                            id: true,
+                            firstName: true,
+                            lastName: true,
+                            username: true,
+                            phone: true
+                        }
+                    },
+                    paymentAccounts: {
+                        orderBy: { id: 'asc' },
+                        select: {
+                            id: true,
+                            bankName: true,
+                            accountNumber: true,
+                            accountName: true,
+                            isActive: true
+                        }
+                    },
+                    _count: {
+                        select: {
+                            assignedUsers: true
+                        }
+                    }
+                }
+            });
+
+            const safeAdmins = admins.map(a => ({
+                id: a.id,
+                userId: a.userId.toString(),
+                code: a.code,
+                customName: a.customName,
+                isActive: a.isActive,
+                createdAt: a.createdAt,
+                assignedUsersCount: a._count.assignedUsers,
+                user: {
+                    id: a.user.id.toString(),
+                    firstName: a.user.firstName,
+                    lastName: a.user.lastName,
+                    username: a.user.username,
+                    phone: a.user.phone
+                },
+                paymentAccounts: a.paymentAccounts
+            }));
+
+            res.json({ admins: safeAdmins });
+        } catch (e: any) {
+            console.error('Fetch admins error:', e);
+            res.status(500).json({ error: 'Failed to fetch administrators' });
+        }
+    });
+
+    // Admin: create / promote user to administrator
+    app.post('/api/admin/admins', adminAuthMiddleware, async (req, res) => {
+        try {
+            const { userId, code, customName, bankAccountIds } = req.body;
+            if (!userId || !code) {
+                return res.status(400).json({ success: false, msg: 'User and affiliate code are required.' });
+            }
+
+            const cleanCode = String(code).trim().toLowerCase();
+            const userBigInt = BigInt(userId);
+
+            const user = await prisma.user.findUnique({ where: { id: userBigInt } });
+            if (!user) {
+                return res.status(404).json({ success: false, msg: 'Selected user does not exist.' });
+            }
+
+            const existing = await prisma.adminProfile.findUnique({ where: { userId: userBigInt } });
+            if (existing) {
+                return res.status(400).json({ success: false, msg: 'This user is already registered as an administrator.' });
+            }
+
+            const codeDup = await prisma.adminProfile.findUnique({ where: { code: cleanCode } });
+            if (codeDup) {
+                return res.status(400).json({ success: false, msg: `Affiliate code "${cleanCode}" is already in use.` });
+            }
+
+            const admin = await prisma.adminProfile.create({
+                data: {
+                    userId: userBigInt,
+                    code: cleanCode,
+                    customName: customName ? String(customName).trim() : null
+                }
+            });
+
+            // Link selected bank accounts
+            if (Array.isArray(bankAccountIds) && bankAccountIds.length > 0) {
+                const targetIds = bankAccountIds.map((id: any) => parseInt(id, 10)).filter((n: number) => !isNaN(n));
+                if (targetIds.length > 0) {
+                    await prisma.paymentAccount.updateMany({
+                        where: { id: { in: targetIds } },
+                        data: { adminId: admin.id }
+                    });
+                }
+            }
+
+            res.json({
+                success: true,
+                admin: {
+                    id: admin.id,
+                    userId: admin.userId.toString(),
+                    code: admin.code,
+                    customName: admin.customName,
+                    isActive: admin.isActive
+                }
+            });
+        } catch (e: any) {
+            console.error('Create admin error:', e);
+            res.status(500).json({ success: false, msg: e?.message || 'Failed to create administrator profile.' });
+        }
+    });
+
+    // Admin: update administrator code, custom name, active state, or attached banks
+    app.put('/api/admin/admins/:id', adminAuthMiddleware, async (req, res) => {
+        try {
+            const id = parseInt(req.params.id, 10);
+            if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid id.' });
+
+            const { code, customName, isActive, bankAccountIds } = req.body;
+            const admin = await prisma.adminProfile.findUnique({ where: { id } });
+            if (!admin) return res.status(404).json({ success: false, msg: 'Administrator not found.' });
+
+            const dataToUpdate: any = {};
+            if (code !== undefined) {
+                const cleanCode = String(code).trim().toLowerCase();
+                if (!cleanCode) return res.status(400).json({ success: false, msg: 'Code cannot be empty.' });
+                if (cleanCode !== admin.code) {
+                    const dup = await prisma.adminProfile.findUnique({ where: { code: cleanCode } });
+                    if (dup) return res.status(400).json({ success: false, msg: `Code "${cleanCode}" is already taken.` });
+                }
+                dataToUpdate.code = cleanCode;
+            }
+            if (customName !== undefined) {
+                dataToUpdate.customName = customName ? String(customName).trim() : null;
+            }
+            if (isActive !== undefined) {
+                dataToUpdate.isActive = Boolean(isActive);
+            }
+
+            const updated = await prisma.adminProfile.update({
+                where: { id },
+                data: dataToUpdate
+            });
+
+            // Synchronize bank accounts if bankAccountIds array is passed
+            if (Array.isArray(bankAccountIds)) {
+                const targetIds = bankAccountIds.map((bid: any) => parseInt(bid, 10)).filter((n: number) => !isNaN(n));
+                // Unlink any accounts currently linked to this admin that are not in targetIds
+                await prisma.paymentAccount.updateMany({
+                    where: { adminId: id, id: { notIn: targetIds } },
+                    data: { adminId: null }
+                });
+                // Link the selected accounts to this admin
+                if (targetIds.length > 0) {
+                    await prisma.paymentAccount.updateMany({
+                        where: { id: { in: targetIds } },
+                        data: { adminId: id }
+                    });
+                }
+            }
+
+            res.json({
+                success: true,
+                admin: {
+                    id: updated.id,
+                    userId: updated.userId.toString(),
+                    code: updated.code,
+                    customName: updated.customName,
+                    isActive: updated.isActive
+                }
+            });
+        } catch (e: any) {
+            console.error('Update admin error:', e);
+            res.status(500).json({ success: false, msg: e?.message || 'Failed to update administrator profile.' });
+        }
+    });
+
+    // Admin: delete administrator profile
+    app.delete('/api/admin/admins/:id', adminAuthMiddleware, async (req, res) => {
+        try {
+            const id = parseInt(req.params.id, 10);
+            if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid id.' });
+
+            const admin = await prisma.adminProfile.findUnique({ where: { id } });
+            if (!admin) return res.status(404).json({ success: false, msg: 'Administrator not found.' });
+
+            // Disassociate bank accounts
+            await prisma.paymentAccount.updateMany({
+                where: { adminId: id },
+                data: { adminId: null }
+            });
+
+            // Disassociate assigned users
+            await prisma.user.updateMany({
+                where: { assignedAdminId: id },
+                data: { assignedAdminId: null }
+            });
+
+            await prisma.adminProfile.delete({ where: { id } });
+            res.json({ success: true, msg: 'Administrator removed successfully.' });
+        } catch (e: any) {
+            console.error('Delete admin error:', e);
+            res.status(500).json({ success: false, msg: 'Failed to delete administrator.' });
         }
     });
 

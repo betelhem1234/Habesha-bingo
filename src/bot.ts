@@ -204,8 +204,63 @@ bot.command('resetme', async (ctx: Context) => {
 bot.command('start', async (ctx: Context) => {
     if (!ctx.from) return;
 
-    const startParam = String(ctx.match ?? '').trim().replace(/^ref_?/, '');
-    const refId = /^\d+$/.test(startParam) ? BigInt(startParam) : null;
+    const rawMatch = String(ctx.match ?? '').trim();
+    const cleanMatch = rawMatch.toLowerCase();
+    const cleanNoPrefix = cleanMatch.replace(/^adm_/, '');
+
+    let assignedAdminId: number | null = null;
+    let refId: bigint | null = null;
+
+    // 1. Check if start parameter is an Admin Affiliate code (e.g. adm_abebe or adm_1)
+    if (rawMatch) {
+        try {
+            const matchedAdmin = await prisma.adminProfile.findFirst({
+                where: {
+                    isActive: true,
+                    OR: [
+                        { code: cleanMatch },
+                        { code: cleanNoPrefix },
+                        { code: `adm_${cleanNoPrefix}` }
+                    ]
+                }
+            });
+            if (matchedAdmin) {
+                assignedAdminId = matchedAdmin.id;
+            }
+        } catch (e) {}
+    }
+
+    // 2. Check if start parameter is a player referral (e.g. 12345 or ref_12345)
+    const refParam = rawMatch.replace(/^ref_?/, '');
+    if (/^\d+$/.test(refParam)) {
+        refId = BigInt(refParam);
+        // Inherit the inviter's assigned administrator
+        if (!assignedAdminId) {
+            try {
+                const inviter = await prisma.user.findUnique({
+                    where: { id: refId },
+                    select: { assignedAdminId: true }
+                });
+                if (inviter && inviter.assignedAdminId) {
+                    assignedAdminId = inviter.assignedAdminId;
+                }
+            } catch (e) {}
+        }
+    }
+
+    // 3. Fallback: Organic direct search (auto-balance to active admin with fewest players)
+    if (!assignedAdminId) {
+        try {
+            const activeAdmins = await prisma.adminProfile.findMany({
+                where: { isActive: true },
+                include: { _count: { select: { assignedUsers: true } } }
+            });
+            if (activeAdmins.length > 0) {
+                activeAdmins.sort((a, b) => a._count.assignedUsers - b._count.assignedUsers);
+                assignedAdminId = activeAdmins[0].id;
+            }
+        } catch (e) {}
+    }
 
     // Check if user exists
     let user = await prisma.user.findUnique({ where: { id: BigInt(ctx.from.id) } });
@@ -218,7 +273,8 @@ bot.command('start', async (ctx: Context) => {
                 lastName: ctx.from.last_name ?? null,
                 balance: 0, // Balance starts at 0 — credited after the user deposits
                 bonus: getNewUserBonus(),    // Starting welcome bonus: credited for any new user
-                referredById: refId ?? undefined
+                referredById: refId ?? undefined,
+                assignedAdminId: assignedAdminId ?? undefined
             }
         });
 
@@ -242,6 +298,14 @@ bot.command('start', async (ctx: Context) => {
                 console.error('Referral reward error:', e);
             }
         }
+    } else if (!user.assignedAdminId && assignedAdminId) {
+        // If an existing user was unassigned and clicks an admin invite or starts bot
+        try {
+            user = await prisma.user.update({
+                where: { id: user.id },
+                data: { assignedAdminId }
+            });
+        } catch (e) {}
     }
 
     // 1. If user is NOT registered (no phone number), show ONLY registration prompt
@@ -847,7 +911,27 @@ bot.callbackQuery('menu_deposit', async (ctx) => {
     await ctx.answerCallbackQuery();
     if (!ctx.from) return;
     const userToken = signPlayerToken(ctx.from.id);
-    const accounts = await prisma.paymentAccount.findMany({ where: { isActive: true }, orderBy: { createdAt: 'asc' } });
+
+    let accounts: any[] = [];
+    const dbUser = await prisma.user.findUnique({
+        where: { id: BigInt(ctx.from.id) },
+        select: { assignedAdminId: true }
+    });
+
+    if (dbUser?.assignedAdminId) {
+        accounts = await prisma.paymentAccount.findMany({
+            where: { isActive: true, adminId: dbUser.assignedAdminId },
+            orderBy: { createdAt: 'asc' }
+        });
+    }
+
+    if (accounts.length === 0) {
+        accounts = await prisma.paymentAccount.findMany({
+            where: { isActive: true },
+            orderBy: { createdAt: 'asc' }
+        });
+    }
+
     if (accounts.length === 0) {
         return ctx.reply(
             `💳 *Deposit*\n\nNo payout account is configured yet. Please contact support.\n\n👉 Open wallet: ${BINGO_APP_URL}/wallet.html?userId=${ctx.from.id}&token=${userToken}`,
@@ -1273,11 +1357,28 @@ bot.callbackQuery(/^req_page_(\d+)$/, async (ctx) => {
     }
 });
 
-bot.callbackQuery(/^req_(approve|reject)_(\d+)$/, async (ctx) => {
-    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+bot.callbackQuery(/^req_(approve|appr|reject|rej)_(\d+)$/, async (ctx) => {
+    if (!ctx.from) return;
+
+    const isMasterAdmin = ctx.from.id.toString() === config.ADMIN_USER_ID;
+    let isAffiliateAdmin = false;
+    if (!isMasterAdmin) {
+        try {
+            const adminProf = await prisma.adminProfile.findUnique({
+                where: { userId: BigInt(ctx.from.id) }
+            });
+            if (adminProf && adminProf.isActive) {
+                isAffiliateAdmin = true;
+            }
+        } catch (e) {}
+    }
+
+    if (!isMasterAdmin && !isAffiliateAdmin) {
         return ctx.answerCallbackQuery({ text: "⛔ Admin only.", show_alert: true });
     }
+
     const action = ctx.match[1];
+    const isApprove = action === 'approve' || action === 'appr';
     const id = parseInt(ctx.match[2], 10);
 
     try {
@@ -1285,7 +1386,7 @@ bot.callbackQuery(/^req_(approve|reject)_(\d+)$/, async (ctx) => {
         if (!request) return ctx.answerCallbackQuery({ text: "Request not found.", show_alert: true });
         if (request.status !== 'PENDING') return ctx.answerCallbackQuery({ text: "This request was already handled.", show_alert: true });
 
-        if (action === 'approve') {
+        if (isApprove) {
             if (request.type === 'deposit') {
                 await prisma.$transaction([
                     prisma.user.update({ where: { id: request.userId }, data: { balance: { increment: request.amount } } }),

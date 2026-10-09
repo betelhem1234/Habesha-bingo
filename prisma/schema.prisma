@@ -32,8 +32,15 @@ model User {
   history        GameHistory[]
   transactions   TransactionRequest[]
 
+  adminProfile   AdminProfile? @relation("AdminUserAccount")
+
+  assignedAdminId Int?
+  assignedAdmin   AdminProfile? @relation("AdminAssignedUsers", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+
   createdAt      DateTime @default(now())
   updatedAt      DateTime @updatedAt
+
+  @@index([assignedAdminId])
 }
 
 model TransactionRequest {
@@ -62,9 +69,26 @@ model PaymentAccount {
   isActive      Boolean  @default(true)
   createdAt     DateTime @default(now())
 
+  adminId       Int?
+  admin         AdminProfile? @relation(fields: [adminId], references: [id], onDelete: SetNull)
+
   requests      TransactionRequest[]
 
+  @@index([adminId])
   @@index([isActive])
+}
+
+model AdminProfile {
+  id              Int              @id @default(autoincrement())
+  userId          BigInt           @unique
+  user            User             @relation("AdminUserAccount", fields: [userId], references: [id], onDelete: Cascade)
+  code            String           @unique // e.g. "adm_abebe1" or "adm_1"
+  customName      String?
+  isActive        Boolean          @default(true)
+  createdAt       DateTime         @default(now())
+
+  paymentAccounts PaymentAccount[]
+  assignedUsers   User[]           @relation("AdminAssignedUsers")
 }
 
 model GameHistory {

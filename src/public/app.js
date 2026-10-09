@@ -43,6 +43,10 @@ function switchAdminTab(tabId) {
     document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.toggle('active', content.id === tabId);
     });
+    if (tabId === 'tab-admins') {
+        fetchAdmins();
+        fetchAdminBanks();
+    }
 }
 window.switchAdminTab = switchAdminTab;
 
@@ -177,7 +181,9 @@ async function refreshAllData() {
         fetchStats(),
         fetchUsers(searchQuery),
         fetchRequests(),
-        fetchBonusSettings()
+        fetchBonusSettings(),
+        fetchAdmins(),
+        fetchAdminBanks()
     ]);
 }
 
@@ -414,6 +420,7 @@ async function fetchUsers(searchQuery = '') {
                     <td>${statusHtml}</td>
                     <td>
                         <div style="display:flex; gap:6px;">
+                            <button onclick="promoteUserToAdmin('${u.id}')" class="action-btn-sm" style="background:#8b5cf6; color:#fff;" title="Make Administrator">👑 Admin</button>
                             <button onclick="openEditUserModal('${u.id}')" class="action-btn-sm" style="background:#3b82f6; color:#fff;" title="Edit user">✏️ Edit</button>
                             <button onclick="openDeleteUserModal('${u.id}')" class="action-btn-sm" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4);" title="Delete user">🗑</button>
                         </div>
@@ -1283,6 +1290,418 @@ async function kickActivePlayer(userId, fee, room) {
     }
 }
 
+// ----------------------------------------------------
+// 12. Administrator Affiliates & Bank Accounts Controller
+// ----------------------------------------------------
+let allAdmins = [];
+let allBanks = [];
+
+async function fetchAdmins() {
+    try {
+        const res = await authFetch('/api/admin/admins');
+        if (!res.ok) throw new Error('Admins fetch failed');
+        const data = await res.json();
+        allAdmins = Array.isArray(data.admins) ? data.admins : [];
+
+        setText('tab-badge-admins', String(allAdmins.length));
+
+        const tbody = document.querySelector('#admins-table tbody');
+        if (!tbody) return;
+
+        if (allAdmins.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:24px;">No administrator affiliates created yet. Click <strong>➕ Add Administrator</strong> above to promote a user!</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = allAdmins.map(a => {
+            const displayName = a.customName 
+                ? `<strong>${escapeHtml(a.customName)}</strong><br><small style="color:#94a3b8;">${escapeHtml(a.user?.firstName || 'User')}</small>`
+                : `<strong>${escapeHtml(a.user?.firstName || 'Admin')}</strong>`;
+
+            const usernameHtml = a.user?.username
+                ? `<a href="https://t.me/${a.user.username}" target="_blank" style="color:#38bdf8; text-decoration:none; font-size:12px; font-weight:600;">@${escapeHtml(a.user.username)}</a>`
+                : `<span style="color:#94a3b8; font-size:12px;">No username</span>`;
+
+            const linkHtml = `
+                <div style="display:flex; align-items:center; gap:6px;">
+                    <code style="color:#a78bfa; font-weight:700; font-size:12px; background:rgba(0,0,0,0.3); padding:2px 6px; border-radius:4px;">start=${escapeHtml(a.code)}</code>
+                    <button onclick="copyBotLink('${a.code}')" class="action-btn-sm" style="background:#6366f1; color:#fff; padding:3px 8px; font-size:11px;" title="Copy Telegram Bot Link">📋 Link</button>
+                </div>
+            `;
+
+            const banksHtml = (Array.isArray(a.paymentAccounts) && a.paymentAccounts.length > 0)
+                ? a.paymentAccounts.map(b => `<span style="display:inline-block; margin:2px; padding:2px 8px; border-radius:10px; background:rgba(14,165,233,0.18); border:1px solid rgba(14,165,233,0.3); color:#38bdf8; font-size:11px; font-weight:600;">🏦 ${escapeHtml(b.bankName)}: ${escapeHtml(b.accountNumber)}</span>`).join('')
+                : `<span style="color:#94a3b8; font-size:12px;">⚠️ No banks linked</span>`;
+
+            const statusHtml = a.isActive
+                ? `<span class="badge-active">Active</span>`
+                : `<span class="badge-banned">Inactive</span>`;
+
+            return `
+                <tr>
+                    <td style="color:#94a3b8; font-family:monospace; font-size:13px;">#${a.id}</td>
+                    <td>${displayName}</td>
+                    <td><code style="color:#38bdf8; font-size:12px;">#${escapeHtml(a.userId)}</code><br>${usernameHtml}</td>
+                    <td>${linkHtml}</td>
+                    <td>${banksHtml}</td>
+                    <td><strong style="color:#4ade80;">${a.assignedUsersCount ?? 0}</strong> <span style="font-size:11px; color:#94a3b8;">players</span></td>
+                    <td>${statusHtml}</td>
+                    <td>
+                        <div style="display:flex; gap:6px;">
+                            <button onclick="openEditAdminProfileModal(${a.id})" class="action-btn-sm" style="background:#3b82f6; color:#fff;" title="Edit Administrator">✏️ Edit</button>
+                            <button onclick="deleteAdminProfile(${a.id})" class="action-btn-sm" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4);" title="Remove Administrator">🗑</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('Error fetching admins:', err);
+    }
+}
+
+async function fetchAdminBanks() {
+    try {
+        const res = await authFetch('/api/admin/banks');
+        if (!res.ok) throw new Error('Banks fetch failed');
+        allBanks = await res.json();
+        if (!Array.isArray(allBanks)) allBanks = [];
+
+        const tbody = document.querySelector('#banks-table tbody');
+        if (!tbody) return;
+
+        if (allBanks.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:20px;">No bank accounts configured. Click <strong>🏦 + Add Bank Account</strong> to add Telebirr, CBE, etc.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = allBanks.map(b => {
+            const adminHtml = b.admin
+                ? `<span style="color:#c084fc; font-weight:600;">👑 ${escapeHtml(b.admin.name)}</span> ${b.admin.username ? `<small style="color:#94a3b8;">(@${escapeHtml(b.admin.username)})</small>` : ''}`
+                : `<span style="color:#94a3b8; font-size:12px;">🌐 Platform Pool (Fallback)</span>`;
+
+            const statusHtml = b.isActive
+                ? `<span class="badge-active">Active</span>`
+                : `<span class="badge-banned">Inactive</span>`;
+
+            return `
+                <tr>
+                    <td style="color:#94a3b8; font-family:monospace; font-size:13px;">#${b.id}</td>
+                    <td><strong>${escapeHtml(b.bankName)}</strong></td>
+                    <td>
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <code style="color:#fff; font-size:13px; font-weight:700;">${escapeHtml(b.accountNumber)}</code>
+                            <button onclick="navigator.clipboard && navigator.clipboard.writeText('${b.accountNumber}').then(() => alert('Account copied!'))" class="action-btn-sm" style="background:rgba(255,255,255,0.1); color:#94a3b8; padding:2px 6px; font-size:10px;">Copy</button>
+                        </div>
+                    </td>
+                    <td style="color:#cbd5e1; font-size:13px;">${escapeHtml(b.accountName || '—')}</td>
+                    <td>${adminHtml}</td>
+                    <td>${statusHtml}</td>
+                    <td>
+                        <div style="display:flex; gap:6px;">
+                            <button onclick="openEditBankModal(${b.id})" class="action-btn-sm" style="background:#0ea5e9; color:#fff;" title="Edit Bank">✏️ Edit</button>
+                            <button onclick="toggleBankActive(${b.id})" class="action-btn-sm" style="background:${b.isActive ? '#eab308' : '#22c55e'}; color:#fff;">${b.isActive ? 'Deactivate' : 'Activate'}</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('Error fetching admin banks:', err);
+    }
+}
+
+function openAddAdminProfileModal(preselectedUserId = null) {
+    const modal = document.getElementById('admin-profile-modal');
+    if (!modal) return;
+
+    document.getElementById('admin-modal-title').textContent = '👑 Add Administrator from Users';
+    document.getElementById('admin-profile-id').value = '';
+    document.getElementById('admin-user-select-group').style.display = 'block';
+    document.getElementById('admin-user-preview-card').style.display = 'none';
+    document.getElementById('admin-code').value = '';
+    document.getElementById('admin-custom-name').value = '';
+    updateBotLinkPreview('');
+
+    // Populate user select dropdown
+    const select = document.getElementById('admin-user-select');
+    select.innerHTML = '<option value="">-- Choose a user to promote --</option>' +
+        allUsers.map(u => {
+            const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'User';
+            const uname = u.username ? `@${u.username}` : `ID: ${u.id}`;
+            return `<option value="${u.id}">${escapeHtml(name)} (${escapeHtml(uname)}) — #${u.id}</option>`;
+        }).join('');
+
+    // Populate bank checklist
+    renderAdminBanksChecklist([]);
+
+    if (preselectedUserId) {
+        select.value = String(preselectedUserId);
+        onAdminUserSelected(String(preselectedUserId));
+    }
+
+    modal.style.display = 'flex';
+}
+
+function promoteUserToAdmin(userId) {
+    switchAdminTab('tab-admins');
+    openAddAdminProfileModal(userId);
+}
+
+function onAdminUserSelected(userId) {
+    const preview = document.getElementById('admin-user-preview-card');
+    const codeInput = document.getElementById('admin-code');
+    if (!userId) {
+        if (preview) preview.style.display = 'none';
+        if (codeInput) codeInput.value = '';
+        updateBotLinkPreview('');
+        return;
+    }
+
+    const u = allUsers.find(x => String(x.id) === String(userId));
+    if (!u) return;
+
+    const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Player';
+    setText('preview-user-name', name);
+    setText('preview-user-id', '#' + u.id);
+    setText('preview-user-username', u.username ? '@' + u.username : 'None');
+    setText('preview-user-phone', u.phone || 'None');
+    if (preview) preview.style.display = 'block';
+
+    // Auto-suggest adm_username or adm_id
+    const baseCode = u.username 
+        ? 'adm_' + u.username.toLowerCase().replace(/[^a-z0-9_]/g, '')
+        : 'adm_' + u.id;
+    if (codeInput) {
+        codeInput.value = baseCode;
+        updateBotLinkPreview(baseCode);
+    }
+}
+
+function updateBotLinkPreview(code) {
+    const clean = String(code || '').trim().toLowerCase();
+    setText('preview-bot-link', `https://t.me/PlayMyBingoBot?start=${clean || 'adm_...'}`);
+}
+
+function renderAdminBanksChecklist(selectedBankIds = []) {
+    const list = document.getElementById('admin-banks-checklist');
+    if (!list) return;
+
+    if (allBanks.length === 0) {
+        list.innerHTML = `<span style="font-size:12px; color:#94a3b8;">No bank accounts added yet. You can save the admin now and attach banks later.</span>`;
+        return;
+    }
+
+    const selectedSet = new Set(selectedBankIds.map(Number));
+    list.innerHTML = allBanks.map(b => {
+        const checked = selectedSet.has(b.id) ? 'checked' : '';
+        const ownerNote = b.admin ? ` <small style="color:#c084fc;">(Currently: ${escapeHtml(b.admin.name)})</small>` : '';
+        return `
+            <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#f1f5f9; cursor:pointer;">
+                <input type="checkbox" name="admin-bank-check" value="${b.id}" ${checked} style="accent-color:#8b5cf6; width:16px; height:16px;">
+                <span><strong>${escapeHtml(b.bankName)}:</strong> <code>${escapeHtml(b.accountNumber)}</code> ${b.accountName ? `(${escapeHtml(b.accountName)})` : ''}${ownerNote}</span>
+            </label>
+        `;
+    }).join('');
+}
+
+function openEditAdminProfileModal(adminId) {
+    const admin = allAdmins.find(a => a.id === adminId);
+    if (!admin) return;
+
+    const modal = document.getElementById('admin-profile-modal');
+    if (!modal) return;
+
+    document.getElementById('admin-modal-title').textContent = `✏️ Edit Administrator (${admin.user?.firstName || admin.code})`;
+    document.getElementById('admin-profile-id').value = admin.id;
+    document.getElementById('admin-user-select-group').style.display = 'none';
+
+    const preview = document.getElementById('admin-user-preview-card');
+    if (preview) {
+        preview.style.display = 'block';
+        setText('preview-user-name', admin.user?.firstName || 'Admin');
+        setText('preview-user-id', '#' + admin.userId);
+        setText('preview-user-username', admin.user?.username ? '@' + admin.user.username : 'None');
+        setText('preview-user-phone', admin.user?.phone || 'None');
+    }
+
+    document.getElementById('admin-code').value = admin.code;
+    document.getElementById('admin-custom-name').value = admin.customName || '';
+    updateBotLinkPreview(admin.code);
+
+    const linkedIds = Array.isArray(admin.paymentAccounts) ? admin.paymentAccounts.map(b => b.id) : [];
+    renderAdminBanksChecklist(linkedIds);
+
+    modal.style.display = 'flex';
+}
+
+function closeAdminProfileModal() {
+    const modal = document.getElementById('admin-profile-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function saveAdminProfile(event) {
+    event.preventDefault();
+    const id = document.getElementById('admin-profile-id').value;
+    const userId = document.getElementById('admin-user-select').value;
+    const code = document.getElementById('admin-code').value.trim();
+    const customName = document.getElementById('admin-custom-name').value.trim();
+
+    const checkBoxes = document.querySelectorAll('input[name="admin-bank-check"]:checked');
+    const bankAccountIds = Array.from(checkBoxes).map(cb => parseInt(cb.value, 10));
+
+    if (!id && !userId) {
+        alert('Please select a registered user to promote.');
+        return;
+    }
+    if (!code) {
+        alert('Please specify an affiliate code.');
+        return;
+    }
+
+    try {
+        const url = id ? `/api/admin/admins/${id}` : '/api/admin/admins';
+        const method = id ? 'PUT' : 'POST';
+        const body = id 
+            ? { code, customName: customName || null, bankAccountIds }
+            : { userId, code, customName: customName || null, bankAccountIds };
+
+        const res = await authFetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify(body)
+        });
+        const data = await res.json();
+        if (data.success) {
+            closeAdminProfileModal();
+            await fetchAdmins();
+            await fetchAdminBanks();
+        } else {
+            alert(data.msg || 'Failed to save administrator profile.');
+        }
+    } catch (err) {
+        alert('Network error while saving administrator.');
+    }
+}
+
+async function deleteAdminProfile(adminId) {
+    if (!confirm('Are you sure you want to remove this administrator profile? All attached bank accounts will return to the platform pool, and downline players will be unassigned.')) return;
+
+    try {
+        const res = await authFetch(`/api/admin/admins/${adminId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+            await fetchAdmins();
+            await fetchAdminBanks();
+        } else {
+            alert(data.msg || 'Failed to delete administrator.');
+        }
+    } catch (err) {
+        alert('Network error while deleting administrator.');
+    }
+}
+
+function copyBotLink(code) {
+    const link = `https://t.me/PlayMyBingoBot?start=${code}`;
+    if (navigator.clipboard) {
+        navigator.clipboard.writeText(link).then(() => {
+            alert(`Copied bot invite link:\n${link}`);
+        }).catch(() => prompt('Copy bot invite link:', link));
+    } else {
+        prompt('Copy bot invite link:', link);
+    }
+}
+
+function openAddBankModal() {
+    const modal = document.getElementById('bank-modal');
+    if (!modal) return;
+    document.getElementById('bank-modal-title').textContent = '🏦 Add Bank Account';
+    document.getElementById('bank-id').value = '';
+    document.getElementById('bank-name-input').value = '';
+    document.getElementById('bank-number-input').value = '';
+    document.getElementById('bank-holder-input').value = '';
+
+    const select = document.getElementById('bank-admin-select');
+    select.innerHTML = '<option value="">-- General Platform Pool (Unassigned) --</option>' +
+        allAdmins.map(a => `<option value="${a.id}">👑 ${escapeHtml(a.customName || a.user?.firstName || a.code)} (@${a.user?.username || a.code})</option>`).join('');
+
+    modal.style.display = 'flex';
+}
+
+function openEditBankModal(bankId) {
+    const bank = allBanks.find(b => b.id === bankId);
+    if (!bank) return;
+    const modal = document.getElementById('bank-modal');
+    if (!modal) return;
+
+    document.getElementById('bank-modal-title').textContent = `✏️ Edit Bank Account #${bank.id}`;
+    document.getElementById('bank-id').value = bank.id;
+    document.getElementById('bank-name-input').value = bank.bankName;
+    document.getElementById('bank-number-input').value = bank.accountNumber;
+    document.getElementById('bank-holder-input').value = bank.accountName || '';
+
+    const select = document.getElementById('bank-admin-select');
+    select.innerHTML = '<option value="">-- General Platform Pool (Unassigned) --</option>' +
+        allAdmins.map(a => `<option value="${a.id}" ${bank.adminId === a.id ? 'selected' : ''}>👑 ${escapeHtml(a.customName || a.user?.firstName || a.code)} (@${a.user?.username || a.code})</option>`).join('');
+
+    modal.style.display = 'flex';
+}
+
+function closeBankModal() {
+    const modal = document.getElementById('bank-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function saveBankAccount(event) {
+    event.preventDefault();
+    const id = document.getElementById('bank-id').value;
+    const bankName = document.getElementById('bank-name-input').value.trim();
+    const accountNumber = document.getElementById('bank-number-input').value.trim();
+    const accountName = document.getElementById('bank-holder-input').value.trim();
+    const adminIdVal = document.getElementById('bank-admin-select').value;
+    const adminId = adminIdVal ? parseInt(adminIdVal, 10) : null;
+
+    if (!bankName || !accountNumber) {
+        alert('Bank name and account number are required.');
+        return;
+    }
+
+    try {
+        const url = id ? `/api/admin/banks/${id}` : '/api/admin/banks';
+        const method = id ? 'PUT' : 'POST';
+        const res = await authFetch(url, {
+            method,
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bankName, accountNumber, accountName: accountName || null, adminId })
+        });
+        const data = await res.json();
+        if (data.success) {
+            closeBankModal();
+            await fetchAdminBanks();
+            await fetchAdmins();
+        } else {
+            alert(data.msg || 'Failed to save bank account.');
+        }
+    } catch (err) {
+        alert('Network error while saving bank account.');
+    }
+}
+
+async function toggleBankActive(bankId) {
+    try {
+        const res = await authFetch(`/api/admin/banks/${bankId}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+            await fetchAdminBanks();
+            await fetchAdmins();
+        } else {
+            alert(data.msg || 'Failed to update bank state.');
+        }
+    } catch (err) {
+        alert('Network error while toggling bank state.');
+    }
+}
+
 // Global exports for inline HTML event attributes
 window.openEditUserModal = openEditUserModal;
 window.closeEditUserModal = closeEditUserModal;
@@ -1300,5 +1719,23 @@ window.openActivePlayersModal = openActivePlayersModal;
 window.closeActivePlayersModal = closeActivePlayersModal;
 window.fetchActivePlayers = fetchActivePlayers;
 window.kickActivePlayer = kickActivePlayer;
+
+// Admin & Bank exports
+window.fetchAdmins = fetchAdmins;
+window.fetchAdminBanks = fetchAdminBanks;
+window.openAddAdminProfileModal = openAddAdminProfileModal;
+window.promoteUserToAdmin = promoteUserToAdmin;
+window.onAdminUserSelected = onAdminUserSelected;
+window.updateBotLinkPreview = updateBotLinkPreview;
+window.openEditAdminProfileModal = openEditAdminProfileModal;
+window.closeAdminProfileModal = closeAdminProfileModal;
+window.saveAdminProfile = saveAdminProfile;
+window.deleteAdminProfile = deleteAdminProfile;
+window.copyBotLink = copyBotLink;
+window.openAddBankModal = openAddBankModal;
+window.openEditBankModal = openEditBankModal;
+window.closeBankModal = closeBankModal;
+window.saveBankAccount = saveBankAccount;
+window.toggleBankActive = toggleBankActive;
 
 

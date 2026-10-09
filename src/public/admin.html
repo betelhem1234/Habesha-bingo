@@ -71,6 +71,9 @@
                 <button class="tab-btn" data-tab="tab-users" onclick="switchAdminTab('tab-users')">
                     👥 Users Management <span class="tab-badge" id="tab-badge-users">0</span>
                 </button>
+                <button class="tab-btn" data-tab="tab-admins" onclick="switchAdminTab('tab-admins')">
+                    👑 Admins & Banks <span class="tab-badge" id="tab-badge-admins">0</span>
+                </button>
                 <button class="tab-btn" data-tab="tab-controls" onclick="switchAdminTab('tab-controls')">
                     ⚙️ Controls & Stats
                 </button>
@@ -188,6 +191,72 @@
                             </thead>
                             <tbody>
                                 <!-- Populated by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB: Admins & Banks -->
+            <section class="tab-content" id="tab-admins">
+                <div class="users-section">
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; flex-wrap: wrap; gap: 8px;">
+                        <div>
+                            <h2>👑 Administrator Affiliates & Lineage</h2>
+                            <p style="font-size: 13px; color: #94a3b8; margin-top: 2px;">Promote registered users to administrators, link their bank accounts (Telebirr, CBE, etc.), and manage downline lineage.</p>
+                        </div>
+                        <div style="display: flex; gap: 8px;">
+                            <button onclick="openAddAdminProfileModal()" class="action-btn-sm" style="background: #8b5cf6; color: #fff; padding: 8px 14px; font-weight: 700; border-radius: 8px; font-size: 13px;">
+                                ➕ Add Administrator
+                            </button>
+                            <button onclick="openAddBankModal()" class="action-btn-sm" style="background: #0ea5e9; color: #fff; padding: 8px 14px; font-weight: 700; border-radius: 8px; font-size: 13px;">
+                                🏦 + Add Bank Account
+                            </button>
+                        </div>
+                    </div>
+
+                    <div class="table-container" style="margin-bottom: 30px;">
+                        <table id="admins-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Administrator</th>
+                                    <th>Telegram User ID</th>
+                                    <th>Affiliate Code & Bot Link</th>
+                                    <th>Attached Bank Accounts</th>
+                                    <th>Downline Players</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated dynamically by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+
+                    <!-- Configured Bank Accounts Overview -->
+                    <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; margin-top: 10px;">
+                        <div>
+                            <h3 style="color: #38bdf8; font-size: 1.15rem; margin: 0;">🏦 Configured Bank Accounts (Telebirr, CBE, Awash, etc.)</h3>
+                            <p style="font-size: 12px; color: #94a3b8; margin-top: 2px;">Bank accounts available for player deposits. Assigned accounts will only appear for that administrator's players.</p>
+                        </div>
+                    </div>
+                    <div class="table-container">
+                        <table id="banks-table">
+                            <thead>
+                                <tr>
+                                    <th>#</th>
+                                    <th>Bank Name</th>
+                                    <th>Account Number</th>
+                                    <th>Account Holder</th>
+                                    <th>Attached Admin</th>
+                                    <th>Status</th>
+                                    <th>Actions</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated dynamically by JS -->
                             </tbody>
                         </table>
                     </div>
@@ -410,6 +479,105 @@
                 <span>Auto-refreshes every 3s while open</span>
                 <button onclick="closeActivePlayersModal()" class="btn-primary" style="margin:0; padding:6px 18px; font-size:12px; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">Close</button>
             </div>
+        </div>
+    </div>
+
+    <!-- Add / Edit Admin Profile Modal -->
+    <div id="admin-profile-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:#1e293b; border:1px solid rgba(139,92,246,0.3); border-radius:18px; padding:24px; width:92%; max-width:540px; box-shadow:0 25px 50px rgba(0,0,0,0.7); max-height:90vh; overflow-y:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 id="admin-modal-title" style="font-size:1.25rem; color:#f8fafc; font-weight:700;">👑 Add Administrator from Users</h3>
+                <button type="button" onclick="closeAdminProfileModal()" style="background:none; border:none; color:#94a3b8; font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <form id="admin-profile-form" onsubmit="saveAdminProfile(event)">
+                <input type="hidden" id="admin-profile-id">
+
+                <!-- 1. Select registered user -->
+                <div style="margin-bottom:14px;" id="admin-user-select-group">
+                    <label style="display:block; font-size:12px; color:#cbd5e1; margin-bottom:6px; font-weight:700;">1. SELECT REGISTERED USER:</label>
+                    <select id="admin-user-select" required onchange="onAdminUserSelected(this.value)" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:#0f172a; color:#fff; font-size:13px; box-sizing:border-box;">
+                        <option value="">-- Choose a user to promote to administrator --</option>
+                    </select>
+                </div>
+
+                <!-- Auto-Populated User Info Card -->
+                <div id="admin-user-preview-card" style="display:none; background:rgba(139,92,246,0.15); border:1px solid rgba(139,92,246,0.4); border-radius:10px; padding:12px 14px; margin-bottom:14px;">
+                    <div style="display:flex; justify-content:space-between; font-size:13px; margin-bottom:4px;">
+                        <div><span style="color:#94a3b8;">User:</span> <strong id="preview-user-name" style="color:#fff;">-</strong></div>
+                        <div><span style="color:#94a3b8;">ID:</span> <code id="preview-user-id" style="color:#38bdf8; font-weight:700;">-</code></div>
+                    </div>
+                    <div style="font-size:12px; color:#94a3b8;">
+                        Username: <span id="preview-user-username" style="color:#c4b5fd;">-</span> | Phone: <span id="preview-user-phone" style="color:#e2e8f0;">-</span>
+                    </div>
+                </div>
+
+                <!-- 2. Affiliate Code & Link Preview -->
+                <div style="margin-bottom:14px;">
+                    <label style="display:block; font-size:12px; color:#cbd5e1; margin-bottom:4px; font-weight:700;">2. AFFILIATE CODE (FOR BOT INVITE LINK):</label>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:13px; color:#94a3b8; font-family:monospace; background:rgba(0,0,0,0.3); padding:8px 10px; border-radius:6px; border:1px solid rgba(255,255,255,0.1);">start=</span>
+                        <input type="text" id="admin-code" required placeholder="e.g. adm_abebe or adm_1" oninput="updateBotLinkPreview(this.value)" style="flex:1; padding:9px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:14px; box-sizing:border-box;">
+                    </div>
+                    <div style="font-size:11px; color:#94a3b8; margin-top:5px;">
+                        🔗 Bot Invite Link: <code id="preview-bot-link" style="color:#a78bfa; word-break:break-all;">https://t.me/PlayMyBingoBot?start=adm_...</code>
+                    </div>
+                </div>
+
+                <!-- Custom Display Name (Optional) -->
+                <div style="margin-bottom:14px;">
+                    <label style="display:block; font-size:12px; color:#94a3b8; margin-bottom:4px; font-weight:600;">OPTIONAL DISPLAY NAME / LABEL:</label>
+                    <input type="text" id="admin-custom-name" placeholder="e.g. Branch Addis 1 (Leave blank to use user's name)" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:13px; box-sizing:border-box;">
+                </div>
+
+                <!-- 3. Attached Bank Accounts Checklist -->
+                <div style="margin-bottom:18px;">
+                    <label style="display:block; font-size:12px; color:#cbd5e1; margin-bottom:4px; font-weight:700;">3. ATTACH BANK ACCOUNTS TO THIS ADMIN:</label>
+                    <p style="font-size:11px; color:#94a3b8; margin:0 0 8px 0;">Check all bank accounts belonging to this administrator. Players in their branch will only see these accounts.</p>
+                    <div id="admin-banks-checklist" style="max-height:160px; overflow-y:auto; background:rgba(0,0,0,0.35); border:1px solid rgba(255,255,255,0.15); border-radius:8px; padding:10px; display:flex; flex-direction:column; gap:8px;">
+                        <!-- Checkboxes populated dynamically -->
+                    </div>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px; margin-top:18px;">
+                    <button type="button" onclick="closeAdminProfileModal()" class="btn-primary" style="margin:0; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">Cancel</button>
+                    <button type="submit" class="btn-primary" style="margin:0; background:#16a34a; font-weight:700;">💾 Save & Link Banks</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add / Edit Bank Account Modal -->
+    <div id="bank-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:#1e293b; border:1px solid rgba(14,165,233,0.3); border-radius:18px; padding:24px; width:90%; max-width:480px; box-shadow:0 25px 50px rgba(0,0,0,0.7);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 id="bank-modal-title" style="font-size:1.2rem; color:#f8fafc; font-weight:700;">🏦 Add Bank Account</h3>
+                <button type="button" onclick="closeBankModal()" style="background:none; border:none; color:#94a3b8; font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <form id="bank-form" onsubmit="saveBankAccount(event)">
+                <input type="hidden" id="bank-id">
+                <div style="margin-bottom:12px;">
+                    <label style="display:block; font-size:12px; color:#cbd5e1; margin-bottom:4px; font-weight:600;">BANK NAME / METHOD</label>
+                    <input type="text" id="bank-name-input" required placeholder="e.g. Telebirr, Commercial Bank of Ethiopia (CBE), Awash" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:14px; box-sizing:border-box;">
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="display:block; font-size:12px; color:#cbd5e1; margin-bottom:4px; font-weight:600;">ACCOUNT NUMBER / PHONE</label>
+                    <input type="text" id="bank-number-input" required placeholder="e.g. 0912345678 or 1000123456789" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:14px; box-sizing:border-box;">
+                </div>
+                <div style="margin-bottom:12px;">
+                    <label style="display:block; font-size:12px; color:#94a3b8; margin-bottom:4px; font-weight:600;">ACCOUNT HOLDER NAME (OPTIONAL)</label>
+                    <input type="text" id="bank-holder-input" placeholder="e.g. Abebe Kebede" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:14px; box-sizing:border-box;">
+                </div>
+                <div style="margin-bottom:16px;">
+                    <label style="display:block; font-size:12px; color:#94a3b8; margin-bottom:4px; font-weight:600;">ASSIGN TO ADMINISTRATOR (OPTIONAL)</label>
+                    <select id="bank-admin-select" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:#0f172a; color:#fff; font-size:13px; box-sizing:border-box;">
+                        <option value="">-- General Platform Pool (Unassigned) --</option>
+                    </select>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:10px;">
+                    <button type="button" onclick="closeBankModal()" class="btn-primary" style="margin:0; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">Cancel</button>
+                    <button type="submit" class="btn-primary" style="margin:0; background:#0ea5e9; font-weight:700;">💾 Save Account</button>
+                </div>
+            </form>
         </div>
     </div>
 
