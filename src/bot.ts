@@ -3,7 +3,7 @@ import { existsSync } from 'fs';
 import path from 'path';
 import { Bot, Context, InlineKeyboard, Keyboard, InputFile } from 'grammy';
 import { config } from './config';
-import { prisma } from './db';
+import { prisma, initDbSchema } from './db';
 import { proofUrl } from './uploads';
 import { NEW_USER_BONUS, REFERRAL_BONUS, getNewUserBonus, getReferralBonus, setBonusSettings } from './bonus';
 import { GameRooms } from './game/GameRooms';
@@ -1884,9 +1884,6 @@ function ensureAdminServer() {
     }
 }
 
-// Start admin/game web server immediately so WebSockets and HTTP are always available
-ensureAdminServer();
-
 async function startPollingLoop() {
     while (true) {
         try {
@@ -1905,4 +1902,15 @@ async function startPollingLoop() {
     }
 }
 
-startPollingLoop();
+async function startApp() {
+    try {
+        await initDbSchema();
+    } catch (err: any) {
+        console.error('[Bot] Database schema initialization error:', err?.message || err);
+    }
+    // Start admin/game web server immediately so WebSockets and HTTP are always available
+    ensureAdminServer();
+    startPollingLoop();
+}
+
+startApp();
