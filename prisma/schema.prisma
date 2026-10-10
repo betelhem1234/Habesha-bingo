@@ -87,6 +87,8 @@ model AdminProfile {
   customName      String?
   isActive        Boolean          @default(true)
   isWithdrawalAdmin Boolean        @default(false)
+  depositLimit    Decimal          @default(3000.0)
+  collectedDeposits Decimal        @default(0.0)
   createdAt       DateTime         @default(now())
 
   paymentAccounts PaymentAccount[]

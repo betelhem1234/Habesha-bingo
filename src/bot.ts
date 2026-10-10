@@ -247,20 +247,7 @@ bot.command('start', async (ctx: Context) => {
             } catch (e) {}
         }
     }
-
-    // 3. Fallback: Organic direct search (auto-balance to active admin with fewest players)
-    if (!assignedAdminId) {
-        try {
-            const activeAdmins = await prisma.adminProfile.findMany({
-                where: { isActive: true },
-                include: { _count: { select: { assignedUsers: true } } }
-            });
-            if (activeAdmins.length > 0) {
-                activeAdmins.sort((a, b) => a._count.assignedUsers - b._count.assignedUsers);
-                assignedAdminId = activeAdmins[0].id;
-            }
-        } catch (e) {}
-    }
+    // 3. Fallback: Unassigned users remain assignedAdminId = null (belonging strictly to Super Admin)
 
     // Check if user exists
     let user = await prisma.user.findUnique({ where: { id: BigInt(ctx.from.id) } });
@@ -1400,10 +1387,57 @@ bot.callbackQuery(/^req_(approve|appr|reject|rej)_(\d+)$/, async (ctx) => {
 
         if (isApprove) {
             if (request.type === 'deposit') {
-                await prisma.$transaction([
+                // Determine which admin profile (if any) this deposit is attached to
+                let depositAdminProf: any = null;
+                if (!isMasterAdmin && adminProf) {
+                    depositAdminProf = adminProf;
+                } else if (request.accountId) {
+                    const acct = await prisma.paymentAccount.findUnique({
+                        where: { id: request.accountId },
+                        include: { admin: true }
+                    });
+                    if (acct?.admin) depositAdminProf = acct.admin;
+                }
+
+                // If approved by an affiliate admin (not Master Admin), strictly enforce deposit approval limit!
+                if (!isMasterAdmin && depositAdminProf) {
+                    const currentCollected = depositAdminProf.collectedDeposits ? depositAdminProf.collectedDeposits.toNumber() : 0;
+                    const limit = depositAdminProf.depositLimit ? depositAdminProf.depositLimit.toNumber() : 3000;
+                    const amountNum = request.amount.toNumber();
+                    if (currentCollected + amountNum > limit) {
+                        return ctx.answerCallbackQuery({
+                            text: `⛔ Limit Reached! You have approved ${currentCollected.toFixed(0)}/${limit.toFixed(0)} Birr. You cannot approve this request until your limit is refreshed. Please remit your collected funds to the Super Admin.`,
+                            show_alert: true
+                        });
+                    }
+                }
+
+                const txOps: any[] = [
                     prisma.user.update({ where: { id: request.userId }, data: { balance: { increment: request.amount } } }),
                     prisma.transactionRequest.update({ where: { id }, data: { status: 'APPROVED' } })
-                ]);
+                ];
+
+                if (depositAdminProf) {
+                    txOps.push(
+                        prisma.adminProfile.update({
+                            where: { id: depositAdminProf.id },
+                            data: { collectedDeposits: { increment: request.amount } }
+                        })
+                    );
+                }
+
+                await prisma.$transaction(txOps);
+
+                // If affiliate admin just reached their limit, send them an alert
+                if (!isMasterAdmin && depositAdminProf) {
+                    const updatedCur = (depositAdminProf.collectedDeposits ? depositAdminProf.collectedDeposits.toNumber() : 0) + request.amount.toNumber();
+                    const lim = depositAdminProf.depositLimit ? depositAdminProf.depositLimit.toNumber() : 3000;
+                    if (updatedCur >= lim) {
+                        try {
+                            await ctx.reply(`⚠️ *Notice:* You have reached your deposit approval limit (*${updatedCur.toFixed(0)}/${lim.toFixed(0)} Birr*). Future approvals are paused until you remit the collected funds to the Super Admin.`, { parse_mode: 'Markdown' });
+                        } catch (e) {}
+                    }
+                }
             } else {
                 const user = await prisma.user.findUnique({ where: { id: request.userId } });
                 if (!user || user.balance.toNumber() < request.amount.toNumber()) {

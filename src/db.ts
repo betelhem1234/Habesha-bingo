@@ -25,6 +25,8 @@ export async function initDbSchema() {
             CREATE INDEX IF NOT EXISTS "PaymentAccount_adminId_idx" ON "PaymentAccount"("adminId");
             ALTER TABLE "AdminProfile" ADD COLUMN IF NOT EXISTS "isWithdrawalAdmin" BOOLEAN NOT NULL DEFAULT false;
             CREATE INDEX IF NOT EXISTS "AdminProfile_isWithdrawalAdmin_idx" ON "AdminProfile"("isWithdrawalAdmin");
+            ALTER TABLE "AdminProfile" ADD COLUMN IF NOT EXISTS "depositLimit" DECIMAL(65, 30) NOT NULL DEFAULT 3000.0;
+            ALTER TABLE "AdminProfile" ADD COLUMN IF NOT EXISTS "collectedDeposits" DECIMAL(65, 30) NOT NULL DEFAULT 0.0;
             ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "withdrawableBalance" DECIMAL(65, 30) NOT NULL DEFAULT 0.0;
 
             -- Backfill withdrawableBalance for existing players based on historical net winnings capped by balance

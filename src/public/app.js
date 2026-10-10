@@ -1310,7 +1310,7 @@ async function fetchAdmins() {
         if (!tbody) return;
 
         if (allAdmins.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:24px;">No administrator affiliates created yet. Click <strong>➕ Add Administrator</strong> above to promote a user!</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#94a3b8; padding:24px;">No administrator affiliates created yet. Click <strong>➕ Add Administrator</strong> above to promote a user!</td></tr>`;
             return;
         }
 
@@ -1334,6 +1334,33 @@ async function fetchAdmins() {
                 ? a.paymentAccounts.map(b => `<span style="display:inline-block; margin:2px; padding:2px 8px; border-radius:10px; background:rgba(14,165,233,0.18); border:1px solid rgba(14,165,233,0.3); color:#38bdf8; font-size:11px; font-weight:600;">🏦 ${escapeHtml(b.bankName)}: ${escapeHtml(b.accountNumber)}</span>`).join('')
                 : `<span style="color:#94a3b8; font-size:12px;">⚠️ No banks linked</span>`;
 
+            const collected = a.collectedDeposits !== undefined ? Number(a.collectedDeposits) : 0;
+            const limit = a.depositLimit !== undefined ? Number(a.depositLimit) : 3000;
+            const percent = limit > 0 ? Math.min(100, Math.round((collected / limit) * 100)) : 0;
+            const isLimitReached = limit > 0 && collected >= limit;
+
+            const limitBarColor = isLimitReached ? '#ef4444' : (percent > 75 ? '#eab308' : '#22c55e');
+            const limitBadge = isLimitReached 
+                ? `<span class="badge" style="background:rgba(239,68,68,0.25); color:#f87171; border:1px solid rgba(239,68,68,0.5); font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px;">🔴 Limit Reached</span>`
+                : `<span style="font-size:11px; color:#94a3b8;">${(limit - collected).toLocaleString()} Birr left</span>`;
+
+            const safeAdminLabel = (a.customName || a.user?.firstName || a.code).replace(/'/g, "\\'");
+            const limitHtml = `
+                <div style="min-width:140px;">
+                    <div style="display:flex; justify-content:space-between; align-items:center; font-size:12px; margin-bottom:3px;">
+                        <span style="font-weight:700; color:#fff;">${collected.toLocaleString()} / ${limit.toLocaleString()} Birr</span>
+                        <span style="font-size:10px; color:${limitBarColor}; font-weight:700;">${percent}%</span>
+                    </div>
+                    <div style="background:rgba(255,255,255,0.1); border-radius:4px; height:5px; width:100%; overflow:hidden; margin-bottom:5px;">
+                        <div style="background:${limitBarColor}; height:100%; width:${percent}%;"></div>
+                    </div>
+                    <div style="display:flex; align-items:center; justify-content:space-between; gap:4px;">
+                        ${limitBadge}
+                        <button onclick="refreshAdminDepositLimit(${a.id}, '${safeAdminLabel}', ${collected})" class="action-btn-sm" style="background:rgba(139,92,246,0.25); color:#c4b5fd; border:1px solid rgba(139,92,246,0.5); font-size:10px; padding:2px 6px; font-weight:700;" title="Reset collected count to 0 after receiving physical cash">🔄 Refresh</button>
+                    </div>
+                </div>
+            `;
+
             const dutyBadge = a.isWithdrawalAdmin
                 ? `<div style="margin-top:4px;"><span class="badge" style="background:rgba(245,158,11,0.25); color:#fbbf24; border:1px solid rgba(245,158,11,0.5); font-size:10px; font-weight:700; padding:2px 6px; border-radius:4px; box-shadow:0 0 8px rgba(245,158,11,0.4);">💸 Withdrawal Duty</span></div>`
                 : '';
@@ -1354,6 +1381,7 @@ async function fetchAdmins() {
                     <td>${linkHtml}</td>
                     <td>${banksHtml}</td>
                     <td><strong style="color:#4ade80;">${a.assignedUsersCount ?? 0}</strong> <span style="font-size:11px; color:#94a3b8;">players</span></td>
+                    <td>${limitHtml}</td>
                     <td>${statusHtml}</td>
                     <td>
                         <div style="display:flex; gap:6px; flex-wrap:wrap;">
@@ -1432,6 +1460,8 @@ function openAddAdminProfileModal(preselectedUserId = null) {
     document.getElementById('admin-user-preview-card').style.display = 'none';
     document.getElementById('admin-code').value = '';
     document.getElementById('admin-custom-name').value = '';
+    const limitInput = document.getElementById('admin-deposit-limit');
+    if (limitInput) limitInput.value = '3000';
     updateBotLinkPreview('');
 
     // Populate user select dropdown
@@ -1538,6 +1568,8 @@ function openEditAdminProfileModal(adminId) {
 
     document.getElementById('admin-code').value = admin.code;
     document.getElementById('admin-custom-name').value = admin.customName || '';
+    const limitInput = document.getElementById('admin-deposit-limit');
+    if (limitInput) limitInput.value = admin.depositLimit !== undefined ? admin.depositLimit : '3000';
     updateBotLinkPreview(admin.code);
 
     const linkedIds = Array.isArray(admin.paymentAccounts) ? admin.paymentAccounts.map(b => b.id) : [];
@@ -1557,6 +1589,8 @@ async function saveAdminProfile(event) {
     const userId = document.getElementById('admin-user-select').value;
     const code = document.getElementById('admin-code').value.trim();
     const customName = document.getElementById('admin-custom-name').value.trim();
+    const limitInput = document.getElementById('admin-deposit-limit');
+    const depositLimit = limitInput && limitInput.value ? parseFloat(limitInput.value) : 3000;
 
     const checkBoxes = document.querySelectorAll('input[name="admin-bank-check"]:checked');
     const bankAccountIds = Array.from(checkBoxes).map(cb => parseInt(cb.value, 10));
@@ -1574,8 +1608,8 @@ async function saveAdminProfile(event) {
         const url = id ? `/api/admin/admins/${id}` : '/api/admin/admins';
         const method = id ? 'PUT' : 'POST';
         const body = id 
-            ? { code, customName: customName || null, bankAccountIds }
-            : { userId, code, customName: customName || null, bankAccountIds };
+            ? { code, customName: customName || null, bankAccountIds, depositLimit }
+            : { userId, code, customName: customName || null, bankAccountIds, depositLimit };
 
         const res = await authFetch(url, {
             method,
@@ -1592,6 +1626,24 @@ async function saveAdminProfile(event) {
         }
     } catch (err) {
         alert('Network error while saving administrator.');
+    }
+}
+
+async function refreshAdminDepositLimit(adminId, adminName, collected) {
+    if (!confirm(`Confirm that you have received the collected ${Number(collected).toLocaleString()} Birr from ${adminName || 'Admin'} to reset their approval limit counter back to 0?`)) {
+        return;
+    }
+    try {
+        const res = await authFetch(`/api/admin/admins/${adminId}/refresh-limit`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            alert(data.msg || 'Deposit limit refreshed successfully.');
+            await fetchAdmins();
+        } else {
+            alert(data.msg || 'Failed to refresh limit.');
+        }
+    } catch (e) {
+        alert('Network error refreshing limit.');
     }
 }
 

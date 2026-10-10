@@ -247,6 +247,7 @@
                                     <th>Affiliate Code & Bot Link</th>
                                     <th>Attached Bank Accounts</th>
                                     <th>Downline Players</th>
+                                    <th>Deposit Approval Limit</th>
                                     <th>Status</th>
                                     <th>Actions</th>
                                 </tr>
@@ -549,6 +550,15 @@
                 <div style="margin-bottom:14px;">
                     <label style="display:block; font-size:12px; color:#94a3b8; margin-bottom:4px; font-weight:600;">OPTIONAL DISPLAY NAME / LABEL:</label>
                     <input type="text" id="admin-custom-name" placeholder="e.g. Branch Addis 1 (Leave blank to use user's name)" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:13px; box-sizing:border-box;">
+                </div>
+
+                <!-- Deposit Approval Limit -->
+                <div style="margin-bottom:14px;">
+                    <label style="display:block; font-size:12px; color:#cbd5e1; margin-bottom:4px; font-weight:700;">DEPOSIT APPROVAL LIMIT (BIRR):</label>
+                    <input type="number" id="admin-deposit-limit" min="0" step="100" placeholder="3000" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:14px; box-sizing:border-box;">
+                    <div style="font-size:11px; color:#94a3b8; margin-top:4px;">
+                        Max deposits this admin can approve before remitting collected cash to Super Admin (Default: 3,000 Birr).
+                    </div>
                 </div>
 
                 <!-- 3. Attached Bank Accounts Checklist -->

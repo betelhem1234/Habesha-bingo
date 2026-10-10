@@ -53,6 +53,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 .text('❌ Reject', `req_reject_${id}`);
 
             let targetAdminChatId: number | null = null;
+            let targetAdminProf: any = null;
             if (type === 'withdraw') {
                 const dutyWithdrawalAdmin = await prisma.adminProfile.findFirst({
                     where: { isWithdrawalAdmin: true, isActive: true }
@@ -66,16 +67,18 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                         where: { id: accountId },
                         include: { admin: true }
                     });
-                    if (acct?.admin?.userId) {
+                    if (acct?.admin?.userId && acct.admin.isActive) {
                         targetAdminChatId = Number(acct.admin.userId);
+                        targetAdminProf = acct.admin;
                     }
                 }
                 if (!targetAdminChatId && u?.assignedAdminId) {
                     const adminProf = await prisma.adminProfile.findUnique({
                         where: { id: u.assignedAdminId }
                     });
-                    if (adminProf?.userId) {
+                    if (adminProf?.userId && adminProf.isActive) {
                         targetAdminChatId = Number(adminProf.userId);
+                        targetAdminProf = adminProf;
                     }
                 }
             }
@@ -88,11 +91,20 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             const url = proof ? proofUrl(proof) : null;
             for (const chatId of targetChatIds) {
                 try {
+                    let msgText = text;
+                    if (chatId === targetAdminChatId && targetAdminProf && type === 'deposit') {
+                        const cur = targetAdminProf.collectedDeposits ? Number(targetAdminProf.collectedDeposits) : 0;
+                        const lim = targetAdminProf.depositLimit ? Number(targetAdminProf.depositLimit) : 3000;
+                        if (cur >= lim) {
+                            msgText += `\n\n⚠️ *APPROVAL PAUSED:* You have approved ${cur.toFixed(0)}/${lim.toFixed(0)} Birr (Limit Reached). Remit collected funds to Super Admin to enable approval.`;
+                        }
+                    }
+
                     if (type === 'deposit' && proof) {
                         try {
                             const file = fs.readFileSync(proofPath(proof));
                             await bot.api.sendPhoto(chatId, new InputFile(file), {
-                                caption: text,
+                                caption: msgText,
                                 parse_mode: 'Markdown',
                                 reply_markup: replyMarkup
                             });
@@ -103,7 +115,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     }
                     await bot.api.sendMessage(
                         chatId,
-                        proof && type === 'deposit' ? `${text}\n📎 Proof: ${url}` : text,
+                        proof && type === 'deposit' ? `${msgText}\n📎 Proof: ${url}` : msgText,
                         { parse_mode: 'Markdown', reply_markup: replyMarkup }
                     );
                 } catch (sendErr) {
@@ -803,14 +815,28 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
 
             let accounts: any[] = [];
             if (assignedAdminId) {
+                const adminProf = await prisma.adminProfile.findUnique({
+                    where: { id: assignedAdminId }
+                });
+                // If assigned admin is ACTIVE, show their active payment accounts
+                if (adminProf && adminProf.isActive) {
+                    accounts = await prisma.paymentAccount.findMany({
+                        where: { isActive: true, adminId: assignedAdminId },
+                        orderBy: { createdAt: 'asc' }
+                    });
+                }
+            }
+
+            // Fallback: If player's assigned admin is inactive, has no active accounts, or player has no admin assigned,
+            // fallback STRICTLY to Super Admin accounts (adminId: null)
+            if (accounts.length === 0) {
                 accounts = await prisma.paymentAccount.findMany({
-                    where: { isActive: true, adminId: assignedAdminId },
+                    where: { isActive: true, adminId: null },
                     orderBy: { createdAt: 'asc' }
                 });
             }
 
-            // Fallback: If player's assigned admin has no active accounts yet (or no admin assigned),
-            // show active accounts so deposits are never blocked
+            // Fallback safety: If Super Admin has no unassigned (adminId: null) accounts configured yet, show any active accounts
             if (accounts.length === 0) {
                 accounts = await prisma.paymentAccount.findMany({
                     where: { isActive: true },
@@ -979,6 +1005,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 customName: a.customName,
                 isActive: a.isActive,
                 isWithdrawalAdmin: a.isWithdrawalAdmin,
+                depositLimit: a.depositLimit ? a.depositLimit.toNumber() : 3000,
+                collectedDeposits: a.collectedDeposits ? a.collectedDeposits.toNumber() : 0,
                 createdAt: a.createdAt,
                 assignedUsersCount: a._count.assignedUsers,
                 user: {
@@ -1001,7 +1029,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     // Admin: create / promote user to administrator
     app.post('/api/admin/admins', adminAuthMiddleware, async (req, res) => {
         try {
-            const { userId, code, customName, bankAccountIds } = req.body;
+            const { userId, code, customName, bankAccountIds, depositLimit } = req.body;
             if (!userId || !code) {
                 return res.status(400).json({ success: false, msg: 'User and affiliate code are required.' });
             }
@@ -1024,11 +1052,14 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 return res.status(400).json({ success: false, msg: `Affiliate code "${cleanCode}" is already in use.` });
             }
 
+            const limitNum = depositLimit !== undefined && !isNaN(Number(depositLimit)) ? Math.max(0, Number(depositLimit)) : 3000.0;
             const admin = await prisma.adminProfile.create({
                 data: {
                     userId: userBigInt,
                     code: cleanCode,
-                    customName: customName ? String(customName).trim() : null
+                    customName: customName ? String(customName).trim() : null,
+                    depositLimit: limitNum,
+                    collectedDeposits: 0.0
                 }
             });
 
@@ -1050,7 +1081,9 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     userId: admin.userId.toString(),
                     code: admin.code,
                     customName: admin.customName,
-                    isActive: admin.isActive
+                    isActive: admin.isActive,
+                    depositLimit: admin.depositLimit.toNumber(),
+                    collectedDeposits: 0
                 }
             });
         } catch (e: any) {
@@ -1065,7 +1098,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             const id = parseInt(req.params.id, 10);
             if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid id.' });
 
-            const { code, customName, isActive, bankAccountIds } = req.body;
+            const { code, customName, isActive, bankAccountIds, depositLimit } = req.body;
             const admin = await prisma.adminProfile.findUnique({ where: { id } });
             if (!admin) return res.status(404).json({ success: false, msg: 'Administrator not found.' });
 
@@ -1087,6 +1120,9 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 if (!Boolean(isActive) && admin.isWithdrawalAdmin) {
                     dataToUpdate.isWithdrawalAdmin = false;
                 }
+            }
+            if (depositLimit !== undefined && !isNaN(Number(depositLimit))) {
+                dataToUpdate.depositLimit = Math.max(0, Number(depositLimit));
             }
 
             const updated = await prisma.adminProfile.update({
@@ -1119,12 +1155,44 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     code: updated.code,
                     customName: updated.customName,
                     isActive: updated.isActive,
-                    isWithdrawalAdmin: updated.isWithdrawalAdmin
+                    isWithdrawalAdmin: updated.isWithdrawalAdmin,
+                    depositLimit: updated.depositLimit.toNumber(),
+                    collectedDeposits: updated.collectedDeposits.toNumber()
                 }
             });
         } catch (e: any) {
             console.error('Update admin error:', e);
             res.status(500).json({ success: false, msg: e?.message || 'Failed to update administrator profile.' });
+        }
+    });
+
+    // Admin: refresh collected deposit limit counter back to 0
+    app.post('/api/admin/admins/:id/refresh-limit', adminAuthMiddleware, async (req, res) => {
+        try {
+            const id = parseInt(req.params.id, 10);
+            if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid administrator ID.' });
+
+            const admin = await prisma.adminProfile.findUnique({ where: { id }, include: { user: true } });
+            if (!admin) return res.status(404).json({ success: false, msg: 'Administrator not found.' });
+
+            const updated = await prisma.adminProfile.update({
+                where: { id },
+                data: { collectedDeposits: 0.0 }
+            });
+
+            const displayName = admin.customName || admin.user.firstName || admin.code;
+            res.json({
+                success: true,
+                msg: `Deposit limit refreshed for ${displayName}! Collected counter reset to 0 / ${updated.depositLimit.toNumber()} Birr.`,
+                admin: {
+                    id: updated.id,
+                    depositLimit: updated.depositLimit.toNumber(),
+                    collectedDeposits: 0
+                }
+            });
+        } catch (e: any) {
+            console.error('Refresh admin limit error:', e);
+            res.status(500).json({ success: false, msg: 'Failed to refresh administrator deposit limit.' });
         }
     });
 
@@ -1390,10 +1458,29 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             if (request.status !== 'PENDING') return res.status(400).json({ success: false, msg: 'Only pending requests can be approved.' });
 
             if (request.type === 'deposit') {
-                await prisma.$transaction([
+                let targetAdminId: number | null = null;
+                if (request.accountId) {
+                    const acct = await prisma.paymentAccount.findUnique({ where: { id: request.accountId } });
+                    if (acct?.adminId) targetAdminId = acct.adminId;
+                }
+                if (!targetAdminId) {
+                    const reqUser = await prisma.user.findUnique({ where: { id: request.userId }, select: { assignedAdminId: true } });
+                    if (reqUser?.assignedAdminId) targetAdminId = reqUser.assignedAdminId;
+                }
+
+                const txOps: any[] = [
                     prisma.user.update({ where: { id: request.userId }, data: { balance: { increment: request.amount } } }),
                     prisma.transactionRequest.update({ where: { id }, data: { status: 'APPROVED' } })
-                ]);
+                ];
+                if (targetAdminId) {
+                    txOps.push(
+                        prisma.adminProfile.update({
+                            where: { id: targetAdminId },
+                            data: { collectedDeposits: { increment: request.amount } }
+                        })
+                    );
+                }
+                await prisma.$transaction(txOps);
             } else {
                 const user = await prisma.user.findUnique({ where: { id: request.userId } });
                 if (!user || user.balance.toNumber() < request.amount.toNumber()) {
