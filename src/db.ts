@@ -28,6 +28,12 @@ export async function initDbSchema() {
             ALTER TABLE "AdminProfile" ADD COLUMN IF NOT EXISTS "depositLimit" DECIMAL(65, 30) NOT NULL DEFAULT 3000.0;
             ALTER TABLE "AdminProfile" ADD COLUMN IF NOT EXISTS "collectedDeposits" DECIMAL(65, 30) NOT NULL DEFAULT 0.0;
             ALTER TABLE "User" ADD COLUMN IF NOT EXISTS "withdrawableBalance" DECIMAL(65, 30) NOT NULL DEFAULT 0.0;
+            ALTER TABLE "TransactionRequest" ADD COLUMN IF NOT EXISTS "assignedAdminId" INTEGER;
+            ALTER TABLE "TransactionRequest" ADD COLUMN IF NOT EXISTS "processedByAdminId" INTEGER;
+            ALTER TABLE "TransactionRequest" ADD COLUMN IF NOT EXISTS "processedByName" TEXT;
+            ALTER TABLE "TransactionRequest" ADD COLUMN IF NOT EXISTS "actionAt" TIMESTAMP(3);
+            CREATE INDEX IF NOT EXISTS "TransactionRequest_assignedAdminId_idx" ON "TransactionRequest"("assignedAdminId");
+            CREATE INDEX IF NOT EXISTS "TransactionRequest_processedByAdminId_idx" ON "TransactionRequest"("processedByAdminId");
 
             -- Backfill withdrawableBalance for existing players based on historical net winnings capped by balance
             UPDATE "User"

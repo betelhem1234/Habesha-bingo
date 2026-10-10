@@ -74,6 +74,9 @@
                 <button class="tab-btn" data-tab="tab-admins" onclick="switchAdminTab('tab-admins')">
                     👑 Admins & Banks <span class="tab-badge" id="tab-badge-admins">0</span>
                 </button>
+                <button class="tab-btn" data-tab="tab-admin-audit" onclick="switchAdminTab('tab-admin-audit')">
+                    👔 Admins Audit
+                </button>
                 <button class="tab-btn" data-tab="tab-controls" onclick="switchAdminTab('tab-controls')">
                     ⚙️ Controls & Stats
                 </button>
@@ -109,6 +112,7 @@
                                     <th>Amount</th>
                                     <th>Phone / Bank</th>
                                     <th>Status</th>
+                                    <th>Admin / Handled By</th>
                                     <th>Balance</th>
                                     <th>Time</th>
                                     <th>Action</th>
@@ -286,7 +290,77 @@
                 </div>
             </section>
 
-            <!-- TAB 4: Controls & Stats -->
+            <!-- TAB 5: Administrators Performance & Audit Breakdown -->
+            <section class="tab-content" id="tab-admin-audit">
+                <div class="users-section">
+                    <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px; flex-wrap:wrap; gap:12px;">
+                        <div>
+                            <h2 style="margin:0 0 4px 0; color:#f8fafc;">👔 Administrators Performance & Audit</h2>
+                            <p style="margin:0; font-size:13px; color:#94a3b8;">
+                                Complete accountability report of deposits and withdrawals handled per administrator.
+                            </p>
+                        </div>
+                        <!-- Period Selector for Admins Audit -->
+                        <div class="financial-controls" style="margin:0;">
+                            <div class="period-btn-group" id="audit-period-group">
+                                <button type="button" class="btn-period btn-audit-period active" data-audit-period="today">Today</button>
+                                <button type="button" class="btn-period btn-audit-period" data-audit-period="yesterday">Yesterday</button>
+                                <button type="button" class="btn-period btn-audit-period" data-audit-period="7d">7 Days</button>
+                                <button type="button" class="btn-period btn-audit-period" data-audit-period="30d">30 Days</button>
+                                <button type="button" class="btn-period btn-audit-period" data-audit-period="all">All Time</button>
+                            </div>
+                        </div>
+                    </div>
+
+                    <!-- Summary KPI Cards for Audit -->
+                    <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(210px, 1fr)); gap:14px; margin-bottom:20px;">
+                        <div style="background:rgba(30, 41, 59, 0.7); border:1px solid rgba(34, 197, 94, 0.3); border-radius:12px; padding:14px;">
+                            <div style="font-size:11px; text-transform:uppercase; color:#86efac; font-weight:700; letter-spacing:0.5px;">Deposits Approved</div>
+                            <div style="font-size:22px; font-weight:800; color:#f8fafc; margin-top:4px;" id="audit-kpi-dep-approved">0 Birr</div>
+                            <div style="font-size:12px; color:#94a3b8; margin-top:2px;" id="audit-kpi-dep-count">0 requests approved</div>
+                        </div>
+                        <div style="background:rgba(30, 41, 59, 0.7); border:1px solid rgba(14, 165, 233, 0.3); border-radius:12px; padding:14px;">
+                            <div style="font-size:11px; text-transform:uppercase; color:#7dd3fc; font-weight:700; letter-spacing:0.5px;">Withdrawals Approved</div>
+                            <div style="font-size:22px; font-weight:800; color:#f8fafc; margin-top:4px;" id="audit-kpi-wdr-approved">0 Birr</div>
+                            <div style="font-size:12px; color:#94a3b8; margin-top:2px;" id="audit-kpi-wdr-count">0 requests approved</div>
+                        </div>
+                        <div style="background:rgba(30, 41, 59, 0.7); border:1px solid rgba(234, 179, 8, 0.3); border-radius:12px; padding:14px;">
+                            <div style="font-size:11px; text-transform:uppercase; color:#fde047; font-weight:700; letter-spacing:0.5px;">Pending Assigned Queue</div>
+                            <div style="font-size:22px; font-weight:800; color:#f8fafc; margin-top:4px;" id="audit-kpi-pending-total">0 Birr</div>
+                            <div style="font-size:12px; color:#94a3b8; margin-top:2px;" id="audit-kpi-pending-count">0 requests pending</div>
+                        </div>
+                        <div style="background:rgba(30, 41, 59, 0.7); border:1px solid rgba(139, 92, 246, 0.3); border-radius:12px; padding:14px;">
+                            <div style="font-size:11px; text-transform:uppercase; color:#c4b5fd; font-weight:700; letter-spacing:0.5px;">Total Settled Volume</div>
+                            <div style="font-size:22px; font-weight:800; color:#f8fafc; margin-top:4px;" id="audit-kpi-total-volume">0 Birr</div>
+                            <div style="font-size:12px; color:#94a3b8; margin-top:2px;">Turnover handled</div>
+                        </div>
+                    </div>
+
+                    <!-- Audit Breakdown Table -->
+                    <div class="table-container">
+                        <table id="audit-table">
+                            <thead>
+                                <tr>
+                                    <th>Administrator</th>
+                                    <th>Role / Status</th>
+                                    <th style="color:#4ade80;">Deposits Approved</th>
+                                    <th style="color:#facc15;">Deposits Pending</th>
+                                    <th style="color:#f87171;">Deposits Rejected</th>
+                                    <th style="color:#38bdf8;">Withdrawals Approved</th>
+                                    <th style="color:#facc15;">Withdrawals Pending</th>
+                                    <th style="color:#f87171;">Withdrawals Rejected</th>
+                                    <th style="color:#c084fc;">Total Settled</th>
+                                </tr>
+                            </thead>
+                            <tbody>
+                                <!-- Populated dynamically by JS -->
+                            </tbody>
+                        </table>
+                    </div>
+                </div>
+            </section>
+
+            <!-- TAB 6: Controls & Stats -->
             <section class="tab-content" id="tab-controls">
                 <div class="stats-grid">
                     <div class="stat-card">

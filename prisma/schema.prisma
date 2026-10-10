@@ -56,10 +56,19 @@ model TransactionRequest {
   account   PaymentAccount? @relation(fields: [accountId], references: [id])
   accountId Int?
   bankName  String?
+  assignedAdminId     Int?
+  assignedAdmin       AdminProfile? @relation("AssignedAdminRequests", fields: [assignedAdminId], references: [id], onDelete: SetNull)
+  processedByAdminId  Int?
+  processedByAdmin    AdminProfile? @relation("ProcessedAdminRequests", fields: [processedByAdminId], references: [id], onDelete: SetNull)
+  processedByName     String?
+  actionAt            DateTime?
+
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt
 
   @@index([status])
+  @@index([assignedAdminId])
+  @@index([processedByAdminId])
 }
 
 model PaymentAccount {
@@ -93,6 +102,8 @@ model AdminProfile {
 
   paymentAccounts PaymentAccount[]
   assignedUsers   User[]           @relation("AdminAssignedUsers")
+  assignedRequests TransactionRequest[] @relation("AssignedAdminRequests")
+  processedRequests TransactionRequest[] @relation("ProcessedAdminRequests")
 
   @@index([isWithdrawalAdmin])
 }

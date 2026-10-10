@@ -1385,6 +1385,12 @@ bot.callbackQuery(/^req_(approve|appr|reject|rej)_(\d+)$/, async (ctx) => {
             }
         }
 
+        const actorName = isMasterAdmin
+            ? "Super Admin"
+            : (adminProf ? (adminProf.customName || adminProf.user?.firstName || adminProf.code) : "Admin");
+        const actorAdminId = isMasterAdmin ? null : (adminProf ? adminProf.id : null);
+        const actionTime = new Date();
+
         if (isApprove) {
             if (request.type === 'deposit') {
                 // Determine which admin profile (if any) this deposit is attached to
@@ -1414,7 +1420,15 @@ bot.callbackQuery(/^req_(approve|appr|reject|rej)_(\d+)$/, async (ctx) => {
 
                 const txOps: any[] = [
                     prisma.user.update({ where: { id: request.userId }, data: { balance: { increment: request.amount } } }),
-                    prisma.transactionRequest.update({ where: { id }, data: { status: 'APPROVED' } })
+                    prisma.transactionRequest.update({
+                        where: { id },
+                        data: {
+                            status: 'APPROVED',
+                            processedByName: actorName,
+                            processedByAdminId: actorAdminId,
+                            actionAt: actionTime
+                        }
+                    })
                 ];
 
                 if (depositAdminProf) {
@@ -1456,26 +1470,42 @@ bot.callbackQuery(/^req_(approve|appr|reject|rej)_(\d+)$/, async (ctx) => {
                             withdrawableBalance: { set: newWithdrawable }
                         }
                     }),
-                    prisma.transactionRequest.update({ where: { id }, data: { status: 'APPROVED' } })
+                    prisma.transactionRequest.update({
+                        where: { id },
+                        data: {
+                            status: 'APPROVED',
+                            processedByName: actorName,
+                            processedByAdminId: actorAdminId,
+                            actionAt: actionTime
+                        }
+                    })
                 ]);
             }
             try { await bot.api.sendMessage(Number(request.userId), `✅ *Your ${request.type} request of ${request.amount.toNumber()} Birr has been approved!*`, { parse_mode: "Markdown" }); } catch (e) {}
             await ctx.answerCallbackQuery({ text: `✅ Approved ${request.type} request #${id}.` });
             const msg = ctx.update.callback_query?.message;
             const originalText = stripHtml(msg?.text || msg?.caption || '');
-            const newContent = `✅ <s>${originalText}</s>\n\n<b>Approved by admin</b>`;
+            const newContent = `✅ <s>${originalText}</s>\n\n<b>Approved by ${escapeHtmlBot(actorName)}</b>`;
             if (msg?.caption !== undefined) {
                 await ctx.editMessageCaption({ caption: newContent, parse_mode: 'HTML', reply_markup: undefined }).catch(() => {});
             } else {
                 await ctx.editMessageText(newContent, { parse_mode: 'HTML', reply_markup: undefined }).catch(() => {});
             }
         } else {
-            await prisma.transactionRequest.update({ where: { id }, data: { status: 'REJECTED' } });
+            await prisma.transactionRequest.update({
+                where: { id },
+                data: {
+                    status: 'REJECTED',
+                    processedByName: actorName,
+                    processedByAdminId: actorAdminId,
+                    actionAt: actionTime
+                }
+            });
             try { await bot.api.sendMessage(Number(request.userId), `❌ *Your ${request.type} request of ${request.amount.toNumber()} Birr was rejected.*\nPlease contact support if you have questions.`, { parse_mode: "Markdown" }); } catch (e) {}
             await ctx.answerCallbackQuery({ text: `❌ Rejected ${request.type} request #${id}.` });
             const msg = ctx.update.callback_query?.message;
             const originalText = stripHtml(msg?.text || msg?.caption || '');
-            const newContent = `❌ <s>${originalText}</s>\n\n<b>Rejected by admin</b>`;
+            const newContent = `❌ <s>${originalText}</s>\n\n<b>Rejected by ${escapeHtmlBot(actorName)}</b>`;
             if (msg?.caption !== undefined) {
                 await ctx.editMessageCaption({ caption: newContent, parse_mode: 'HTML', reply_markup: undefined }).catch(() => {});
             } else {

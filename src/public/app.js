@@ -16,6 +16,7 @@ document.addEventListener('DOMContentLoaded', () => {
     initBatchActions();
     initEditModal();
     initUserModals();
+    initAuditPeriodFilters();
     
     // Check if authenticated
     const token = getAdminToken();
@@ -47,6 +48,8 @@ function switchAdminTab(tabId) {
         fetchAdmins();
         fetchAdminBanks();
         fetchDutyWithdrawalAdmin();
+    } else if (tabId === 'tab-admin-audit') {
+        fetchAdminAuditStats();
     }
 }
 window.switchAdminTab = switchAdminTab;
@@ -184,7 +187,8 @@ async function refreshAllData() {
         fetchRequests(),
         fetchBonusSettings(),
         fetchAdmins(),
-        fetchAdminBanks()
+        fetchAdminBanks(),
+        fetchAdminAuditStats()
     ]);
 }
 
@@ -564,7 +568,7 @@ function renderRequests() {
     }
 
     if (!filtered || filtered.length === 0) {
-        tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:#94a3b8; padding:24px;">No requests found in this category.</td></tr>`;
+        tbody.innerHTML = `<tr><td colspan="11" style="text-align:center; color:#94a3b8; padding:24px;">No requests found in this category.</td></tr>`;
         return;
     }
 
@@ -583,6 +587,40 @@ function renderRequests() {
             : r.status === 'APPROVED'
                 ? `<span style="background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.4); padding:3px 8px; border-radius:6px; font-weight:700; font-size:11px;">APPROVED</span>`
                 : `<span style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4); padding:3px 8px; border-radius:6px; font-weight:700; font-size:11px;">REJECTED</span>`;
+
+        // Lineage / Handling attribution column
+        let adminAttributionHtml = '—';
+        if (r.status === 'PENDING') {
+            const assignedName = r.assignedAdmin ? escapeHtml(r.assignedAdmin.name) : 'Super Admin';
+            const assignedUname = (r.assignedAdmin && r.assignedAdmin.username) ? `<br><small style="color:#a78bfa;">@${escapeHtml(r.assignedAdmin.username)}</small>` : '';
+            adminAttributionHtml = `
+                <div style="line-height:1.3;">
+                    <span style="display:inline-block; background:rgba(234,179,8,0.15); color:#facc15; border:1px solid rgba(234,179,8,0.35); padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700;">
+                        ⏳ Assigned: ${assignedName}
+                    </span>${assignedUname}
+                </div>
+            `;
+        } else if (r.status === 'APPROVED') {
+            const handledBy = escapeHtml(r.processedByName || 'Super Admin');
+            const timeInfo = r.actionAt ? `<br><small style="color:#94a3b8; font-size:11px;">${new Date(r.actionAt).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</small>` : '';
+            adminAttributionHtml = `
+                <div style="line-height:1.3;">
+                    <span style="display:inline-block; background:rgba(34,197,94,0.15); color:#4ade80; border:1px solid rgba(34,197,94,0.35); padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700;">
+                        ✅ By: ${handledBy}
+                    </span>${timeInfo}
+                </div>
+            `;
+        } else if (r.status === 'REJECTED') {
+            const handledBy = escapeHtml(r.processedByName || 'Super Admin');
+            const timeInfo = r.actionAt ? `<br><small style="color:#94a3b8; font-size:11px;">${new Date(r.actionAt).toLocaleTimeString([], { hour:'2-digit', minute:'2-digit' })}</small>` : '';
+            adminAttributionHtml = `
+                <div style="line-height:1.3;">
+                    <span style="display:inline-block; background:rgba(239,68,68,0.15); color:#f87171; border:1px solid rgba(239,68,68,0.35); padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700;">
+                        ❌ By: ${handledBy}
+                    </span>${timeInfo}
+                </div>
+            `;
+        }
 
         let phoneAndProof = escapeHtml(r.phone || '—');
         if (r.bankName) {
@@ -643,6 +681,7 @@ function renderRequests() {
                 <td><strong style="font-size:15px; color:#f8fafc;">${(r.amount ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
                 <td>${phoneAndProof}</td>
                 <td>${statusBadge}</td>
+                <td>${adminAttributionHtml}</td>
                 <td><strong style="color:#94a3b8;">${(r.balance ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
                 <td style="color:#94a3b8; font-size:12px; white-space:nowrap;">${dateStr}</td>
                 <td>${actionButtons}</td>
@@ -1905,5 +1944,137 @@ window.openChangeWithdrawalAdminModal = openChangeWithdrawalAdminModal;
 window.closeChangeWithdrawalAdminModal = closeChangeWithdrawalAdminModal;
 window.saveDutyWithdrawalAdmin = saveDutyWithdrawalAdmin;
 window.setDutyWithdrawalAdmin = setDutyWithdrawalAdmin;
+
+// ----------------------------------------------------
+// 9. Administrators Audit & Performance Breakdown
+// ----------------------------------------------------
+let currentAuditPeriod = 'today';
+let allAuditStats = null;
+
+function initAuditPeriodFilters() {
+    const buttons = document.querySelectorAll('.btn-audit-period');
+    buttons.forEach(btn => {
+        btn.addEventListener('click', () => {
+            buttons.forEach(b => {
+                b.classList.remove('active');
+                b.style.background = 'rgba(255, 255, 255, 0.08)';
+                b.style.color = '#94a3b8';
+                b.style.border = '1px solid rgba(255,255,255,0.1)';
+            });
+            btn.classList.add('active');
+            btn.style.background = 'linear-gradient(135deg, #8b5cf6, #3b82f6)';
+            btn.style.color = '#fff';
+            btn.style.border = '1px solid rgba(255,255,255,0.4)';
+
+            currentAuditPeriod = btn.getAttribute('data-audit-period') || 'today';
+            fetchAdminAuditStats();
+        });
+    });
+}
+
+async function fetchAdminAuditStats() {
+    try {
+        const res = await authFetch(`/api/admin/audit-stats?period=${currentAuditPeriod}`);
+        if (!res.ok) throw new Error('Audit stats fetch failed');
+        const data = await res.json();
+        allAuditStats = data;
+        renderAdminAuditStats(data);
+    } catch (err) {
+        console.error('Error fetching admin audit stats:', err);
+    }
+}
+
+function renderAdminAuditStats(data) {
+    if (!data || !data.admins) return;
+
+    // Render summary KPI cards
+    const totals = data.totals || {};
+    setText('audit-kpi-dep-approved', `${(totals.depositsApprovedAmount || 0).toLocaleString()} Birr`);
+    setText('audit-kpi-dep-count', `${(totals.depositsApprovedCount || 0).toLocaleString()} requests approved`);
+
+    setText('audit-kpi-wdr-approved', `${(totals.withdrawalsApprovedAmount || 0).toLocaleString()} Birr`);
+    setText('audit-kpi-wdr-count', `${(totals.withdrawalsApprovedCount || 0).toLocaleString()} requests approved`);
+
+    const pendingTotalAmt = (totals.depositsPendingAmount || 0) + (totals.withdrawalsPendingAmount || 0);
+    const pendingTotalCount = (totals.depositsPendingCount || 0) + (totals.withdrawalsPendingCount || 0);
+    setText('audit-kpi-pending-total', `${pendingTotalAmt.toLocaleString()} Birr`);
+    setText('audit-kpi-pending-count', `${pendingTotalCount.toLocaleString()} requests pending`);
+
+    setText('audit-kpi-total-volume', `${(totals.totalSettledVolume || 0).toLocaleString()} Birr`);
+
+    // Render table
+    const tbody = document.querySelector('#audit-table tbody');
+    if (!tbody) return;
+
+    if (data.admins.length === 0) {
+        tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#94a3b8; padding:24px;">No administrator records found.</td></tr>`;
+        return;
+    }
+
+    tbody.innerHTML = data.admins.map(a => {
+        const m = a.metrics || {};
+        
+        let roleBadge = '';
+        if (a.isSuperAdmin) {
+            roleBadge = `<span class="badge" style="background:rgba(139,92,246,0.25); color:#c4b5fd; border:1px solid rgba(139,92,246,0.5); font-size:11px; font-weight:700; padding:2px 8px; border-radius:4px;">👑 Super Admin</span>`;
+        } else if (a.isWithdrawalAdmin) {
+            roleBadge = `<span class="badge" style="background:rgba(245,158,11,0.25); color:#fbbf24; border:1px solid rgba(245,158,11,0.5); font-size:11px; font-weight:700; padding:2px 8px; border-radius:4px;">💸 Duty Withdrawal Admin</span>`;
+        } else {
+            roleBadge = `<span class="badge" style="background:rgba(56,189,248,0.2); color:#38bdf8; border:1px solid rgba(56,189,248,0.4); font-size:11px; font-weight:600; padding:2px 8px; border-radius:4px;">Affiliate Admin</span>`;
+        }
+
+        const statusBadge = a.isSuperAdmin || a.isActive
+            ? `<span class="badge-active" style="margin-left:4px; font-size:10px;">Active</span>`
+            : `<span class="badge-banned" style="margin-left:4px; font-size:10px;">Inactive</span>`;
+
+        const adminIdentity = a.isSuperAdmin
+            ? `<strong style="color:#f8fafc; font-size:14px;">👑 Super Admin (Master)</strong><br><span style="color:#64748b; font-size:12px;">Platform Pool & Direct Requests</span>`
+            : `<strong style="color:#f8fafc; font-size:14px;">${escapeHtml(a.displayName)}</strong>` +
+              (a.username ? `<br><a href="https://t.me/${a.username}" target="_blank" style="color:#38bdf8; font-size:12px; text-decoration:none; font-weight:600;">@${escapeHtml(a.username)}</a>` : '') +
+              `<br><code style="color:#a78bfa; font-size:11px;">code: ${escapeHtml(a.code)}</code>`;
+
+        return `
+            <tr>
+                <td>${adminIdentity}</td>
+                <td>
+                    <div style="display:flex; flex-direction:column; gap:4px; align-items:flex-start;">
+                        <div>${roleBadge} ${statusBadge}</div>
+                        ${(!a.isSuperAdmin && a.depositLimit) ? `<small style="color:#94a3b8; font-size:11px;">Limit: ${Number(a.depositLimit).toLocaleString()} Birr</small>` : ''}
+                    </div>
+                </td>
+                <td>
+                    <strong style="color:#4ade80; font-size:14px;">${Number(m.depositsApprovedAmount || 0).toLocaleString()}</strong> <span class="currency">Birr</span><br>
+                    <small style="color:#94a3b8; font-size:11px;">${m.depositsApprovedCount || 0} approved</small>
+                </td>
+                <td>
+                    <strong style="color:#facc15; font-size:14px;">${Number(m.depositsPendingAmount || 0).toLocaleString()}</strong> <span class="currency">Birr</span><br>
+                    <small style="color:#94a3b8; font-size:11px;">${m.depositsPendingCount || 0} pending</small>
+                </td>
+                <td>
+                    <strong style="color:#f87171; font-size:14px;">${Number(m.depositsRejectedAmount || 0).toLocaleString()}</strong> <span class="currency">Birr</span><br>
+                    <small style="color:#94a3b8; font-size:11px;">${m.depositsRejectedCount || 0} rejected</small>
+                </td>
+                <td>
+                    <strong style="color:#38bdf8; font-size:14px;">${Number(m.withdrawalsApprovedAmount || 0).toLocaleString()}</strong> <span class="currency">Birr</span><br>
+                    <small style="color:#94a3b8; font-size:11px;">${m.withdrawalsApprovedCount || 0} approved</small>
+                </td>
+                <td>
+                    <strong style="color:#facc15; font-size:14px;">${Number(m.withdrawalsPendingAmount || 0).toLocaleString()}</strong> <span class="currency">Birr</span><br>
+                    <small style="color:#94a3b8; font-size:11px;">${m.withdrawalsPendingCount || 0} pending</small>
+                </td>
+                <td>
+                    <strong style="color:#f87171; font-size:14px;">${Number(m.withdrawalsRejectedAmount || 0).toLocaleString()}</strong> <span class="currency">Birr</span><br>
+                    <small style="color:#94a3b8; font-size:11px;">${m.withdrawalsRejectedCount || 0} rejected</small>
+                </td>
+                <td>
+                    <strong style="color:#c084fc; font-size:15px; font-weight:800;">${Number(m.totalSettledVolume || 0).toLocaleString()}</strong> <span class="currency">Birr</span>
+                </td>
+            </tr>
+        `;
+    }).join('');
+}
+
+window.fetchAdminAuditStats = fetchAdminAuditStats;
+
 
 

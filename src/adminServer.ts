@@ -717,11 +717,37 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 if (existing) {
                     return res.status(400).json({ success: false, msg: `You already have a pending deposit request #${existing.id}. Please wait for the admin to approve or reject it before submitting a new deposit.` });
                 }
+                // Resolve assigned admin for deposit
+                let assignedAdminId: number | null = null;
+                if (account?.adminId) {
+                    const adm = await prisma.adminProfile.findUnique({ where: { id: account.adminId } });
+                    if (adm?.isActive) {
+                        assignedAdminId = adm.id;
+                    }
+                }
+                if (!assignedAdminId) {
+                    const reqUser = await prisma.user.findUnique({
+                        where: { id: BigInt(userId) },
+                        select: { assignedAdminId: true }
+                    });
+                    if (reqUser?.assignedAdminId) {
+                        const adm = await prisma.adminProfile.findUnique({ where: { id: reqUser.assignedAdminId } });
+                        if (adm?.isActive) {
+                            assignedAdminId = adm.id;
+                        }
+                    }
+                }
+
                 const request = await prisma.transactionRequest.create({
                     data: {
-                        userId: BigInt(userId), type: 'deposit', amount: numeric, proof: proofFile.filename, status: 'PENDING',
+                        userId: BigInt(userId),
+                        type: 'deposit',
+                        amount: numeric,
+                        proof: proofFile.filename,
+                        status: 'PENDING',
                         accountId: account?.id ?? null,
-                        bankName: account ? account.bankName : null
+                        bankName: account ? account.bankName : null,
+                        assignedAdminId
                     }
                 });
                 const accountText = account ? `${account.bankName} (${account.accountNumber})` : undefined;
@@ -775,6 +801,14 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     msg: `You can only withdraw game winnings (${withdrawable.toFixed(2)} Birr available). Deposited funds and bonuses must be played in the game.`
                 });
             }
+            let assignedAdminId: number | null = null;
+            const dutyWithdrawalAdmin = await prisma.adminProfile.findFirst({
+                where: { isWithdrawalAdmin: true, isActive: true }
+            });
+            if (dutyWithdrawalAdmin) {
+                assignedAdminId = dutyWithdrawalAdmin.id;
+            }
+
             const request = await prisma.transactionRequest.create({
                 data: {
                     userId: BigInt(userId),
@@ -783,7 +817,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     phone: finalPhone,
                     status: 'PENDING',
                     accountId: accountId ? parseInt(String(accountId), 10) : null,
-                    bankName: targetBankName
+                    bankName: targetBankName,
+                    assignedAdminId
                 }
             });
             notifyAdminNewRequest(request.id, 'withdraw', numeric, BigInt(userId), null, targetBankName ? `${targetBankName} - ${finalPhone}` : finalPhone, accountId ? parseInt(String(accountId), 10) : null);
@@ -1425,7 +1460,26 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 where,
                 orderBy: { createdAt: 'desc' },
                 take: 200,
-                include: { user: { select: { firstName: true, username: true, balance: true } }, account: { select: { bankName: true, accountNumber: true } } }
+                include: {
+                    user: { select: { firstName: true, username: true, balance: true } },
+                    account: { select: { bankName: true, accountNumber: true } },
+                    assignedAdmin: {
+                        select: {
+                            id: true,
+                            code: true,
+                            customName: true,
+                            user: { select: { firstName: true, username: true } }
+                        }
+                    },
+                    processedByAdmin: {
+                        select: {
+                            id: true,
+                            code: true,
+                            customName: true,
+                            user: { select: { firstName: true, username: true } }
+                        }
+                    }
+                }
             });
             res.json(requests.map(r => ({
                 id: r.id,
@@ -1441,6 +1495,16 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 balance: r.user?.balance ? r.user.balance.toNumber() : 0,
                 bankName: r.bankName,
                 account: r.account ? `${r.account.bankName} (${r.account.accountNumber})` : null,
+                assignedAdminId: r.assignedAdminId,
+                assignedAdmin: r.assignedAdmin ? {
+                    id: r.assignedAdmin.id,
+                    code: r.assignedAdmin.code,
+                    name: r.assignedAdmin.customName || r.assignedAdmin.user?.firstName || r.assignedAdmin.code,
+                    username: r.assignedAdmin.user?.username
+                } : null,
+                processedByAdminId: r.processedByAdminId,
+                processedByName: r.processedByName,
+                actionAt: r.actionAt,
                 createdAt: r.createdAt
             })));
         } catch (e) {
@@ -1470,7 +1534,15 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
 
                 const txOps: any[] = [
                     prisma.user.update({ where: { id: request.userId }, data: { balance: { increment: request.amount } } }),
-                    prisma.transactionRequest.update({ where: { id }, data: { status: 'APPROVED' } })
+                    prisma.transactionRequest.update({
+                        where: { id },
+                        data: {
+                            status: 'APPROVED',
+                            processedByName: 'Super Admin',
+                            processedByAdminId: null,
+                            actionAt: new Date()
+                        }
+                    })
                 ];
                 if (targetAdminId) {
                     txOps.push(
@@ -1496,7 +1568,15 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                             withdrawableBalance: { set: newWithdrawable }
                         }
                     }),
-                    prisma.transactionRequest.update({ where: { id }, data: { status: 'APPROVED' } })
+                    prisma.transactionRequest.update({
+                        where: { id },
+                        data: {
+                            status: 'APPROVED',
+                            processedByName: 'Super Admin',
+                            processedByAdminId: null,
+                            actionAt: new Date()
+                        }
+                    })
                 ]);
             }
             res.json({ success: true, msg: `${request.type} request #${id} approved.` });
@@ -1514,10 +1594,194 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             if (!request) return res.status(404).json({ success: false, msg: 'Request not found.' });
             if (request.status !== 'PENDING') return res.status(400).json({ success: false, msg: 'Only pending requests can be rejected.' });
 
-            await prisma.transactionRequest.update({ where: { id }, data: { status: 'REJECTED' } });
+            await prisma.transactionRequest.update({
+                where: { id },
+                data: {
+                    status: 'REJECTED',
+                    processedByName: 'Super Admin',
+                    processedByAdminId: null,
+                    actionAt: new Date()
+                }
+            });
             res.json({ success: true, msg: `${request.type} request #${id} rejected.` });
         } catch (e) {
             res.status(500).json({ success: false, msg: 'Failed to reject request.' });
+        }
+    });
+
+    // Admin: audit statistics per administrator (for Admins Audit tab)
+    app.get('/api/admin/audit-stats', adminAuthMiddleware, async (req, res) => {
+        try {
+            const period = (req.query.period as string) || 'today';
+            const startDate = req.query.startDate as string | undefined;
+            const endDate = req.query.endDate as string | undefined;
+
+            const { start, end } = getPeriodRange(period, startDate, endDate);
+            const wherePeriod: any = {};
+            if (start) {
+                wherePeriod.createdAt = { gte: start, lte: end };
+            }
+
+            const [requests, admins] = await Promise.all([
+                prisma.transactionRequest.findMany({
+                    where: wherePeriod,
+                    select: {
+                        id: true,
+                        type: true,
+                        amount: true,
+                        status: true,
+                        assignedAdminId: true,
+                        processedByAdminId: true,
+                        processedByName: true,
+                        actionAt: true,
+                        createdAt: true
+                    }
+                }),
+                prisma.adminProfile.findMany({
+                    orderBy: { id: 'asc' },
+                    include: {
+                        user: {
+                            select: {
+                                id: true,
+                                firstName: true,
+                                lastName: true,
+                                username: true,
+                                phone: true
+                            }
+                        }
+                    }
+                })
+            ]);
+
+            function createEmptyMetrics() {
+                return {
+                    depositsApprovedCount: 0,
+                    depositsApprovedAmount: 0,
+                    depositsPendingCount: 0,
+                    depositsPendingAmount: 0,
+                    depositsRejectedCount: 0,
+                    depositsRejectedAmount: 0,
+                    withdrawalsApprovedCount: 0,
+                    withdrawalsApprovedAmount: 0,
+                    withdrawalsPendingCount: 0,
+                    withdrawalsPendingAmount: 0,
+                    withdrawalsRejectedCount: 0,
+                    withdrawalsRejectedAmount: 0,
+                    totalSettledVolume: 0
+                };
+            }
+
+            const superAdminMetrics = createEmptyMetrics();
+            const adminMetricsMap = new Map<number, ReturnType<typeof createEmptyMetrics>>();
+            for (const a of admins) {
+                adminMetricsMap.set(a.id, createEmptyMetrics());
+            }
+
+            for (const r of requests) {
+                const amt = r.amount.toNumber();
+                const isDeposit = r.type === 'deposit';
+
+                if (r.status === 'PENDING') {
+                    const targetMetrics = (r.assignedAdminId && adminMetricsMap.has(r.assignedAdminId))
+                        ? adminMetricsMap.get(r.assignedAdminId)!
+                        : superAdminMetrics;
+
+                    if (isDeposit) {
+                        targetMetrics.depositsPendingCount++;
+                        targetMetrics.depositsPendingAmount += amt;
+                    } else {
+                        targetMetrics.withdrawalsPendingCount++;
+                        targetMetrics.withdrawalsPendingAmount += amt;
+                    }
+                } else if (r.status === 'APPROVED') {
+                    const targetMetrics = (r.processedByAdminId && adminMetricsMap.has(r.processedByAdminId))
+                        ? adminMetricsMap.get(r.processedByAdminId)!
+                        : superAdminMetrics;
+
+                    if (isDeposit) {
+                        targetMetrics.depositsApprovedCount++;
+                        targetMetrics.depositsApprovedAmount += amt;
+                        targetMetrics.totalSettledVolume += amt;
+                    } else {
+                        targetMetrics.withdrawalsApprovedCount++;
+                        targetMetrics.withdrawalsApprovedAmount += amt;
+                        targetMetrics.totalSettledVolume += amt;
+                    }
+                } else if (r.status === 'REJECTED') {
+                    const processorId = r.processedByAdminId ?? r.assignedAdminId;
+                    const targetMetrics = (processorId && adminMetricsMap.has(processorId))
+                        ? adminMetricsMap.get(processorId)!
+                        : superAdminMetrics;
+
+                    if (isDeposit) {
+                        targetMetrics.depositsRejectedCount++;
+                        targetMetrics.depositsRejectedAmount += amt;
+                    } else {
+                        targetMetrics.withdrawalsRejectedCount++;
+                        targetMetrics.withdrawalsRejectedAmount += amt;
+                    }
+                }
+            }
+
+            const superAdminRow = {
+                id: null,
+                isSuperAdmin: true,
+                displayName: '👑 Super Admin',
+                code: 'master',
+                username: null,
+                userId: config.ADMIN_USER_ID,
+                isActive: true,
+                isWithdrawalAdmin: false,
+                depositLimit: null,
+                collectedDeposits: null,
+                metrics: superAdminMetrics
+            };
+
+            const affiliateRows = admins.map(a => {
+                const metrics = adminMetricsMap.get(a.id) || createEmptyMetrics();
+                const displayName = a.customName || a.user?.firstName || a.code;
+                return {
+                    id: a.id,
+                    isSuperAdmin: false,
+                    displayName,
+                    code: a.code,
+                    username: a.user?.username || null,
+                    userId: a.userId.toString(),
+                    isActive: a.isActive,
+                    isWithdrawalAdmin: a.isWithdrawalAdmin,
+                    depositLimit: a.depositLimit ? a.depositLimit.toNumber() : 3000,
+                    collectedDeposits: a.collectedDeposits ? a.collectedDeposits.toNumber() : 0,
+                    metrics
+                };
+            });
+
+            const totals = {
+                depositsApprovedCount: superAdminMetrics.depositsApprovedCount + affiliateRows.reduce((s, a) => s + a.metrics.depositsApprovedCount, 0),
+                depositsApprovedAmount: superAdminMetrics.depositsApprovedAmount + affiliateRows.reduce((s, a) => s + a.metrics.depositsApprovedAmount, 0),
+                depositsPendingCount: superAdminMetrics.depositsPendingCount + affiliateRows.reduce((s, a) => s + a.metrics.depositsPendingCount, 0),
+                depositsPendingAmount: superAdminMetrics.depositsPendingAmount + affiliateRows.reduce((s, a) => s + a.metrics.depositsPendingAmount, 0),
+                depositsRejectedCount: superAdminMetrics.depositsRejectedCount + affiliateRows.reduce((s, a) => s + a.metrics.depositsRejectedCount, 0),
+                depositsRejectedAmount: superAdminMetrics.depositsRejectedAmount + affiliateRows.reduce((s, a) => s + a.metrics.depositsRejectedAmount, 0),
+
+                withdrawalsApprovedCount: superAdminMetrics.withdrawalsApprovedCount + affiliateRows.reduce((s, a) => s + a.metrics.withdrawalsApprovedCount, 0),
+                withdrawalsApprovedAmount: superAdminMetrics.withdrawalsApprovedAmount + affiliateRows.reduce((s, a) => s + a.metrics.withdrawalsApprovedAmount, 0),
+                withdrawalsPendingCount: superAdminMetrics.withdrawalsPendingCount + affiliateRows.reduce((s, a) => s + a.metrics.withdrawalsPendingCount, 0),
+                withdrawalsPendingAmount: superAdminMetrics.withdrawalsPendingAmount + affiliateRows.reduce((s, a) => s + a.metrics.withdrawalsPendingAmount, 0),
+                withdrawalsRejectedCount: superAdminMetrics.withdrawalsRejectedCount + affiliateRows.reduce((s, a) => s + a.metrics.withdrawalsRejectedCount, 0),
+                withdrawalsRejectedAmount: superAdminMetrics.withdrawalsRejectedAmount + affiliateRows.reduce((s, a) => s + a.metrics.withdrawalsRejectedAmount, 0),
+
+                totalSettledVolume: superAdminMetrics.totalSettledVolume + affiliateRows.reduce((s, a) => s + a.metrics.totalSettledVolume, 0)
+            };
+
+            res.json({
+                success: true,
+                period,
+                totals,
+                admins: [superAdminRow, ...affiliateRows]
+            });
+        } catch (e: any) {
+            console.error('Audit stats error:', e);
+            res.status(500).json({ success: false, msg: 'Failed to calculate admin audit stats.' });
         }
     });
 
