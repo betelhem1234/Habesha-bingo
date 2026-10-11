@@ -24,6 +24,7 @@ export interface Player {
     username?: string;
     lastSeen: number;
     isBlocked?: boolean;
+    isBot?: boolean;
 }
 
 export interface WinnerRecord {
@@ -110,7 +111,7 @@ export class GameManager {
         return this.players.find(p => p.userId.toString() === idStr);
     }
 
-    constructor(private bot: Bot) {
+    constructor(private bot: Bot, public botService?: any, public fee: number = 10, public room: number = 1) {
         this.heartbeatInterval = setInterval(() => {
             if (this.sseClients.size === 0) return;
             const toDelete: Array<{ res: any; userId: bigint }> = [];
@@ -278,6 +279,9 @@ export class GameManager {
             // Defensively ensure no duplicate entries ever persist in memory
             this.sanitizePlayers();
 
+            // Notify bot service to evaluate auto-fill if needed
+            this.botService?.onRoomUpdated(this, this.fee, this.room);
+
             // If all 500 boards are taken, start the game right away
             const totalCards = this.players.reduce((sum, p) => sum + (p.cards?.length || 1), 0);
             if (totalCards >= 500) {
@@ -415,7 +419,8 @@ export class GameManager {
     async removeStalePlayers(maxIdleMs: number = 15000): Promise<number> {
         if (this.state !== 'WAITING') return 0;
         const now = Date.now();
-        const stale = this.players.filter(p => now - p.lastSeen > maxIdleMs);
+        // Ignore virtual bots for idle stale sweeps
+        const stale = this.players.filter(p => !p.isBot && now - p.lastSeen > maxIdleMs);
         let removed = 0;
         for (const p of stale) {
             const res = await this.removePlayer(p.userId, false);
@@ -423,6 +428,10 @@ export class GameManager {
         }
         if (removed > 0) {
             console.log(`[Game] Removed ${removed} stale player(s) from lobby.`);
+            const remainingHumans = this.players.filter(p => !p.isBot).length;
+            if (remainingHumans === 0) {
+                this.botService?.clearBots(this);
+            }
             this.broadcastSSE('lobby', {
                 lobbyCountdown: this.lobbyCountdown,
                 playerCount: this.players.length,
@@ -434,6 +443,7 @@ export class GameManager {
     }
 
     private async refundPlayer(p: Player) {
+        if (p.isBot) return; // Virtual bots have no database wallet
         if (p.fee > 0) {
             try {
                 const bonusUsed = p.bonusUsed || 0;
@@ -469,9 +479,10 @@ export class GameManager {
         }
 
         const leaver = toRemove[0];
-        const remaining = this.players.length;
+        const remainingHumans = this.players.filter(p => !p.isBot).length;
 
-        if (remaining < 1) {
+        if (remainingHumans < 1) {
+            this.botService?.clearBots(this);
             if (this.lobbyInterval) {
                 clearInterval(this.lobbyInterval);
                 this.lobbyInterval = null;
@@ -479,7 +490,8 @@ export class GameManager {
             this.lobbyCountdown = 0;
             this.players = [];
         } else {
-            // Still enough players - keep the lobby alive and notify the rest.
+            // Still enough players - notify bot service and keep the lobby alive
+            this.botService?.onRoomUpdated(this, this.fee, this.room);
             this.broadcastSSE('lobby', {
                 lobbyCountdown: this.lobbyCountdown,
                 playerCount: this.players.length,
@@ -524,7 +536,7 @@ export class GameManager {
     }
 
     private broadcastTelegramTickets(text: string) {
-        const activePlayers = this.players.filter(p => p.ticketMessageId);
+        const activePlayers = this.players.filter(p => p.ticketMessageId && !p.isBot);
         if (activePlayers.length === 0) return;
 
         // Run asynchronously in the background so it never blocks the clockwork game loop
@@ -738,6 +750,7 @@ export class GameManager {
             }
 
             this.drawnNumbers.add(num);
+            this.botService?.onNumberDrawn(this, num, this.fee, this.room);
             const numName = getNumberName(num);
             const emoji = getColumnEmoji(num);
             const allDrawn = Array.from(this.drawnNumbers).map(n => getNumberName(n));
@@ -1005,6 +1018,9 @@ export class GameManager {
 
         // When all players break the rules and are blocked:
         // 100% of pot (80% prize + 20% house fee) is credited to house profit!
+        const organicPlayers = this.players.filter(p => !p.isBot);
+        const organicPot = organicPlayers.reduce((sum, p) => sum + p.fee, 0);
+
         try {
             await prisma.houseIncome.create({
                 data: {
@@ -1012,7 +1028,7 @@ export class GameManager {
                     playerCount: this.players.length,
                     totalCollected: pot,
                     winnerPayout: 0,
-                    houseProfit: pot,
+                    houseProfit: organicPot,
                     winnerId: null,
                     winner2Id: null,
                     winnerCount: 0
@@ -1026,6 +1042,7 @@ export class GameManager {
         this.currentWinner = null;
 
         for (const p of this.players) {
+            if (p.isBot) continue;
             try {
                 await prisma.gameHistory.create({
                     data: {
@@ -1067,6 +1084,7 @@ export class GameManager {
     }
 
     private async endGame(winners: WinnerCandidate[] | null) {
+        this.botService?.onGameEnded(this.fee, this.room);
         this.state = 'WAITING';
         if (this.startTimeout) {
             clearTimeout(this.startTimeout);
@@ -1089,9 +1107,15 @@ export class GameManager {
 
         if (winners && winners.length > 0) {
             const totalWinnerPayout = Math.floor(pot * 0.8);
-            const houseProfit = pot - totalWinnerPayout;
             const winnerCount = Math.min(winners.length, 2);
             const payoutPerWinner = Math.floor(totalWinnerPayout / winnerCount);
+
+            // Calculate organic collected fees vs simulated bot fees
+            const organicPlayers = this.players.filter(p => !p.isBot);
+            const organicCollected = organicPlayers.reduce((sum, p) => sum + p.fee, 0);
+            const humanWinners = winners.slice(0, 2).filter(w => !w.player.isBot);
+            const totalActualPayout = humanWinners.length * payoutPerWinner;
+            const actualProfit = organicCollected - totalActualPayout;
 
             // Log house income
             try {
@@ -1100,10 +1124,10 @@ export class GameManager {
                         gameType: 'bingo',
                         playerCount: this.players.length,
                         totalCollected: pot,
-                        winnerPayout: totalWinnerPayout,
-                        houseProfit: houseProfit,
-                        winnerId: winners[0].player.userId,
-                        winner2Id: winners.length > 1 ? winners[1].player.userId : null,
+                        winnerPayout: totalActualPayout,
+                        houseProfit: actualProfit,
+                        winnerId: (winners[0] && !winners[0].player.isBot) ? winners[0].player.userId : null,
+                        winner2Id: (winners.length > 1 && !winners[1].player.isBot) ? winners[1].player.userId : null,
                         winnerCount
                     }
                 });
@@ -1111,9 +1135,13 @@ export class GameManager {
                 console.error('Failed to log HouseIncome:', e);
             }
 
-            // Credit winners
+            // Credit winners (only real human players receive DB wallet credit)
             for (let i = 0; i < winnerCount; i++) {
                 const w = winners[i];
+                if (w.player.isBot) {
+                    console.log(`[Game] Winner is virtual bot ${w.player.firstName} (${w.player.userId}) - skipping database payout.`);
+                    continue;
+                }
                 try {
                     await prisma.user.update({
                         where: { id: w.player.userId },
@@ -1150,6 +1178,7 @@ export class GameManager {
 
             const winnerUserIds = new Set(this.currentWinners.map(w => w.userId));
             for (const p of this.players) {
+                if (p.isBot) continue; // Skip virtual bots from DB GameHistory and Telegram
                 const isWinner = winnerUserIds.has(p.userId.toString());
 
                 // Record game history
@@ -1185,6 +1214,8 @@ export class GameManager {
         } else {
             this.currentWinners = [];
             this.currentWinner = null;
+            const organicPlayers = this.players.filter(p => !p.isBot);
+            const organicCollected = organicPlayers.reduce((sum, p) => sum + p.fee, 0);
             try {
                 await prisma.houseIncome.create({
                     data: {
@@ -1192,7 +1223,7 @@ export class GameManager {
                         playerCount: this.players.length,
                         totalCollected: pot,
                         winnerPayout: 0,
-                        houseProfit: pot,
+                        houseProfit: organicCollected,
                         winnerId: null,
                         winner2Id: null,
                         winnerCount: 0
@@ -1202,6 +1233,7 @@ export class GameManager {
                 console.error('Failed to log HouseIncome for no-winner game:', e);
             }
             for (const p of this.players) {
+                if (p.isBot) continue;
                 try {
                     await prisma.gameHistory.create({
                         data: {

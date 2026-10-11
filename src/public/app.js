@@ -186,6 +186,7 @@ async function refreshAllData() {
         fetchUsers(searchQuery),
         fetchRequests(),
         fetchBonusSettings(),
+        fetchBotSettings(),
         fetchAdmins(),
         fetchAdminBanks(),
         fetchAdminAuditStats()
@@ -1215,6 +1216,128 @@ async function saveBonusSettings() {
 }
 
 // ----------------------------------------------------
+// 8.1 Virtual Players (Bot Control) Handlers
+// ----------------------------------------------------
+async function fetchBotSettings() {
+    try {
+        const res = await authFetch('/api/admin/bots');
+        if (!res.ok) return;
+        const data = await res.json();
+        const s = data.settings || {};
+
+        const enabledSelect = document.getElementById('bot-input-enabled');
+        const targetInput = document.getElementById('bot-input-target');
+        const speedSelect = document.getElementById('bot-input-speed');
+        const statusBadge = document.getElementById('bot-status-badge');
+
+        if (enabledSelect) enabledSelect.value = s.enabled ? 'true' : 'false';
+        if (targetInput) targetInput.value = s.targetPlayers || 20;
+
+        if (speedSelect) {
+            if (s.botReactionMinMs <= 1600) speedSelect.value = 'fast';
+            else if (s.botReactionMinMs >= 2500) speedSelect.value = 'relaxed';
+            else speedSelect.value = 'normal';
+        }
+
+        if (statusBadge) {
+            if (s.enabled) {
+                statusBadge.textContent = '🟢 ACTIVE';
+                statusBadge.style.background = 'rgba(34,197,94,0.2)';
+                statusBadge.style.color = '#4ade80';
+            } else {
+                statusBadge.textContent = '🔴 OFF';
+                statusBadge.style.background = 'rgba(239,68,68,0.2)';
+                statusBadge.style.color = '#f87171';
+            }
+        }
+    } catch (e) {
+        console.error('Failed to load bot settings:', e);
+    }
+}
+
+async function saveBotSettings() {
+    const enabled = document.getElementById('bot-input-enabled').value === 'true';
+    const targetPlayers = parseInt(document.getElementById('bot-input-target').value, 10) || 20;
+    const speed = document.getElementById('bot-input-speed').value;
+
+    let botReactionMinMs = 1800;
+    let botReactionMaxMs = 3200;
+    if (speed === 'fast') {
+        botReactionMinMs = 1500;
+        botReactionMaxMs = 2500;
+    } else if (speed === 'relaxed') {
+        botReactionMinMs = 2800;
+        botReactionMaxMs = 4500;
+    }
+
+    const statusEl = document.getElementById('bot-save-status');
+    if (statusEl) {
+        statusEl.textContent = 'Saving...';
+        statusEl.style.color = '#38bdf8';
+    }
+
+    try {
+        const res = await authFetch('/api/admin/bots/settings', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ enabled, targetPlayers, botReactionMinMs, botReactionMaxMs })
+        });
+        const data = await res.json();
+        if (data.success) {
+            if (statusEl) {
+                statusEl.textContent = '✅ Saved successfully!';
+                statusEl.style.color = '#4ade80';
+                setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+            }
+            fetchBotSettings();
+        } else {
+            alert(data.msg || 'Failed to save bot settings.');
+        }
+    } catch (err) {
+        alert('Network error saving bot settings.');
+    }
+}
+
+async function injectBots(count = 5) {
+    try {
+        const res = await authFetch('/api/admin/bots/inject', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fee: 10, room: 1, count })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(data.msg);
+            fetchStats();
+        } else {
+            alert(data.msg || 'Could not add bots.');
+        }
+    } catch (err) {
+        alert('Network error adding bots.');
+    }
+}
+
+async function clearBots() {
+    if (!confirm('Are you sure you want to remove all fake players from the 10 Birr lobby?')) return;
+    try {
+        const res = await authFetch('/api/admin/bots/clear', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ fee: 10, room: 1 })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(data.msg);
+            fetchStats();
+        } else {
+            alert(data.msg || 'Could not clear bots.');
+        }
+    } catch (err) {
+        alert('Network error clearing bots.');
+    }
+}
+
+// ----------------------------------------------------
 // 9. Active Players Inspector Modal
 // ----------------------------------------------------
 let activePlayersPollInterval = null;
@@ -1284,10 +1407,14 @@ async function fetchActivePlayers() {
                     ? `<button onclick="kickActivePlayer('${p.userId}', ${item.fee}, ${item.room})" style="background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.4); color:#f87171; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;" title="Kick player and release board">👢 Kick & Free</button>`
                     : `<span style="color:#64748b; font-size:11px;">In Game</span>`;
 
+                const botBadge = p.isBot
+                    ? `<span style="display:inline-block; margin-left:6px; background:rgba(192,132,252,0.22); color:#c084fc; border:1px solid rgba(192,132,252,0.45); border-radius:10px; font-size:10px; padding:1px 6px; font-weight:700;">🤖 BOT</span>`
+                    : '';
+
                 return `
                     <tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
                         <td style="padding:12px 8px;">
-                            <div style="font-weight:700; color:#f8fafc;">${escapeHtml(p.firstName || 'Player')}</div>
+                            <div style="font-weight:700; color:#f8fafc; display:flex; align-items:center;">${escapeHtml(p.firstName || 'Player')}${botBadge}</div>
                             <div style="font-size:11px; color:#94a3b8;">${p.username ? '@' + escapeHtml(p.username) + ' • ' : ''}ID: <code>${p.userId}</code></div>
                             ${p.phone ? `<div style="font-size:11px; color:#38bdf8;">📱 ${escapeHtml(p.phone)}</div>` : ''}
                         </td>
@@ -1817,6 +1944,10 @@ window.closeEditModal = closeEditModal;
 window.toggleSelectRequest = toggleSelectRequest;
 window.fetchBonusSettings = fetchBonusSettings;
 window.saveBonusSettings = saveBonusSettings;
+window.fetchBotSettings = fetchBotSettings;
+window.saveBotSettings = saveBotSettings;
+window.injectBots = injectBots;
+window.clearBots = clearBots;
 window.openActivePlayersModal = openActivePlayersModal;
 window.closeActivePlayersModal = closeActivePlayersModal;
 window.fetchActivePlayers = fetchActivePlayers;

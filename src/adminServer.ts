@@ -247,7 +247,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                         phone: dbU?.phone || null,
                         balance: dbU ? dbU.balance.toNumber() : 0,
                         bonus: dbU ? dbU.bonus.toNumber() : 0,
-                        idleSeconds: idleSecs
+                        idleSeconds: idleSecs,
+                        isBot: !!item.player.isBot
                     }
                 };
             });
@@ -2333,8 +2334,64 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         }
     });
 
+    // Virtual Players (Bot System) Admin Endpoints
+    app.get('/api/admin/bots', adminAuthMiddleware, (_req, res) => {
+        const settings = gameRooms.botService.getSettings();
+        let totalActiveBots = 0;
+        for (const gm of gameRooms.roomsList()) {
+            totalActiveBots += gm.players.filter(p => p.isBot).length;
+        }
+        res.json({
+            success: true,
+            settings,
+            totalActiveBots
+        });
+    });
 
+    app.post('/api/admin/bots/settings', adminAuthMiddleware, (req, res) => {
+        try {
+            const updated = gameRooms.botService.updateSettings(req.body || {});
+            console.log('[Admin] Bot settings updated:', updated);
+            res.json({ success: true, settings: updated });
+        } catch (e: any) {
+            res.status(500).json({ success: false, msg: e?.message || 'Failed to update bot settings' });
+        }
+    });
 
+    app.post('/api/admin/bots/inject', adminAuthMiddleware, async (req, res) => {
+        const { fee = 10, room = 1, count = 5 } = req.body || {};
+        const parsedFee = Number(fee) || 10;
+        const parsedRoom = Number(room) || 1;
+        const parsedCount = Math.max(1, Math.min(30, Number(count) || 5));
+
+        const gm = gameRooms.getRoom(parsedFee, parsedRoom);
+        if (gm.state !== 'WAITING') {
+            return res.status(400).json({ success: false, msg: 'Cannot add bots while game is playing. Wait for waiting lobby.' });
+        }
+
+        const added = await gameRooms.botService.injectBots(gm, parsedCount, parsedFee);
+        res.json({
+            success: true,
+            msg: `Successfully added ${added} fake players to ${parsedFee} Birr room!`,
+            added,
+            totalPlayers: gm.players.length
+        });
+    });
+
+    app.post('/api/admin/bots/clear', adminAuthMiddleware, (req, res) => {
+        const { fee = 10, room = 1 } = req.body || {};
+        const parsedFee = Number(fee) || 10;
+        const parsedRoom = Number(room) || 1;
+
+        const gm = gameRooms.getRoom(parsedFee, parsedRoom);
+        const removed = gameRooms.botService.clearBots(gm);
+        res.json({
+            success: true,
+            msg: `Cleared ${removed} fake players from ${parsedFee} Birr room.`,
+            removed,
+            totalPlayers: gm.players.length
+        });
+    });
 
     app.listen(Number(config.PORT), () => {
         console.log(`Admin server running on http://localhost:${config.PORT}`);

@@ -1,5 +1,15 @@
 {
   "callerVoice": "male",
   "newUserBonus": 10,
-  "referralBonus": 5
+  "referralBonus": 5,
+  "botSettings": {
+    "enabled": true,
+    "targetPlayers": 15,
+    "botReactionMinMs": 50,
+    "botReactionMaxMs": 100,
+    "enabledRooms": [
+      10,
+      20
+    ]
+  }
 }

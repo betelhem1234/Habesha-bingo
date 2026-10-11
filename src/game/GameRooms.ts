@@ -2,15 +2,18 @@ import fs from 'fs';
 import path from 'path';
 import { Bot } from 'grammy';
 import { GameManager } from './GameManager';
+import { BotService } from './BotService';
 
 const FEES = [10, 20, 50, 100, 0];
 
 export class GameRooms {
     private rooms: Map<number, GameManager> = new Map();
     private callerVoice: 'male' | 'female' = 'male';
+    public botService: BotService;
     private settingsFilePath = path.join(process.cwd(), 'data', 'settings.json');
 
     constructor(private bot: Bot) {
+        this.botService = new BotService();
         this.loadSettings();
         // Periodically release boards/fees left by players who abandoned the lobby.
         setInterval(() => this.sweepStalePlayers(), 5000).unref();
@@ -68,7 +71,7 @@ export class GameRooms {
         if (isNaN(r) || r < 1) r = 1;
         const key = f * 1000 + r;
         if (!this.rooms.has(key)) {
-            this.rooms.set(key, new GameManager(this.bot));
+            this.rooms.set(key, new GameManager(this.bot, this.botService, f, r));
         }
         return this.rooms.get(key)!;
     }
@@ -146,6 +149,7 @@ export class GameRooms {
             bonusUsed: number;
             lastSeen: number;
             isBlocked: boolean;
+            isBot?: boolean;
         };
     }> {
         const list = [];
@@ -172,7 +176,8 @@ export class GameRooms {
                         fee: p.fee,
                         bonusUsed: p.bonusUsed || 0,
                         lastSeen: p.lastSeen,
-                        isBlocked: !!p.isBlocked
+                        isBlocked: !!p.isBlocked,
+                        isBot: !!p.isBot
                     }
                 });
             }
