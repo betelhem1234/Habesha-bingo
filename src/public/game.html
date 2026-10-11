@@ -21,6 +21,18 @@ body{
   position:relative;
 }
 
+/* ─── Top App Header ─── */
+.app-header{
+  width:100%;background:#1e1a38;color:#fff;
+  display:flex;align-items:center;justify-content:space-between;
+  padding:5px 12px;font-size:0.92rem;font-weight:800;
+  box-sizing:border-box;flex-shrink:0;
+}
+.app-header-left{display:flex;align-items:center;gap:8px;cursor:pointer;}
+.app-header-left .close-icon{font-size:1.05rem;font-weight:700;}
+.app-header-title{font-size:0.95rem;font-weight:800;letter-spacing:0.2px;}
+.app-header-right{display:flex;align-items:center;gap:8px;color:#ccc;font-size:0.95rem;}
+
 /* ─── Top Stats Bar (6 Pills) ─── */
 .stats-bar{
   width:100%;
@@ -487,6 +499,18 @@ body{
 </style>
 </head>
 <body>
+
+<!-- ─── Top App Header (Image 1) ─── -->
+<div class="app-header">
+  <div class="app-header-left" onclick="leaveGame()">
+    <span class="close-icon">✕</span>
+    <span class="app-header-title">Ethio Bingo</span>
+  </div>
+  <div class="app-header-right">
+    <span>⌵</span>
+    <span>⋮</span>
+  </div>
+</div>
 
 <!-- ─── Top Stats Bar (6 Pills - Image 1) ─── -->
 <div class="stats-bar">
