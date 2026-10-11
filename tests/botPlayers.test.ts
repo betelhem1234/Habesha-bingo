@@ -1,4 +1,4 @@
-import { test, describe, beforeEach } from 'node:test';
+import { test, describe, beforeEach, afterEach } from 'node:test';
 import assert from 'node:assert/strict';
 import { Bot } from 'grammy';
 import { GameManager } from '../src/game/GameManager';
@@ -19,6 +19,12 @@ describe('Virtual Players (Bot System) Test Suite', () => {
     beforeEach(() => {
         botService = new BotService();
         gameManager = new GameManager(mockBot, botService, 10, 1);
+    });
+
+    afterEach(async () => {
+        if (gameManager) {
+            await gameManager.forceReset();
+        }
     });
 
     test('Bot profile pool contains authentic Ethiopian identities with no generic names', () => {
@@ -211,5 +217,100 @@ describe('Virtual Players (Bot System) Test Suite', () => {
         const pending = (gameManager as any).pendingWinners;
         assert.ok(pending && pending.length > 0, 'Bot should have claimed and entered pending winners');
         assert.equal(pending[0].player.firstName, 'Almaz K.');
+    });
+
+    test('Each bot strictly receives 1 board (10 Birr) and auto-starts lobby timer immediately', async () => {
+        assert.equal(gameManager.lobbyCountdown, 0);
+        assert.equal((gameManager as any).lobbyInterval, null);
+
+        // Inject 20 bots
+        const added = await botService.injectBots(gameManager, 20, 10);
+        assert.equal(added, 20);
+        assert.equal(gameManager.players.length, 20);
+
+        // Verify each bot has strictly 1 board and fee is 10 Birr
+        for (const bot of gameManager.players) {
+            assert.equal(bot.cards?.length, 1);
+            assert.equal(bot.fee, 10);
+        }
+
+        // Verify total boards and pot
+        assert.equal(gameManager.getTotalBoards(), 20);
+        assert.equal(gameManager.getPot(), 200);
+
+        // Verify 30s lobby timer started automatically
+        assert.equal(gameManager.lobbyCountdown, 30);
+        assert.ok((gameManager as any).lobbyInterval !== null, 'Lobby interval should be running');
+    });
+
+    test('20 Bots + 1 Human with 1 board results in 21 players, 21 boards, Pot 210, Derash 168 Birr', async () => {
+        // Inject 20 bots
+        await botService.injectBots(gameManager, 20, 10);
+        assert.equal(gameManager.players.length, 20);
+        assert.equal(gameManager.getTotalBoards(), 20);
+
+        // Add 1 human with 1 board (10 Birr)
+        gameManager.players.push({
+            userId: 777777n,
+            cards: [{
+                boardNumber: 499,
+                ticket: Array(5).fill(0).map(() => Array(5).fill(1)),
+                daubed: new Set()
+            }],
+            ticket: Array(5).fill(0).map(() => Array(5).fill(1)),
+            daubed: new Set(),
+            fee: 10,
+            lastSeen: Date.now(),
+            isBot: false,
+            firstName: 'Abebe'
+        });
+
+        assert.equal(gameManager.players.length, 21, 'Total players must be 21');
+        assert.equal(gameManager.getTotalBoards(), 21, 'Total boards must be 21');
+        assert.equal(gameManager.getPot(), 210, 'Total pot must be 210 Birr');
+
+        const derash = Math.floor(gameManager.getPot() * 0.8);
+        assert.equal(derash, 168, 'Derash must be 168 Birr (80% of 210)');
+        const houseIncome = gameManager.getPot() * 0.2;
+        assert.equal(houseIncome, 42, 'House income must be 42 Birr (20% of 210)');
+    });
+
+    test('20 Bots + 1 Human with 2 boards results in 21 players, 22 boards, Pot 220, Derash 176 Birr', async () => {
+        // Inject 20 bots
+        await botService.injectBots(gameManager, 20, 10);
+        assert.equal(gameManager.players.length, 20);
+        assert.equal(gameManager.getTotalBoards(), 20);
+
+        // Add 1 human with 2 boards (20 Birr)
+        gameManager.players.push({
+            userId: 888888n,
+            cards: [
+                {
+                    boardNumber: 490,
+                    ticket: Array(5).fill(0).map(() => Array(5).fill(1)),
+                    daubed: new Set()
+                },
+                {
+                    boardNumber: 491,
+                    ticket: Array(5).fill(0).map(() => Array(5).fill(1)),
+                    daubed: new Set()
+                }
+            ],
+            ticket: Array(5).fill(0).map(() => Array(5).fill(1)),
+            daubed: new Set(),
+            fee: 20,
+            lastSeen: Date.now(),
+            isBot: false,
+            firstName: 'Kebede'
+        });
+
+        assert.equal(gameManager.players.length, 21, 'Total players must be 21');
+        assert.equal(gameManager.getTotalBoards(), 22, 'Total boards must be 22');
+        assert.equal(gameManager.getPot(), 220, 'Total pot must be 220 Birr');
+
+        const derash = Math.floor(gameManager.getPot() * 0.8);
+        assert.equal(derash, 176, 'Derash must be 176 Birr (80% of 220)');
+        const houseIncome = gameManager.getPot() * 0.2;
+        assert.equal(houseIncome, 44, 'House income must be 44 Birr (20% of 220)');
     });
 });

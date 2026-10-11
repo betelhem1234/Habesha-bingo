@@ -320,14 +320,19 @@ export class GameManager {
     }
 
 
+    getTotalBoards(): number {
+        this.sanitizePlayers();
+        return this.players.reduce((sum, p) => sum + (p.cards?.length || 1), 0);
+    }
+
     getPot(): number {
         this.sanitizePlayers();
         return this.players.reduce((sum, p) => sum + p.fee, 0);
     }
 
-    private startLobbyTimer() {
+    public startLobbyTimer() {
         this.lobbyCountdown = 30; // 30 seconds wait
-        console.log(`[Game] Auto-start timer started for 30s (${this.players.length} player(s) in lobby)`);
+        console.log(`[Game] Auto-start timer started for 30s (${this.players.length} player(s), ${this.getTotalBoards()} board(s) in lobby)`);
         
         if (this.lobbyInterval) clearInterval(this.lobbyInterval);
 
@@ -342,6 +347,7 @@ export class GameManager {
             this.broadcastSSE('lobby', {
                 lobbyCountdown: this.lobbyCountdown,
                 playerCount: this.players.length,
+                boardCount: this.getTotalBoards(),
                 pot: this.getPot(),
                 gameState: this.state
             });
@@ -354,15 +360,20 @@ export class GameManager {
                 // Pre-game verification sweep: evict anyone who abandoned the lobby in the last 15s
                 await this.removeStalePlayers(15000);
 
-                if (this.players.length >= 1) {
-                    console.log(`[Game] Lobby auto-starting with ${this.players.length} active player(s)`);
+                const humans = this.players.filter(p => !p.isBot);
+                if (humans.length >= 1) {
+                    console.log(`[Game] Lobby auto-starting with ${this.players.length} active player(s) (${this.getTotalBoards()} boards)`);
                     await this.startGame();
+                } else if (this.players.length >= 1) {
+                    // Only virtual bots in lobby: keep room lively by resetting the 30s countdown for incoming humans
+                    console.log(`[Game] Only bots in lobby (${this.players.length} bots); resetting 30s lobby timer to welcome incoming players.`);
+                    this.startLobbyTimer();
                 } else {
                     console.log('[Game] Not enough players to auto-start after stale player eviction.');
                     this.state = 'WAITING';
                 }
             }
-        }, 1000); // 1-second ticks for accurate 30-second countdown
+        }, 1000).unref(); // 1-second ticks for accurate 30-second countdown (unref'd to avoid hanging tests/shutdown)
     }
 
     setPlayerMessageId(userId: bigint, messageId: number) {
@@ -609,11 +620,12 @@ export class GameManager {
             gameId: this.gameId,
             pot,
             playerCount: this.players.length,
+            boardCount: this.getTotalBoards(),
             nextDrawAt: Date.now() + 3000
         });
 
         // Step 1: Notify all players via ticket edit in background
-        const startMsg = `🎮 *GAME IS STARTING!*\n\n👥 Players: ${this.players.length} | 💰 Pot: *${pot} Birr*\n\n⏳ First number drawing in 3 seconds...\n\n👇 Your board — tap numbers when called:`;
+        const startMsg = `🎮 *GAME IS STARTING!*\n\n👥 Players: ${this.players.length} (${this.getTotalBoards()} Boards) | 💰 Pot: *${pot} Birr*\n\n⏳ First number drawing in 3 seconds...\n\n👇 Your board — tap numbers when called:`;
         for (const p of this.players) {
             p.isBlocked = false;
             if (p.cards) {
@@ -768,7 +780,8 @@ export class GameManager {
                 recent: Array.from(this.drawnNumbers).slice(-10),
                 nextDrawAt: Date.now() + 4000,
                 pot: this.getPot(),
-                playerCount: this.players.length
+                playerCount: this.players.length,
+                boardCount: this.getTotalBoards()
             });
 
             // Big, bold drawn number with column color for Telegram

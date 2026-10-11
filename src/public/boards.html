@@ -256,6 +256,7 @@ body{
 <!-- ─── Sub-Header Status Row (Reference Image) ─── -->
 <div class="status-sub-row">
   <span class="sub-boards-label" id="boards-counter">Boards: 0/2</span>
+  <span class="sub-stake-label" id="room-stats-label" style="color:#5e1261; font-size:0.72rem; font-weight:900;">👥 <span id="room-players">0</span> (<span id="room-boards">0</span> 📋) | 💰 <span id="room-derash">0</span> Birr</span>
   <span class="sub-stake-label" id="stake-label">10 № 1</span>
 </div>
 
@@ -652,6 +653,15 @@ async function poll(){
 
     if(boardData.lobbyCountdown !== undefined){
       updateCountdownTarget(boardData.lobbyCountdown);
+    }
+
+    if(boardData.players !== undefined){
+      const rpEl = document.getElementById('room-players');
+      const rbEl = document.getElementById('room-boards');
+      const rdEl = document.getElementById('room-derash');
+      if(rpEl) rpEl.textContent = boardData.players;
+      if(rbEl) rbEl.textContent = boardData.boardCount || boardData.players;
+      if(rdEl) rdEl.textContent = Math.floor(parseFloat(boardData.pot || 0) * 0.8);
     }
 
     renderBoards(boardData.boards||[]);

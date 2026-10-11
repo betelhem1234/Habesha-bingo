@@ -33,10 +33,10 @@ body{
 .app-header-title{font-size:0.95rem;font-weight:800;letter-spacing:0.2px;}
 .app-header-right{display:flex;align-items:center;gap:8px;color:#ccc;font-size:0.95rem;}
 
-/* ─── Top Stats Bar (5 Pills) ─── */
+/* ─── Top Stats Bar (6 Pills) ─── */
 .stats-bar{
   width:100%;
-  display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
+  display:grid;grid-template-columns:repeat(6,minmax(0,1fr));
   gap:3px;padding:4px 5px 3px;
   box-sizing:border-box;flex-shrink:0;
 }
@@ -512,11 +512,12 @@ body{
   </div>
 </div>
 
-<!-- ─── Top Stats Bar (5 Pills - Image 1) ─── -->
+<!-- ─── Top Stats Bar (6 Pills - Image 1) ─── -->
 <div class="stats-bar">
   <div class="stat-pill"><div class="slabel">Game ID</div><div class="svalue" id="game-id">—</div></div>
   <div class="stat-pill"><div class="slabel">Derash</div><div class="svalue" id="derash">—</div></div>
   <div class="stat-pill"><div class="slabel">Players</div><div class="svalue" id="player-count">—</div></div>
+  <div class="stat-pill"><div class="slabel">Boards</div><div class="svalue" id="board-count">—</div></div>
   <div class="stat-pill"><div class="slabel">Stake</div><div class="svalue" id="stake-disp">—</div></div>
   <div class="stat-pill"><div class="slabel">Called</div><div class="svalue" id="called-count">0</div></div>
 </div>
@@ -1475,6 +1476,7 @@ function applyGameState(data) {
   }
 
   document.getElementById('player-count').textContent = data.playerCount || 0;
+  document.getElementById('board-count').textContent = data.boardCount || data.playerCount || 0;
   const pot = Math.floor(parseFloat(data.pot || 0) * 0.8);
   document.getElementById('derash').textContent = `${pot}`;
   document.getElementById('called-count').textContent = (data.drawnNumbers || []).length;
@@ -1604,6 +1606,9 @@ function applyBallEvent(data) {
   if (data.playerCount !== undefined) {
     document.getElementById('player-count').textContent = data.playerCount;
   }
+  if (data.boardCount !== undefined) {
+    document.getElementById('board-count').textContent = data.boardCount;
+  }
 
   startTimerCountdown(data.nextDrawAt || (Date.now() + 4000));
 
@@ -1622,6 +1627,9 @@ function applyLobbyEvent(data) {
   if (!data) return;
   if (data.playerCount !== undefined) {
     document.getElementById('player-count').textContent = data.playerCount;
+  }
+  if (data.boardCount !== undefined) {
+    document.getElementById('board-count').textContent = data.boardCount;
   }
   if (data.pot) {
     document.getElementById('derash').textContent = `${Math.floor(parseFloat(data.pot) * 0.8)}`;
@@ -1655,6 +1663,9 @@ function applyStartEvent(data) {
   }
   if (data.playerCount !== undefined) {
     document.getElementById('player-count').textContent = data.playerCount;
+  }
+  if (data.boardCount !== undefined) {
+    document.getElementById('board-count').textContent = data.boardCount;
   }
   if (data.nextDrawAt) {
     startTimerCountdown(data.nextDrawAt);

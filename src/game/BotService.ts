@@ -183,7 +183,8 @@ export class BotService {
     public async addSingleBot(gm: GameManager, fee: number): Promise<boolean> {
         if (gm.state !== 'WAITING') return false;
 
-        const boards = this.pickUntakenBoards(gm, Math.random() < 0.25 ? 2 : 1);
+        // Strictly 1 board per bot (10 Birr stake)
+        const boards = this.pickUntakenBoards(gm, 1);
         if (boards.length === 0) return false;
 
         const profile = ETHIOPIAN_BOT_PROFILES[this.nextBotIndex % ETHIOPIAN_BOT_PROFILES.length];
@@ -216,10 +217,16 @@ export class BotService {
         gm.players.push(botPlayer);
         gm.sanitizePlayers();
 
+        // Auto-start 30s lobby countdown as soon as bots enter the waiting lobby
+        if (gm.state === 'WAITING' && gm.players.length >= 1 && !gm.lobbyInterval) {
+            gm.startLobbyTimer();
+        }
+
         // Broadcast lobby updates to SSE clients
         gm.broadcastSSE('lobby', {
             lobbyCountdown: gm.lobbyCountdown,
             playerCount: gm.players.length,
+            boardCount: gm.getTotalBoards(),
             pot: gm.getPot(),
             gameState: gm.state
         });
@@ -228,6 +235,7 @@ export class BotService {
         gm.broadcastSSE('boards', {
             boards: gm.getBoards(),
             players: gm.players.length,
+            boardCount: gm.getTotalBoards(),
             pot: gm.getPot()
         });
 
@@ -236,7 +244,7 @@ export class BotService {
 
     /**
      * Called whenever player membership changes in a waiting room.
-     * If human players are in the room and total players < targetPlayers,
+     * If human players are in the room and total bots < targetPlayers,
      * schedules bots to join gradually.
      */
     public onRoomUpdated(gm: GameManager, fee: number, room: number) {
@@ -259,15 +267,17 @@ export class BotService {
             return;
         }
 
-        if (gm.players.length >= this.settings.targetPlayers) {
-            return; // Target reached
+        const botCount = gm.players.filter(p => p.isBot).length;
+        if (botCount >= this.settings.targetPlayers) {
+            return; // Target number of bots reached
         }
 
         // Schedule next bot join with human-like interval (800ms to 1800ms)
         const delay = Math.floor(Math.random() * 1000) + 800;
         const timer = setTimeout(async () => {
             this.fillTimeouts.delete(key);
-            if (gm.state === 'WAITING' && gm.players.length < this.settings.targetPlayers) {
+            const currentBots = gm.players.filter(p => p.isBot).length;
+            if (gm.state === 'WAITING' && currentBots < this.settings.targetPlayers) {
                 const added = await this.addSingleBot(gm, fee);
                 if (added) {
                     this.onRoomUpdated(gm, fee, room);
@@ -299,15 +309,22 @@ export class BotService {
         gm.players = gm.players.filter(p => !p.isBot);
         const removed = initialCount - gm.players.length;
         if (removed > 0) {
+            if (gm.players.length === 0 && gm.lobbyInterval) {
+                clearInterval(gm.lobbyInterval);
+                gm.lobbyInterval = null;
+                gm.lobbyCountdown = 0;
+            }
             gm.broadcastSSE('lobby', {
                 lobbyCountdown: gm.lobbyCountdown,
                 playerCount: gm.players.length,
+                boardCount: gm.getTotalBoards(),
                 pot: gm.getPot(),
                 gameState: gm.state
             });
             gm.broadcastSSE('boards', {
                 boards: gm.getBoards(),
                 players: gm.players.length,
+                boardCount: gm.getTotalBoards(),
                 pot: gm.getPot()
             });
         }

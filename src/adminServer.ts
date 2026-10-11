@@ -399,6 +399,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 winners: (gameManager.state === 'WAITING' && gameManager.currentWinners.length > 0) ? gameManager.currentWinners : [],
                 pot: gameManager.getPot(),
                 playerCount: gameManager.players.length,
+                boardCount: gameManager.getTotalBoards(),
                 lobbyCountdown: gameManager.lobbyCountdown
             });
         }
@@ -433,6 +434,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             lastDrawn: Array.from(gameManager.drawnNumbers).at(-1) ?? null,
             lobbyCountdown: gameManager.lobbyCountdown,
             playerCount: gameManager.players.length,
+            boardCount: gameManager.getTotalBoards(),
             pot: gameManager.getPot(),
             gameId: gameManager.gameId,
             winner: (gameManager.state === 'WAITING' && gameManager.currentWinner) ? gameManager.currentWinner : null,
@@ -606,6 +608,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         res.json({
             boards: gameManager.getBoards(),
             players: gameManager.players.length,
+            boardCount: gameManager.getTotalBoards(),
             gameState: gameManager.state,
             pot: gameManager.getPot(),
             lobbyCountdown: gameManager.lobbyCountdown
