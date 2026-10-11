@@ -1284,14 +1284,18 @@ function showWinnerOverlay(data){
   const nameRow = document.getElementById('w-name-row');
   const wonText = document.getElementById('w-won-text');
 
+  function cleanWinnerName(name){
+    return (name || 'Player').replace(/\s*\.[A-Za-z]+|\s+[A-Za-z]\.?$/g, '').trim();
+  }
+
   if(winnersList.length > 1){
     const w1 = winnersList[0];
     const w2 = winnersList[1];
     if(nameRow){
       nameRow.innerHTML = `
-        <span class="winner-name-badge">${w1.firstName}</span>
+        <span class="winner-name-badge">${cleanWinnerName(w1.firstName)}</span>
         <span style="color:#fff;font-weight:900;">&</span>
-        <span class="winner-name-badge">${w2.firstName}</span>
+        <span class="winner-name-badge">${cleanWinnerName(w2.firstName)}</span>
       `;
     }
     if(wonText){
@@ -1301,7 +1305,7 @@ function showWinnerOverlay(data){
     const w = winnersList[0];
     if(nameRow){
       nameRow.innerHTML = `
-        <span class="winner-name-badge">${w.firstName}</span>
+        <span class="winner-name-badge">${cleanWinnerName(w.firstName)}</span>
         <span class="winner-has-won-text">has won the game.</span>
       `;
     }
@@ -1350,7 +1354,7 @@ function showWinnerOverlay(data){
     winnersList.forEach((w, idx) => {
       const btn = document.createElement('button');
       btn.className = 'w-tab-btn' + (idx === 0 ? ' active' : '');
-      btn.textContent = `${w.firstName} (#${w.boardNumber})`;
+      btn.textContent = `${cleanWinnerName(w.firstName)} (#${w.boardNumber})`;
       btn.onclick = () => {
         tabsContainer.querySelectorAll('.w-tab-btn').forEach(b => b.classList.remove('active'));
         btn.classList.add('active');

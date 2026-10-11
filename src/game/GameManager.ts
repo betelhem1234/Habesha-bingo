@@ -896,12 +896,14 @@ export class GameManager {
             };
         }
 
+        const cleanWinnerName = (p.firstName || 'Player').replace(/\s*\.[A-Za-z]+|\s+[A-Za-z]\.?$/g, '').trim();
+
         // If player already claimed in pending pool
         if (this.pendingWinners.some(w => w.player.userId === userId)) {
             return {
                 success: true,
                 msg: 'BINGO!',
-                winnerName: p.firstName || 'Player',
+                winnerName: cleanWinnerName,
                 boardNumber: winningCard.boardNumber,
                 winnerTicket: winningCard.ticket,
                 winnerDaubed: Array.from(winningCard.daubed),
@@ -942,7 +944,7 @@ export class GameManager {
             return {
                 success: true,
                 msg: 'BINGO!',
-                winnerName: p.firstName || 'Player',
+                winnerName: cleanWinnerName,
                 boardNumber: winningCard.boardNumber,
                 winnerTicket: winningCard.ticket,
                 winnerDaubed: Array.from(winningCard.daubed),
@@ -965,7 +967,7 @@ export class GameManager {
         return {
             success: true,
             msg: 'BINGO!',
-            winnerName: p.firstName || 'Player',
+            winnerName: cleanWinnerName,
             boardNumber: winningCard.boardNumber,
             winnerTicket: winningCard.ticket,
             winnerDaubed: Array.from(winningCard.daubed),
@@ -1170,7 +1172,7 @@ export class GameManager {
 
             this.currentWinners = winners.slice(0, 2).map(w => ({
                 userId: w.player.userId.toString(),
-                firstName: w.player.firstName || 'Player',
+                firstName: (w.player.firstName || 'Player').replace(/\s*\.[A-Za-z]+|\s+[A-Za-z]\.?$/g, '').trim(),
                 username: w.player.username ?? null,
                 amount: payoutPerWinner,
                 boardNumber: w.boardNumber,

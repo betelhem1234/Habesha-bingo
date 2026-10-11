@@ -34,6 +34,8 @@ describe('Virtual Players (Bot System) Test Suite', () => {
             assert.ok(profile.username && profile.username.length > 2, 'Profile must have a valid username');
             assert.ok(!profile.firstName.toLowerCase().includes('bot'), 'Name must not contain "bot"');
             assert.ok(!profile.firstName.toLowerCase().startsWith('player'), 'Name must not be generic "Player"');
+            assert.ok(!profile.firstName.includes('.'), `First name "${profile.firstName}" must not contain a dot`);
+            assert.ok(!/\s+[A-Za-z]$/.test(profile.firstName), `First name "${profile.firstName}" must not contain trailing single-letter initial`);
         }
     });
 
@@ -144,7 +146,7 @@ describe('Virtual Players (Bot System) Test Suite', () => {
         ];
 
         const botId = 9000000099n;
-        const botName = 'Dawit B.';
+        const botName = 'Dawit';
         gameManager.players.push({
             userId: botId,
             cards: [{
@@ -201,7 +203,7 @@ describe('Virtual Players (Bot System) Test Suite', () => {
             fee: 10,
             lastSeen: Date.now(),
             isBot: true,
-            firstName: 'Almaz K.'
+            firstName: 'Almaz'
         });
 
         gameManager.state = 'PLAYING';
@@ -216,7 +218,7 @@ describe('Virtual Players (Bot System) Test Suite', () => {
         // Verify that the bot claimed Bingo and is registered as pending winner
         const pending = (gameManager as any).pendingWinners;
         assert.ok(pending && pending.length > 0, 'Bot should have claimed and entered pending winners');
-        assert.equal(pending[0].player.firstName, 'Almaz K.');
+        assert.equal(pending[0].player.firstName, 'Almaz');
     });
 
     test('Each bot strictly receives 1 board (10 Birr) and auto-starts lobby timer immediately', async () => {
