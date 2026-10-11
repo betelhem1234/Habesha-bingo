@@ -11,23 +11,13 @@ body{
   font-family:'Segoe UI',system-ui,-apple-system,Roboto,sans-serif;
   background:#dcd0ea;
   min-height:100vh;
+  min-height:100dvh;
   display:flex;flex-direction:column;
   align-items:center;
   width:100%;max-width:440px;margin:0 auto;
   padding-bottom:75px;
   color:#2c1b4d;
 }
-
-/* ─── Top App Header ─── */
-.app-header{
-  width:100%;background:#1e1a38;color:#fff;
-  display:flex;align-items:center;justify-content:space-between;
-  padding:5px 12px;font-size:0.95rem;font-weight:800;
-}
-.app-header-left{display:flex;align-items:center;gap:10px;cursor:pointer;}
-.app-header-left .close-icon{font-size:1.1rem;font-weight:700;}
-.app-header-title{font-size:0.95rem;font-weight:800;letter-spacing:0.3px;}
-.app-header-right{display:flex;align-items:center;gap:10px;color:#ccc;font-size:1rem;}
 
 /* ─── Top Action & Stats Bar (5 Items - Reference Image) ─── */
 .top-action-bar{
@@ -218,18 +208,6 @@ body{
 </head>
 <body>
 
-<!-- ─── Top App Header ─── -->
-<div class="app-header">
-  <div class="app-header-left" onclick="exitGame()">
-    <span class="close-icon">✕</span>
-    <span class="app-header-title">Ethio Bingo</span>
-  </div>
-  <div class="app-header-right">
-    <span>⌵</span>
-    <span>⋮</span>
-  </div>
-</div>
-
 <!-- ─── Top Action & Stats Bar (5 Items - Reference Image) ─── -->
 <div class="top-action-bar">
   <button class="top-btn" onclick="exitGame()">
@@ -305,7 +283,13 @@ body{
 </div>
 
 <script>
-if(window.Telegram?.WebApp){Telegram.WebApp.ready();Telegram.WebApp.expand();}
+if(window.Telegram?.WebApp){
+  Telegram.WebApp.ready();
+  Telegram.WebApp.expand();
+  if(typeof Telegram.WebApp.requestFullscreen === 'function'){
+    try { Telegram.WebApp.requestFullscreen(); } catch(e){}
+  }
+}
 const params=new URLSearchParams(location.search);
 let userId=params.get('userId');
 if(!userId || userId==='0'){
