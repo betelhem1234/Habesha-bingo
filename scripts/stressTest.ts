@@ -149,16 +149,17 @@ async function runBoardLoadTest(opts: StressOptions): Promise<void> {
 }
 
 async function runLobbyStatsTest(opts: StressOptions): Promise<void> {
-    console.log(`\n[3/4] Testing /api/lobby-stats under load (50 concurrent requests)...`);
+    console.log(`\n[3/4] Testing /api/lobby/:userId under load (30 concurrent player polls)...`);
 
     const latencies: number[] = [];
     let errors = 0;
     const start = performance.now();
 
-    const requests = Array.from({ length: 50 }, async () => {
+    const requests = Array.from({ length: 30 }, async (_, i) => {
+        const userId = 900000 + i;
         const reqStart = performance.now();
         try {
-            const res = await fetch(`${opts.host}/api/lobby-stats`);
+            const res = await fetch(`${opts.host}/api/lobby/${userId}`);
             const dur = performance.now() - reqStart;
             if (res.ok) latencies.push(dur);
             else errors++;
@@ -171,7 +172,7 @@ async function runLobbyStatsTest(opts: StressOptions): Promise<void> {
     const totalDuration = performance.now() - start;
     const stats = computeStats(latencies, errors, totalDuration);
 
-    console.log(`📊 Lobby Stats Results:`);
+    console.log(`📊 Lobby Polling Results:`);
     console.table({
         'Successful': stats.count,
         'Errors': stats.errors,
