@@ -25,11 +25,13 @@ body{
 .app-header{
   width:100%;background:#1e1a38;color:#fff;
   display:flex;align-items:center;justify-content:flex-start;
-  padding:8px 14px;min-height:38px;font-size:0.95rem;font-weight:800;
+  padding:0 16px;padding-top:env(safe-area-inset-top, 0px);
+  min-height:calc(54px + env(safe-area-inset-top, 0px));
+  font-size:1.05rem;font-weight:800;
   box-sizing:border-box;flex-shrink:0;
 }
 .app-header-title{
-  font-size:0.95rem;font-weight:800;letter-spacing:0.3px;color:#ffffff;
+  font-size:1.05rem;font-weight:800;letter-spacing:0.3px;color:#ffffff;
 }
 
 /* ─── Top Stats Bar (6 Pills) ─── */
