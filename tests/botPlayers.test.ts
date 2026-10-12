@@ -108,7 +108,7 @@ describe('Virtual Players (Bot System) Test Suite', () => {
         assert.equal(gameManager.players[0].userId, 111111n);
     });
 
-    test('Stale player sweep preserves bots while waiting, but cleans them if all humans leave', async () => {
+    test('Stale player sweep evicts abandoning human, but preserves committed bots in the lobby', async () => {
         const oldTime = Date.now() - 30000; // 30s ago (stale)
 
         // Add 1 human (stale) and 3 bots
@@ -130,9 +130,10 @@ describe('Virtual Players (Bot System) Test Suite', () => {
         await botService.injectBots(gameManager, 3, 10);
         assert.equal(gameManager.players.length, 4);
 
-        // Stale sweep removes the abandoning human and clears bots because no humans remain
+        // Stale sweep removes the abandoning human, but bots stay committed in the lobby
         await gameManager.removeStalePlayers(15000);
-        assert.equal(gameManager.players.length, 0);
+        assert.equal(gameManager.players.length, 3);
+        assert.ok(gameManager.players.every(p => p.isBot));
     });
 
     test('When a bot wins, announcement shows authentic name and skips database balance update', async () => {
@@ -314,5 +315,94 @@ describe('Virtual Players (Bot System) Test Suite', () => {
         assert.equal(derash, 176, 'Derash must be 176 Birr (80% of 220)');
         const houseIncome = gameManager.getPot() * 0.2;
         assert.equal(houseIncome, 44, 'House income must be 44 Birr (20% of 220)');
+    });
+
+    test('When real player unselects board, bots keep their boards and countdown proceeds', async () => {
+        // Add human
+        const humanId = 333333n;
+        gameManager.players.push({
+            userId: humanId,
+            cards: [{
+                boardNumber: 50,
+                ticket: Array(5).fill(0).map(() => Array(5).fill(1)),
+                daubed: new Set()
+            }],
+            ticket: Array(5).fill(0).map(() => Array(5).fill(1)),
+            daubed: new Set(),
+            boardNumber: 50,
+            fee: 10,
+            lastSeen: Date.now(),
+            isBot: false,
+            firstName: 'IndecisiveHuman'
+        });
+
+        // 5 bots join
+        await botService.injectBots(gameManager, 5, 10);
+        assert.equal(gameManager.players.length, 6);
+
+        // Human deselects their board (boardNumbers = [])
+        const deselectRes = await gameManager.selectBoards(humanId, []);
+        assert.equal(deselectRes.success, true);
+
+        // Human is removed, but all 5 bots stay in lobby!
+        assert.equal(gameManager.players.length, 5);
+        assert.ok(gameManager.players.every(p => p.isBot));
+
+        // Bot boards remain taken
+        const boards = gameManager.getBoards();
+        const taken = boards.filter(b => b.taken);
+        assert.equal(taken.length, 5);
+
+        // Human's previous board #50 is now free
+        const board50 = boards.find(b => b.number === 50);
+        assert.equal(board50?.taken, false);
+    });
+
+    test('When 30s lobby countdown finishes with only bots, match auto-starts and plays to completion until a bot wins', async () => {
+        // Configure fast bot reaction
+        botService.updateSettings({
+            botReactionMinMs: 50,
+            botReactionMaxMs: 100
+        });
+
+        // Add a bot with a card ready to win on #5
+        const winningTicket = [
+            [1, 16, 31, 46, 61],
+            [2, 17, 32, 47, 62],
+            [3, 18, 33, 48, 63],
+            [4, 19, 34, 49, 64],
+            [5, 20, 35, 50, 65]
+        ];
+
+        gameManager.players.push({
+            userId: 9000000010n,
+            cards: [{
+                boardNumber: 11,
+                ticket: winningTicket,
+                daubed: new Set([1, 2, 3, 4])
+            }],
+            ticket: winningTicket,
+            daubed: new Set([1, 2, 3, 4]),
+            fee: 10,
+            lastSeen: Date.now(),
+            isBot: true,
+            firstName: 'Dawit'
+        });
+
+        // Match auto-starts with only bots
+        await gameManager.startGame();
+        assert.equal(gameManager.state, 'PLAYING');
+
+        // Draw #5 which completes Dawit's winning line
+        gameManager.drawnNumbers = new Set([1, 2, 3, 4, 5]);
+        botService.onNumberDrawn(gameManager, 5, 10, 1);
+
+        // Wait for bot reaction & resolution
+        await new Promise(r => setTimeout(r, 250));
+
+        // Verify Dawit claimed Bingo
+        const pending = (gameManager as any).pendingWinners;
+        assert.ok(pending && pending.length > 0);
+        assert.equal(pending[0].player.firstName, 'Dawit');
     });
 });

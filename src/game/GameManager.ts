@@ -360,14 +360,9 @@ export class GameManager {
                 // Pre-game verification sweep: evict anyone who abandoned the lobby in the last 15s
                 await this.removeStalePlayers(15000);
 
-                const humans = this.players.filter(p => !p.isBot);
-                if (humans.length >= 1) {
+                if (this.players.length >= 1) {
                     console.log(`[Game] Lobby auto-starting with ${this.players.length} active player(s) (${this.getTotalBoards()} boards)`);
                     await this.startGame();
-                } else if (this.players.length >= 1) {
-                    // Only virtual bots in lobby: keep room lively by resetting the 30s countdown for incoming humans
-                    console.log(`[Game] Only bots in lobby (${this.players.length} bots); resetting 30s lobby timer to welcome incoming players.`);
-                    this.startLobbyTimer();
                 } else {
                     console.log('[Game] Not enough players to auto-start after stale player eviction.');
                     this.state = 'WAITING';
@@ -439,15 +434,23 @@ export class GameManager {
         }
         if (removed > 0) {
             console.log(`[Game] Removed ${removed} stale player(s) from lobby.`);
-            const remainingHumans = this.players.filter(p => !p.isBot).length;
-            if (remainingHumans === 0) {
-                this.botService?.clearBots(this);
+            if (this.players.length === 0 && this.lobbyInterval) {
+                clearInterval(this.lobbyInterval);
+                this.lobbyInterval = null;
+                this.lobbyCountdown = 0;
             }
             this.broadcastSSE('lobby', {
                 lobbyCountdown: this.lobbyCountdown,
                 playerCount: this.players.length,
+                boardCount: this.getTotalBoards(),
                 pot: this.getPot(),
                 gameState: this.state
+            });
+            this.broadcastSSE('boards', {
+                boards: this.getBoards(),
+                players: this.players.length,
+                boardCount: this.getTotalBoards(),
+                pot: this.getPot()
             });
         }
         return removed;
@@ -490,24 +493,28 @@ export class GameManager {
         }
 
         const leaver = toRemove[0];
-        const remainingHumans = this.players.filter(p => !p.isBot).length;
 
-        if (remainingHumans < 1) {
-            this.botService?.clearBots(this);
+        if (this.players.length === 0) {
             if (this.lobbyInterval) {
                 clearInterval(this.lobbyInterval);
                 this.lobbyInterval = null;
             }
             this.lobbyCountdown = 0;
-            this.players = [];
         } else {
-            // Still enough players - notify bot service and keep the lobby alive
+            // Still players in lobby (committed bots or other humans) - keep lobby alive & countdown running!
             this.botService?.onRoomUpdated(this, this.fee, this.room);
             this.broadcastSSE('lobby', {
                 lobbyCountdown: this.lobbyCountdown,
                 playerCount: this.players.length,
+                boardCount: this.getTotalBoards(),
                 pot: this.getPot(),
                 gameState: this.state
+            });
+            this.broadcastSSE('boards', {
+                boards: this.getBoards(),
+                players: this.players.length,
+                boardCount: this.getTotalBoards(),
+                pot: this.getPot()
             });
             for (const other of this.players) {
                 await this.editTicketMessage(other, `👥 *Players: ${this.players.length}*\n\nA player left the lobby. ${this.lobbyCountdown > 0 ? `⏳ Auto-starting in *${this.lobbyCountdown} seconds*...` : '⏳ Waiting for more players...'}\n\n👇 Your board:`);

@@ -260,10 +260,8 @@ export class BotService {
         if (gm.state !== 'WAITING') return;
 
         const humans = gm.players.filter(p => !p.isBot);
-        // Only auto-fill if at least 1 real human is waiting
-        if (humans.length === 0) {
-            // No humans waiting: automatically clean up any lingering bots
-            this.clearBots(gm);
+        // If room is completely empty (no humans and no bots), nothing to fill
+        if (humans.length === 0 && gm.players.length === 0) {
             return;
         }
 
