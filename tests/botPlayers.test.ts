@@ -37,6 +37,11 @@ describe('Virtual Players (Bot System) Test Suite', () => {
             assert.ok(!profile.firstName.includes('.'), `First name "${profile.firstName}" must not contain a dot`);
             assert.ok(!/\s+[A-Za-z]$/.test(profile.firstName), `First name "${profile.firstName}" must not contain trailing single-letter initial`);
         }
+
+        const femaleNames = new Set(['Selam', 'Bethlehem', 'Almaz']);
+        const maleCount = ETHIOPIAN_BOT_PROFILES.filter(p => !femaleNames.has(p.firstName)).length;
+        const ratio = maleCount / ETHIOPIAN_BOT_PROFILES.length;
+        assert.ok(ratio >= 0.90, `Expected at least 90% male profiles, got ${(ratio * 100).toFixed(1)}%`);
     });
 
     test('Bot settings can be read and updated', () => {
