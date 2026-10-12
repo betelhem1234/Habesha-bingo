@@ -36,32 +36,19 @@
     color: #fff;
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    padding: 6px 14px;
+    justify-content: flex-start;
+    padding: 8px 14px;
+    min-height: 38px;
     font-size: 0.95rem;
     font-weight: 800;
-  }
-  .app-header-left {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    cursor: pointer;
-  }
-  .app-header-left .close-icon {
-    font-size: 1.1rem;
-    font-weight: 700;
+    box-sizing: border-box;
+    flex-shrink: 0;
   }
   .app-header-title {
     font-size: 0.95rem;
     font-weight: 800;
     letter-spacing: 0.3px;
-  }
-  .app-header-right {
-    display: flex;
-    align-items: center;
-    gap: 10px;
-    color: #ccc;
-    font-size: 1rem;
+    color: #ffffff;
   }
 
   /* ─── Main Content Container ─── */
@@ -257,14 +244,7 @@
 
   <!-- Top App Header -->
   <div class="app-header">
-    <div class="app-header-left" onclick="closeApp()">
-      <span class="close-icon">✕</span>
-      <span class="app-header-title">Ethio Bingo</span>
-    </div>
-    <div class="app-header-right">
-      <span>⌵</span>
-      <span>⋮</span>
-    </div>
+    <span class="app-header-title">Ethio Bingo</span>
   </div>
 
   <div class="content-container">
