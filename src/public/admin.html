@@ -434,14 +434,22 @@
                             </div>
                             <div style="flex:1; min-width:140px;">
                                 <label style="display:block; font-size:11px; color:#cbd5e1; margin-bottom:4px; font-weight:600;">TARGET BOT PLAYERS (የቦት ተጫዋቾች ብዛት)</label>
-                                <input type="number" id="bot-input-target" min="5" max="50" step="1" placeholder="20" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:14px; font-weight:700; box-sizing:border-box;">
+                                <input type="number" id="bot-input-target" min="2" max="100" step="1" placeholder="20" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:14px; font-weight:700; box-sizing:border-box;">
                             </div>
-                            <div style="flex:1; min-width:160px;">
-                                <label style="display:block; font-size:11px; color:#cbd5e1; margin-bottom:4px; font-weight:600;">BOT REACTION SPEED</label>
+                            <div style="flex:1; min-width:170px;">
+                                <label style="display:block; font-size:11px; color:#cbd5e1; margin-bottom:4px; font-weight:600;">BOARD SELECTION SPEED (የመግቢያ ፍጥነት)</label>
+                                <select id="bot-input-join-pacing" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:14px; font-weight:700; box-sizing:border-box;">
+                                    <option value="dynamic" selected>⚡ Adaptive (Auto-fits 30s countdown)</option>
+                                    <option value="rapid">🚀 Rapid (200ms – 450ms)</option>
+                                    <option value="relaxed">🐢 Casual (800ms – 1400ms)</option>
+                                </select>
+                            </div>
+                            <div style="flex:1; min-width:170px;">
+                                <label style="display:block; font-size:11px; color:#cbd5e1; margin-bottom:4px; font-weight:600;">WIN CLAIM REACTION (የቢንጎ ማሸነፊያ)</label>
                                 <select id="bot-input-speed" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:14px; font-weight:700; box-sizing:border-box;">
-                                    <option value="fast">⚡ Fast (1.5s – 2.5s)</option>
-                                    <option value="normal" selected>🎯 Normal (1.8s – 3.2s)</option>
-                                    <option value="relaxed">🐢 Relaxed (2.8s – 4.5s)</option>
+                                    <option value="fast">⚡ Fast (1.5s – 2.5s claim)</option>
+                                    <option value="normal" selected>🎯 Normal (1.8s – 3.2s claim)</option>
+                                    <option value="relaxed">🐢 Relaxed (2.8s – 4.5s claim)</option>
                                 </select>
                             </div>
                             <div>

@@ -1233,6 +1233,11 @@ async function fetchBotSettings() {
         if (enabledSelect) enabledSelect.value = s.enabled ? 'true' : 'false';
         if (targetInput) targetInput.value = s.targetPlayers || 20;
 
+        const joinPacingSelect = document.getElementById('bot-input-join-pacing');
+        if (joinPacingSelect) {
+            joinPacingSelect.value = s.joinPacing || 'dynamic';
+        }
+
         if (speedSelect) {
             if (s.botReactionMinMs <= 1600) speedSelect.value = 'fast';
             else if (s.botReactionMinMs >= 2500) speedSelect.value = 'relaxed';
@@ -1258,6 +1263,7 @@ async function fetchBotSettings() {
 async function saveBotSettings() {
     const enabled = document.getElementById('bot-input-enabled').value === 'true';
     const targetPlayers = parseInt(document.getElementById('bot-input-target').value, 10) || 20;
+    const joinPacing = document.getElementById('bot-input-join-pacing') ? document.getElementById('bot-input-join-pacing').value : 'dynamic';
     const speed = document.getElementById('bot-input-speed').value;
 
     let botReactionMinMs = 1800;
@@ -1280,7 +1286,7 @@ async function saveBotSettings() {
         const res = await authFetch('/api/admin/bots/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled, targetPlayers, botReactionMinMs, botReactionMaxMs })
+            body: JSON.stringify({ enabled, targetPlayers, botReactionMinMs, botReactionMaxMs, joinPacing })
         });
         const data = await res.json();
         if (data.success) {

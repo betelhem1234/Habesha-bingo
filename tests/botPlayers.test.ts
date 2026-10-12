@@ -51,14 +51,23 @@ describe('Virtual Players (Bot System) Test Suite', () => {
 
         const updated = botService.updateSettings({
             enabled: true,
-            targetPlayers: 15,
+            targetPlayers: 75,
             botReactionMinMs: 1500,
-            botReactionMaxMs: 2500
+            botReactionMaxMs: 2500,
+            joinPacing: 'dynamic'
         });
 
-        assert.equal(updated.targetPlayers, 15);
+        assert.equal(updated.targetPlayers, 75);
         assert.equal(updated.botReactionMinMs, 1500);
         assert.equal(updated.botReactionMaxMs, 2500);
+        assert.equal(updated.joinPacing, 'dynamic');
+
+        const rapidUpdated = botService.updateSettings({
+            joinPacing: 'rapid',
+            targetPlayers: 100
+        });
+        assert.equal(rapidUpdated.joinPacing, 'rapid');
+        assert.equal(rapidUpdated.targetPlayers, 100);
     });
 
     test('Injecting bots into waiting lobby allocates valid boards and marks them taken', async () => {
@@ -409,5 +418,32 @@ describe('Virtual Players (Bot System) Test Suite', () => {
         const pending = (gameManager as any).pendingWinners;
         assert.ok(pending && pending.length > 0);
         assert.equal(pending[0].player.firstName, 'Dawit');
+    });
+
+    test('Dynamic pacing allows rapid bot onboarding when target is large', async () => {
+        botService.updateSettings({
+            enabled: true,
+            targetPlayers: 40,
+            joinPacing: 'dynamic'
+        });
+
+        gameManager.state = 'WAITING';
+        gameManager.lobbyCountdown = 30;
+
+        gameManager.players.push({
+            userId: 12345678n,
+            cards: [{ boardNumber: 1, ticket: Array(5).fill(0).map(() => Array(5).fill(1)), daubed: new Set() }],
+            ticket: Array(5).fill(0).map(() => Array(5).fill(1)),
+            daubed: new Set(),
+            fee: 10,
+            lastSeen: Date.now(),
+            isBot: false,
+            firstName: 'RealHuman'
+        });
+
+        botService.onRoomUpdated(gameManager, 10, 1);
+
+        const hasTimeout = (botService as any).fillTimeouts.has('10_1');
+        assert.equal(hasTimeout, true);
     });
 });

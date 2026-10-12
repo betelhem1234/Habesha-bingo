@@ -8,6 +8,7 @@ export interface BotSettings {
     targetPlayers: number;
     botReactionMinMs: number;
     botReactionMaxMs: number;
+    joinPacing?: 'dynamic' | 'rapid' | 'relaxed';
     enabledRooms: number[];
 }
 
@@ -17,7 +18,7 @@ export interface BotProfile {
 }
 
 export const ETHIOPIAN_BOT_PROFILES: BotProfile[] = [
-    // ─── 57 Authentic Ethiopian Male Profiles (95%) ───
+    // ─── 92 Authentic Ethiopian Male Profiles (96.8%) ───
     { firstName: 'Dawit', username: 'dawit_b9' },
     { firstName: 'Abebe', username: 'abebe_t' },
     { firstName: 'Henok', username: 'henok_t' },
@@ -75,8 +76,43 @@ export const ETHIOPIAN_BOT_PROFILES: BotProfile[] = [
     { firstName: 'Brook', username: 'brooki_m' },
     { firstName: 'Abinet', username: 'abi_t' },
     { firstName: 'Sisay', username: 'sise_m' },
+    { firstName: 'Kassahun', username: 'kassahun_m' },
+    { firstName: 'Getu', username: 'getu_eth' },
+    { firstName: 'Baye', username: 'baye_t' },
+    { firstName: 'Wondwosen', username: 'wonde_m' },
+    { firstName: 'Tilahun', username: 'tila_eth' },
+    { firstName: 'Mengistu', username: 'mange_k' },
+    { firstName: 'Zewdu', username: 'zewdu_b' },
+    { firstName: 'Alemayehu', username: 'alex_t' },
+    { firstName: 'Mekonnen', username: 'mako_eth' },
+    { firstName: 'Tadesse', username: 'tade_s' },
+    { firstName: 'Fasika', username: 'fasi_k' },
+    { firstName: 'Belay', username: 'belay_m' },
+    { firstName: 'Mesfin', username: 'mesfin_t' },
+    { firstName: 'Tadele', username: 'tadele_eth' },
+    { firstName: 'Banchu', username: 'banchu_m' },
+    { firstName: 'Gashaw', username: 'gashaw_k' },
+    { firstName: 'Berhanu', username: 'bere_b' },
+    { firstName: 'Wondimu', username: 'wondimu_t' },
+    { firstName: 'Dejene', username: 'deje_m' },
+    { firstName: 'Negash', username: 'negash_eth' },
+    { firstName: 'Ayalew', username: 'ayalu_b' },
+    { firstName: 'Mulu', username: 'mulu_eth' },
+    { firstName: 'Hailemariam', username: 'haile_m' },
+    { firstName: 'Tefera', username: 'tefera_k' },
+    { firstName: 'Seyoum', username: 'seyoum_eth' },
+    { firstName: 'Abate', username: 'abate_m' },
+    { firstName: 'Kebede', username: 'kebe_t' },
+    { firstName: 'Tekle', username: 'tekle_eth' },
+    { firstName: 'Messele', username: 'messi_m' },
+    { firstName: 'Teshome', username: 'teshome_t' },
+    { firstName: 'Wubshet', username: 'wube_eth' },
+    { firstName: 'Demeke', username: 'demeke_m' },
+    { firstName: 'Birhan', username: 'birhan_t' },
+    { firstName: 'Gedion', username: 'gedion_eth' },
+    { firstName: 'Yidnekachew', username: 'yidne_m' },
 
-    // ─── 3 Authentic Ethiopian Female Profiles (5%) ───
+    // ─── 3 Authentic Ethiopian Female Profiles (3.2%) ───
     { firstName: 'Selam', username: 'selam_m' },
     { firstName: 'Bethlehem', username: 'bethi_g' },
     { firstName: 'Almaz', username: 'almaz_k' }
@@ -88,6 +124,7 @@ export class BotService {
         targetPlayers: 20,
         botReactionMinMs: 1800,
         botReactionMaxMs: 3200,
+        joinPacing: 'dynamic',
         enabledRooms: [10, 20]
     };
 
@@ -110,6 +147,7 @@ export class BotService {
                         targetPlayers: Number(data.botSettings.targetPlayers) || 20,
                         botReactionMinMs: Number(data.botSettings.botReactionMinMs) || 1800,
                         botReactionMaxMs: Number(data.botSettings.botReactionMaxMs) || 3200,
+                        joinPacing: ['dynamic', 'rapid', 'relaxed'].includes(data.botSettings.joinPacing) ? data.botSettings.joinPacing : 'dynamic',
                         enabledRooms: Array.isArray(data.botSettings.enabledRooms) ? data.botSettings.enabledRooms : [10, 20]
                     };
                 }
@@ -142,7 +180,7 @@ export class BotService {
 
     public updateSettings(partial: Partial<BotSettings>): BotSettings {
         if (partial.enabled !== undefined) this.settings.enabled = !!partial.enabled;
-        if (partial.targetPlayers !== undefined && partial.targetPlayers >= 2 && partial.targetPlayers <= 50) {
+        if (partial.targetPlayers !== undefined && partial.targetPlayers >= 2 && partial.targetPlayers <= 100) {
             this.settings.targetPlayers = Number(partial.targetPlayers);
         }
         if (partial.botReactionMinMs !== undefined && partial.botReactionMinMs >= 50) {
@@ -150,6 +188,9 @@ export class BotService {
         }
         if (partial.botReactionMaxMs !== undefined && partial.botReactionMaxMs >= this.settings.botReactionMinMs) {
             this.settings.botReactionMaxMs = Number(partial.botReactionMaxMs);
+        }
+        if (partial.joinPacing !== undefined && ['dynamic', 'rapid', 'relaxed'].includes(partial.joinPacing)) {
+            this.settings.joinPacing = partial.joinPacing;
         }
         if (Array.isArray(partial.enabledRooms)) {
             this.settings.enabledRooms = partial.enabledRooms.map(Number);
@@ -283,8 +324,27 @@ export class BotService {
             return; // Target number of bots reached
         }
 
-        // Schedule next bot join with human-like interval (800ms to 1800ms)
-        const delay = Math.floor(Math.random() * 1000) + 800;
+        const remainingBots = this.settings.targetPlayers - botCount;
+        const countdown = Math.max(1, gm.lobbyCountdown || 30);
+
+        let baseDelay: number;
+        if (this.settings.joinPacing === 'rapid') {
+            baseDelay = Math.floor(Math.random() * 250) + 200; // 200ms - 450ms
+        } else if (this.settings.joinPacing === 'relaxed') {
+            baseDelay = Math.floor(Math.random() * 600) + 800; // 800ms - 1400ms
+        } else {
+            // 'dynamic' (default): Dynamically fits all remaining bots within the remaining lobby countdown
+            // Reserve 2 seconds before match start so all entries finish cleanly
+            const availableMs = Math.max(1000, (countdown - 2) * 1000);
+            const idealInterval = Math.floor(availableMs / (remainingBots + 1));
+            // Floor of 120ms so it stays responsive, ceiling of 1400ms so it doesn't wait too long
+            baseDelay = Math.max(120, Math.min(1400, idealInterval));
+        }
+
+        // Add natural human jitter (±15%)
+        const jitter = Math.floor((Math.random() * 0.3 - 0.15) * baseDelay);
+        const delay = Math.max(80, baseDelay + jitter);
+
         const timer = setTimeout(async () => {
             this.fillTimeouts.delete(key);
             const currentBots = gm.players.filter(p => p.isBot).length;
