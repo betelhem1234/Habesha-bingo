@@ -639,6 +639,7 @@ const room=params.get('room')||params.get('board')||'1';
 const COLS=['B','I','N','G','O'];
 let lastDrawn=null;
 const spokenNumbersInRound=new Set();
+let lastPendingDrawnNumber=null;
 let soundEnabled=true;
 let autoEnabled=false;
 let audioCtx=null;
@@ -937,16 +938,18 @@ async function preloadAudioCalls(){
 async function speakDrawnNumber(num){
   if(!soundEnabled || !num) return;
   const n = parseInt(num, 10);
-  if(isNaN(n) || spokenNumbersInRound.has(n)) return;
-  spokenNumbersInRound.add(n);
+  if(isNaN(n)) return;
+  if(spokenNumbersInRound.has(n)) return;
   const isFemale = (activeServerVoice === 'female');
   
   // 1. Primary: Web Audio API (instant 0ms playback, female or male per admin mandate)
   try{
     const ctx = getCtx();
-    if(ctx){
-      if(ctx.state === 'suspended') await ctx.resume();
+    if(ctx && ctx.state === 'suspended'){
+      try{ await ctx.resume(); }catch(e){}
+    }
 
+    if(ctx && ctx.state === 'running'){
       await loadAudioBuffer(num);
       const buffer = isFemale ? femaleBufferCache.get(num) : maleBufferCache.get(num);
       if(buffer){
@@ -981,6 +984,8 @@ async function speakDrawnNumber(num){
 
         source.start(0);
         currentCallSource = source;
+        spokenNumbersInRound.add(n);
+        lastPendingDrawnNumber = null;
         return;
       }
     }
@@ -995,9 +1000,22 @@ async function speakDrawnNumber(num){
       el.pause();
       el.src = `/audio/calls/${num}.mp3`;
       el.playbackRate = isFemale ? 1.0 : 0.82;
-      el.play().catch(e => console.warn('HTML5 fallback audio error:', e));
+      const playPromise = el.play();
+      if(playPromise !== undefined){
+        playPromise.then(() => {
+          spokenNumbersInRound.add(n);
+          lastPendingDrawnNumber = null;
+        }).catch(() => {
+          // If browser policy paused autoplay pending first user gesture:
+          // Keep as pending so it plays the moment user touches screen or sound button
+          lastPendingDrawnNumber = n;
+        });
+        return;
+      }
     }
   }catch(e){}
+
+  lastPendingDrawnNumber = n;
 }
 
 function playWin(){
@@ -1018,6 +1036,18 @@ function playWin(){
 }
 
 function toggleSound(){
+  const ctx = getCtx();
+  // If sound was supposed to be ON (🔊) but audio was suspended by browser autoplay policy,
+  // do NOT mute! Activate the audio directly on this click and immediately speak the current ball!
+  if(soundEnabled && ctx && ctx.state === 'suspended'){
+    unlockAudio();
+    document.getElementById('sound-icon').textContent = '🔊';
+    if(lastPendingDrawnNumber && !spokenNumbersInRound.has(lastPendingDrawnNumber)){
+      speakDrawnNumber(lastPendingDrawnNumber);
+    }
+    return;
+  }
+
   soundEnabled=!soundEnabled;
   document.getElementById('sound-icon').textContent=soundEnabled?'🔊':'🔇';
   if(!soundEnabled && currentCallSource){
@@ -1789,7 +1819,13 @@ function unlockAudio(){
   }catch(e){}
   try{
     const c = getCtx();
-    if(c && c.state === 'suspended') c.resume();
+    if(c && c.state === 'suspended'){
+      c.resume().then(() => {
+        if(lastPendingDrawnNumber && soundEnabled && !spokenNumbersInRound.has(lastPendingDrawnNumber)){
+          speakDrawnNumber(lastPendingDrawnNumber);
+        }
+      }).catch(()=>{});
+    }
   }catch(e){}
   preloadAudioCalls();
 }
@@ -1797,7 +1833,8 @@ function unlockAudio(){
   document.addEventListener(evt, unlockAudio, { passive: true });
 });
 
-// Initial startup: Connect SSE real-time stream + fallback poll
+// Initial startup: Attempt audio unlock + connect SSE real-time stream + fallback poll
+unlockAudio();
 preloadAudioCalls();
 initSSE();
 poll();
