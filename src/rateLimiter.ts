@@ -74,9 +74,16 @@ export const financialLimiter = createRateLimiter({
     message: 'Too many deposit or withdrawal submissions. Please wait a moment.'
 });
 
-// 120 API requests per minute for general endpoints
+// 240 API requests per minute for general endpoints, keyed per-user when identified
 export const generalApiLimiter = createRateLimiter({
     windowMs: 60 * 1000,
-    maxRequests: 120,
+    maxRequests: 240,
+    keyGenerator: (req) => {
+        const uid = req.params?.userId || req.query?.userId || req.body?.userId;
+        if (uid && typeof uid === 'string' && /^\d+$/.test(uid)) {
+            return `user_${uid}`;
+        }
+        return getClientIp(req);
+    },
     message: 'Rate limit exceeded. Please slow down.'
 });

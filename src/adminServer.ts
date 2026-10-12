@@ -11,7 +11,11 @@ import { config } from './config';
 import { isValidAdminToken, generateAdminToken, revokeAdminToken, verifyMasterPassword } from './auth';
 import { adminLoginLimiter, financialLimiter, generalApiLimiter } from './rateLimiter';
 import { requirePlayerOwnership, authenticateCaller } from './playerAuth';
+import { monitorEventLoopDelay } from 'perf_hooks';
 import { getNewUserBonus, getReferralBonus, setBonusSettings } from './bonus';
+
+const loopDelayHistogram = monitorEventLoopDelay({ resolution: 20 });
+loopDelayHistogram.enable();
 
 const upload = multer({
     storage: multer.diskStorage({
@@ -35,6 +39,50 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     const app = express();
     app.use(cors());
     app.use(express.json());
+    app.get('/api/health', async (_req, res) => {
+        const mem = process.memoryUsage();
+        let dbStatus = 'ok';
+        try {
+            await prisma.$queryRaw`SELECT 1`;
+        } catch (e: any) {
+            dbStatus = 'error: ' + (e?.message || 'connection failed');
+        }
+
+        const roomsInfo = gameRooms.roomsList().map(gm => ({
+            room: gm.room,
+            fee: gm.fee,
+            state: gm.state,
+            players: gm.players.length,
+            boards: gm.getTotalBoards(),
+            sseClients: gm.sseClients.size
+        }));
+
+        const totalSseClients = roomsInfo.reduce((sum, r) => sum + r.sseClients, 0);
+
+        const lagMeanMs = Number((loopDelayHistogram.mean / 1e6).toFixed(2));
+        const lagP99Ms = Number((loopDelayHistogram.percentile(99) / 1e6).toFixed(2));
+
+        const isHealthy = dbStatus === 'ok' && lagP99Ms < 1000;
+
+        res.status(isHealthy ? 200 : 503).json({
+            status: isHealthy ? 'healthy' : 'degraded',
+            uptimeSeconds: Math.floor(process.uptime()),
+            timestamp: new Date().toISOString(),
+            memory: {
+                heapUsedMB: Number((mem.heapUsed / 1024 / 1024).toFixed(2)),
+                heapTotalMB: Number((mem.heapTotal / 1024 / 1024).toFixed(2)),
+                rssMB: Number((mem.rss / 1024 / 1024).toFixed(2))
+            },
+            eventLoopLagMs: {
+                mean: lagMeanMs,
+                p99: lagP99Ms
+            },
+            database: dbStatus,
+            totalSseClients,
+            rooms: roomsInfo
+        });
+    });
+
     app.use('/api', generalApiLimiter);
 
     async function notifyAdminNewRequest(id: number, type: string, amount: number, userId: bigint, proof?: string | null, accountText?: string, accountId?: number | null) {

@@ -72,6 +72,7 @@ export class GameManager {
     public lobbyCountdown: number = 0;
     private lobbyInterval: NodeJS.Timeout | null = null;
     private userLocks: Map<string, Promise<any>> = new Map();
+    public pendingReservations: Map<number, string> = new Map();
 
     private async runWithUserLock<T>(userId: bigint, fn: () => Promise<T>): Promise<T> {
         const key = userId.toString();
@@ -183,116 +184,130 @@ export class GameManager {
                     return { success: false, msg: 'Board numbers must be between 1 and 500.', boards: [] };
                 }
                 const takenByOther = this.players.find(p => p.userId.toString() !== userIdStr && (p.cards ? p.cards.some(c => c.boardNumber === bn) : p.boardNumber === bn));
-                if (takenByOther) {
+                const reservedByOther = this.pendingReservations.get(bn);
+                if (takenByOther || (reservedByOther && reservedByOther !== userIdStr)) {
                     return { success: false, msg: `Board #${bn} is already taken by another player.`, boards: [] };
                 }
             }
 
-            // Clean up any potential duplicate player records before diffing
-            this.sanitizePlayers();
+            // Pre-reserve boards in memory atomically so no other concurrent request can claim them during DB async query
+            for (const bn of boardNumbers) {
+                this.pendingReservations.set(bn, userIdStr);
+            }
 
-            const existingPlayer = this.players.find(p => p.userId.toString() === userIdStr);
-            const prevCount = existingPlayer ? (existingPlayer.cards?.length || 1) : 0;
-            const newCount = boardNumbers.length;
-            const countDiff = newCount - prevCount;
+            try {
+                // Clean up any potential duplicate player records before diffing
+                this.sanitizePlayers();
 
-            let additionalBonusUsed = 0;
-            let additionalWithdrawableUsed = 0;
-            if (countDiff > 0 && feePerBoard > 0) {
-                const addFee = countDiff * feePerBoard;
-                const res = await deductFee(userId, addFee);
-                if (!res.success) {
-                    return {
-                        success: false,
-                        msg: `You need at least ${addFee} Birr to select ${countDiff === 1 ? 'an additional board' : 'these boards'}.`,
-                        boards: existingPlayer && existingPlayer.cards ? existingPlayer.cards.map(c => c.boardNumber) : []
-                    };
+                const existingPlayer = this.players.find(p => p.userId.toString() === userIdStr);
+                const prevCount = existingPlayer ? (existingPlayer.cards?.length || 1) : 0;
+                const newCount = boardNumbers.length;
+                const countDiff = newCount - prevCount;
+
+                let additionalBonusUsed = 0;
+                let additionalWithdrawableUsed = 0;
+                if (countDiff > 0 && feePerBoard > 0) {
+                    const addFee = countDiff * feePerBoard;
+                    const res = await deductFee(userId, addFee);
+                    if (!res.success) {
+                        return {
+                            success: false,
+                            msg: `You need at least ${addFee} Birr to select ${countDiff === 1 ? 'an additional board' : 'these boards'}.`,
+                            boards: existingPlayer && existingPlayer.cards ? existingPlayer.cards.map(c => c.boardNumber) : []
+                        };
+                    }
+                    additionalBonusUsed = res.bonusUsed;
+                    additionalWithdrawableUsed = res.withdrawableUsed;
+                } else if (countDiff < 0 && feePerBoard > 0) {
+                    // Refund unselected board - restore bonus first if bonus was consumed
+                    const refundAmount = Math.abs(countDiff) * feePerBoard;
+                    const currentBonusUsed = existingPlayer?.bonusUsed || 0;
+                    const bonusRefund = Math.min(currentBonusUsed, refundAmount);
+                    const balanceRefund = refundAmount - bonusRefund;
+
+                    const currentWithdrawableUsed = existingPlayer?.withdrawableUsed || 0;
+                    const withdrawableRefund = Math.min(currentWithdrawableUsed, balanceRefund);
+
+                    if (existingPlayer) {
+                        existingPlayer.bonusUsed = Math.max(0, currentBonusUsed - bonusRefund);
+                        existingPlayer.withdrawableUsed = Math.max(0, currentWithdrawableUsed - withdrawableRefund);
+                    }
+
+                    try {
+                        await prisma.user.update({
+                            where: { id: userId },
+                            data: {
+                                ...(balanceRefund > 0 ? { balance: { increment: balanceRefund } } : {}),
+                                ...(withdrawableRefund > 0 ? { withdrawableBalance: { increment: withdrawableRefund } } : {}),
+                                ...(bonusRefund > 0 ? { bonus: { increment: bonusRefund } } : {})
+                            }
+                        });
+                    } catch (e) {}
                 }
-                additionalBonusUsed = res.bonusUsed;
-                additionalWithdrawableUsed = res.withdrawableUsed;
-            } else if (countDiff < 0 && feePerBoard > 0) {
-                // Refund unselected board - restore bonus first if bonus was consumed
-                const refundAmount = Math.abs(countDiff) * feePerBoard;
-                const currentBonusUsed = existingPlayer?.bonusUsed || 0;
-                const bonusRefund = Math.min(currentBonusUsed, refundAmount);
-                const balanceRefund = refundAmount - bonusRefund;
 
-                const currentWithdrawableUsed = existingPlayer?.withdrawableUsed || 0;
-                const withdrawableRefund = Math.min(currentWithdrawableUsed, balanceRefund);
+                const cards: PlayerCard[] = boardNumbers.map(bn => ({
+                    boardNumber: bn,
+                    ticket: generateTicket(bn),
+                    daubed: new Set<number>()
+                }));
 
-                if (existingPlayer) {
-                    existingPlayer.bonusUsed = Math.max(0, currentBonusUsed - bonusRefund);
-                    existingPlayer.withdrawableUsed = Math.max(0, currentWithdrawableUsed - withdrawableRefund);
-                }
+                // Re-check after async database calls within lock
+                const activePlayer = this.players.find(p => p.userId.toString() === userIdStr);
 
-                try {
-                    await prisma.user.update({
-                        where: { id: userId },
-                        data: {
-                            ...(balanceRefund > 0 ? { balance: { increment: balanceRefund } } : {}),
-                            ...(withdrawableRefund > 0 ? { withdrawableBalance: { increment: withdrawableRefund } } : {}),
-                            ...(bonusRefund > 0 ? { bonus: { increment: bonusRefund } } : {})
-                        }
+                if (activePlayer) {
+                    activePlayer.cards = cards;
+                    activePlayer.boardNumber = cards[0].boardNumber;
+                    activePlayer.ticket = cards[0].ticket;
+                    activePlayer.daubed = cards[0].daubed;
+                    activePlayer.fee = newCount * feePerBoard;
+                    activePlayer.bonusUsed = (activePlayer.bonusUsed || 0) + additionalBonusUsed;
+                    activePlayer.withdrawableUsed = (activePlayer.withdrawableUsed || 0) + additionalWithdrawableUsed;
+                    activePlayer.lastSeen = Date.now();
+                } else {
+                    const user = await prisma.user.findUnique({ where: { id: userId } });
+                    this.players.push({
+                        userId,
+                        cards,
+                        ticket: cards[0].ticket,
+                        daubed: cards[0].daubed,
+                        boardNumber: cards[0].boardNumber,
+                        fee: newCount * feePerBoard,
+                        bonusUsed: additionalBonusUsed,
+                        withdrawableUsed: additionalWithdrawableUsed,
+                        firstName: user?.firstName ?? undefined,
+                        username: user?.username ?? undefined,
+                        lastSeen: Date.now()
                     });
-                } catch (e) {}
-            }
 
-            const cards: PlayerCard[] = boardNumbers.map(bn => ({
-                boardNumber: bn,
-                ticket: generateTicket(bn),
-                daubed: new Set<number>()
-            }));
+                    if (this.players.length >= 1 && !this.lobbyInterval) {
+                        this.startLobbyTimer();
+                    }
+                }
 
-            // Re-check after async database calls within lock
-            const activePlayer = this.players.find(p => p.userId.toString() === userIdStr);
+                // Defensively ensure no duplicate entries ever persist in memory
+                this.sanitizePlayers();
 
-            if (activePlayer) {
-                activePlayer.cards = cards;
-                activePlayer.boardNumber = cards[0].boardNumber;
-                activePlayer.ticket = cards[0].ticket;
-                activePlayer.daubed = cards[0].daubed;
-                activePlayer.fee = newCount * feePerBoard;
-                activePlayer.bonusUsed = (activePlayer.bonusUsed || 0) + additionalBonusUsed;
-                activePlayer.withdrawableUsed = (activePlayer.withdrawableUsed || 0) + additionalWithdrawableUsed;
-                activePlayer.lastSeen = Date.now();
-            } else {
-                const user = await prisma.user.findUnique({ where: { id: userId } });
-                this.players.push({
-                    userId,
-                    cards,
-                    ticket: cards[0].ticket,
-                    daubed: cards[0].daubed,
-                    boardNumber: cards[0].boardNumber,
-                    fee: newCount * feePerBoard,
-                    bonusUsed: additionalBonusUsed,
-                    withdrawableUsed: additionalWithdrawableUsed,
-                    firstName: user?.firstName ?? undefined,
-                    username: user?.username ?? undefined,
-                    lastSeen: Date.now()
-                });
+                // Notify bot service to evaluate auto-fill if needed
+                this.botService?.onRoomUpdated(this, this.fee, this.room);
 
-                if (this.players.length >= 1 && !this.lobbyInterval) {
-                    this.startLobbyTimer();
+                // If all 500 boards are taken, start the game right away
+                const totalCards = this.players.reduce((sum, p) => sum + (p.cards?.length || 1), 0);
+                if (totalCards >= 500) {
+                    setTimeout(() => this.startGame(), 1000);
+                }
+
+                return {
+                    success: true,
+                    msg: `Selected ${newCount} board${newCount > 1 ? 's' : ''}: ${boardNumbers.map(n => '#' + n).join(', ')}`,
+                    boards: boardNumbers
+                };
+            } finally {
+                for (const bn of boardNumbers) {
+                    if (this.pendingReservations.get(bn) === userIdStr) {
+                        this.pendingReservations.delete(bn);
+                    }
                 }
             }
-
-            // Defensively ensure no duplicate entries ever persist in memory
-            this.sanitizePlayers();
-
-            // Notify bot service to evaluate auto-fill if needed
-            this.botService?.onRoomUpdated(this, this.fee, this.room);
-
-            // If all 500 boards are taken, start the game right away
-            const totalCards = this.players.reduce((sum, p) => sum + (p.cards?.length || 1), 0);
-            if (totalCards >= 500) {
-                setTimeout(() => this.startGame(), 1000);
-            }
-
-            return {
-                success: true,
-                msg: `Selected ${newCount} board${newCount > 1 ? 's' : ''}: ${boardNumbers.map(n => '#' + n).join(', ')}`,
-                boards: boardNumbers
-            };
         });
     }
 
@@ -311,10 +326,21 @@ export class GameManager {
 
     getBoards(): { number: number; taken: boolean }[] {
         this.sanitizePlayers();
-        const boards = [];
+        const takenSet = new Set<number>();
+        for (const p of this.players) {
+            if (p.cards && p.cards.length > 0) {
+                for (const c of p.cards) takenSet.add(c.boardNumber);
+            } else if (p.boardNumber) {
+                takenSet.add(p.boardNumber);
+            }
+        }
+        for (const [bn] of this.pendingReservations) {
+            takenSet.add(bn);
+        }
+
+        const boards = new Array(500);
         for (let i = 1; i <= 500; i++) {
-            const taken = this.players.some(p => p.cards ? p.cards.some(c => c.boardNumber === i) : p.boardNumber === i);
-            boards.push({ number: i, taken });
+            boards[i - 1] = { number: i, taken: takenSet.has(i) };
         }
         return boards;
     }
@@ -399,6 +425,7 @@ export class GameManager {
         this.lobbyInterval = null;
         this.resolutionTimeout = null;
         this.pendingWinners = [];
+        this.pendingReservations.clear();
         this.lobbyCountdown = 0;
         this.drawnNumbers.clear();
         await this.refundAll();
@@ -483,6 +510,9 @@ export class GameManager {
 
     private async removePlayer(userId: bigint, notifyLeaver: boolean): Promise<{ success: boolean; msg: string }> {
         const idStr = userId.toString();
+        for (const [bn, uid] of this.pendingReservations.entries()) {
+            if (uid === idStr) this.pendingReservations.delete(bn);
+        }
         const toRemove = this.players.filter(p => p.userId.toString() === idStr);
         if (toRemove.length === 0) return { success: false, msg: 'You are not in this game.' };
 
@@ -1096,6 +1126,7 @@ export class GameManager {
 
         console.log(`[Game] All players blocked. Game ended with 100% house profit (${pot} Birr), lobby reset.`);
         this.players = [];
+        this.pendingReservations.clear();
         this.drawnNumbers.clear();
 
         if (this.lobbyInterval) {
@@ -1282,6 +1313,7 @@ export class GameManager {
 
         console.log(`[Game] Game ended (${winners ? winners.length : 0} winner(s)), lobby reset.`);
         this.players = [];
+        this.pendingReservations.clear();
         this.drawnNumbers.clear();
 
         // Clear lobby interval just in case
