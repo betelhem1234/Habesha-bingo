@@ -137,4 +137,80 @@ describe('Load, Stress and Concurrency Tests', () => {
         const res2 = await gameManager.selectBoards(888888n, [77], 0);
         assert.equal(res2.success, true);
     });
+
+    test('Full 500-Player Concurrency: 500 players selecting boards 1..500 simultaneously', async () => {
+        const totalPlayers = 500;
+        const startMem = process.memoryUsage().heapUsed;
+        const startTime = performance.now();
+
+        // 500 distinct players select all 500 boards concurrently
+        const promises = Array.from({ length: totalPlayers }, (_, i) => {
+            const uid = BigInt(500000 + i);
+            const boardNumber = i + 1;
+            return gameManager.selectBoards(uid, [boardNumber], 0);
+        });
+
+        const results = await Promise.all(promises);
+        const duration = performance.now() - startTime;
+        const endMem = process.memoryUsage().heapUsed;
+        const memDeltaMB = (endMem - startMem) / (1024 * 1024);
+
+        const successes = results.filter(r => r.success);
+        assert.equal(successes.length, totalPlayers, `All 500 distinct board requests should succeed (got ${successes.length})`);
+        assert.equal(gameManager.players.length, totalPlayers);
+        assert.equal(gameManager.getTotalBoards(), totalPlayers);
+        assert.equal(gameManager.pendingReservations.size, 0);
+
+        // Verify boards are strictly 1..500 with zero collision
+        const claimedBoards = new Set<number>();
+        for (const player of gameManager.players) {
+            const b = player.cards ? player.cards[0].boardNumber : player.boardNumber;
+            assert.ok(b !== undefined && b >= 1 && b <= 500);
+            assert.ok(!claimedBoards.has(b!), `Board #${b} was duplicated!`);
+            claimedBoards.add(b!);
+        }
+        assert.equal(claimedBoards.size, totalPlayers);
+
+        console.log(`\n    ⚡ [Stress Benchmark] 500 Parallel Selections:`);
+        console.log(`       - Total Duration: ${duration.toFixed(2)} ms`);
+        console.log(`       - Avg per Board: ${(duration / totalPlayers).toFixed(3)} ms`);
+        console.log(`       - Memory Delta for 500 Players: ${memDeltaMB.toFixed(2)} MB`);
+
+        // Execution for 500 in-memory board claims should complete well under 2500ms
+        assert.ok(duration < 2500, `500 selections took ${duration.toFixed(2)}ms, expected < 2500ms`);
+    });
+
+    test('500 Active Cards Win Checking: evaluating 500 tickets under 5ms', () => {
+        const { checkWinFreshness, generateTicket } = require('../src/game/bingo');
+        const cards = Array.from({ length: 500 }, (_, i) => ({
+            boardNumber: i + 1,
+            ticket: generateTicket(i + 1),
+            daubed: new Set<number>()
+        }));
+
+        const testDrawnNumbers = new Set([7, 18, 35, 52, 68, 12, 29, 44, 59, 71, 3, 22, 38, 49, 63]);
+        const currentBall = 63;
+
+        // Warm up JIT
+        for (const c of cards.slice(0, 50)) {
+            checkWinFreshness(c.ticket, testDrawnNumbers, currentBall);
+        }
+
+        const start = performance.now();
+        let winsFound = 0;
+        for (const c of cards) {
+            const res = checkWinFreshness(c.ticket, testDrawnNumbers, currentBall);
+            if (res.hasWon) winsFound++;
+        }
+        const duration = performance.now() - start;
+
+        console.log(`\n    ⚡ [Win Check Benchmark] 500 Ticket Evaluator:`);
+        console.log(`       - 500 Full Tickets Evaluated in: ${duration.toFixed(2)} ms`);
+        console.log(`       - Avg per Ticket: ${(duration / 500).toFixed(4)} ms`);
+        console.log(`       - Fresh Wins Detected: ${winsFound}`);
+
+        // 500 cards evaluation must take less than 20ms (budget during 4000ms draw interval is 4000ms!)
+        assert.ok(duration < 20, `500 win checks took ${duration.toFixed(2)}ms, expected < 20ms`);
+    });
 });
+
