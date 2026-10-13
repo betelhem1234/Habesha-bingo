@@ -288,7 +288,10 @@ async function fetchHouseIncome() {
                       })
                     : '—';
 
-                function formatUserBadge(name, username, id) {
+                function formatUserBadge(name, username, id, isBot) {
+                    if (isBot || (id && String(id).startsWith('900000')) || id === 'bot') {
+                        return `<span style="background:rgba(139,92,246,0.22); border:1px solid rgba(139,92,246,0.45); color:#c4b5fd; padding:3px 8px; border-radius:6px; font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:4px;">🤖 ${escapeHtml(name || 'Bot Player')} <span style="font-size:10px; opacity:0.85;">(Bot)</span></span>`;
+                    }
                     if (username) {
                         return `<strong>${escapeHtml(name || 'Winner')}</strong><br><a href="https://t.me/${username}" target="_blank" style="color:#38bdf8; font-size:12px; text-decoration:none;">@${escapeHtml(username)}</a>`;
                     }
@@ -299,28 +302,32 @@ async function fetchHouseIncome() {
                 }
 
                 let winnerDisplay = '—';
-                const isAllBlocked = Boolean(i.winnerCount === 0 || (!i.winnerId && !i.winner2Id));
+                const isAllBlocked = Boolean(i.winnerCount === 0);
                 const hasTwoWinners = Boolean(!isAllBlocked && ((i.winnerCount && i.winnerCount > 1) || i.winner2Id));
 
                 if (isAllBlocked) {
                     winnerDisplay = `<span style="color:#ef4444; font-weight:700;">⛔ All Blocked (No Winner)</span>`;
                 } else if (hasTwoWinners) {
-                    const w1 = formatUserBadge(i.winnerName, i.winnerUsername, i.winnerId);
-                    const w2 = formatUserBadge(i.winner2Name, i.winner2Username, i.winner2Id);
+                    const w1 = formatUserBadge(i.winnerName, i.winnerUsername, i.winnerId, i.isBot);
+                    const w2 = formatUserBadge(i.winner2Name, i.winner2Username, i.winner2Id, i.isBot2);
                     winnerDisplay = `<div style="display:flex; flex-direction:column; gap:4px;">
                         <div>${w1}</div>
                         <div style="color:#f59e0b; font-size:11px; font-weight:700;">🤝 Shared Jackpot</div>
                         <div>${w2}</div>
                     </div>`;
-                } else if (i.winnerId) {
-                    winnerDisplay = formatUserBadge(i.winnerName, i.winnerUsername, i.winnerId);
+                } else if (i.winnerId || i.isBot || i.winnerName) {
+                    winnerDisplay = formatUserBadge(i.winnerName, i.winnerUsername, i.winnerId, i.isBot);
                 }
+
+                const isSingleBotWin = Boolean(!isAllBlocked && !hasTwoWinners && (i.isBot || (i.winnerId && String(i.winnerId).startsWith('900000')) || i.winnerId === 'bot'));
 
                 const payoutDisplay = isAllBlocked
                     ? `<strong style="color:#94a3b8;">0</strong> <span class="currency">Birr</span>`
-                    : (hasTwoWinners
-                        ? `<strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span><br><span style="color:#94a3b8; font-size:11px; font-weight:600;">(${(i.splitPayout ?? Math.floor((i.winnerPayout || 0) / 2)).toLocaleString()} Birr each)</span>`
-                        : `<strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span>`);
+                    : (isSingleBotWin
+                        ? `<strong style="color:#94a3b8;">0</strong> <span class="currency">Birr</span> <span style="color:#a78bfa; font-size:11px; font-weight:600;">(Bot Win)</span>`
+                        : (hasTwoWinners
+                            ? `<strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span><br><span style="color:#94a3b8; font-size:11px; font-weight:600;">(${(i.splitPayout ?? Math.floor((i.winnerPayout || 0) / 2)).toLocaleString()} Birr each)</span>`
+                            : `<strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span>`));
 
                 return `
                     <tr>

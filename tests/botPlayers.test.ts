@@ -446,4 +446,17 @@ describe('Virtual Players (Bot System) Test Suite', () => {
         const hasTimeout = (botService as any).fillTimeouts.has('10_1');
         assert.equal(hasTimeout, true);
     });
+
+    test('getBotProfileById deterministically returns profile for virtual IDs and null for human IDs', () => {
+        const p1 = botService.getBotProfileById(9000000001n);
+        assert.ok(p1, 'Should resolve profile for 9000000001');
+        assert.equal(p1?.firstName, 'Dawit');
+
+        const p2 = botService.getBotProfileById(9000000002n);
+        assert.ok(p2, 'Should resolve profile for 9000000002');
+        assert.equal(p2?.firstName, 'Abebe');
+
+        const human = botService.getBotProfileById(12345678n);
+        assert.equal(human, null, 'Human ID should return null');
+    });
 });

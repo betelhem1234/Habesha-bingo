@@ -1179,8 +1179,8 @@ export class GameManager {
                         totalCollected: pot,
                         winnerPayout: totalActualPayout,
                         houseProfit: actualProfit,
-                        winnerId: (winners[0] && !winners[0].player.isBot) ? winners[0].player.userId : null,
-                        winner2Id: (winners.length > 1 && !winners[1].player.isBot) ? winners[1].player.userId : null,
+                        winnerId: winners[0] ? winners[0].player.userId : null,
+                        winner2Id: (winners.length > 1) ? winners[1].player.userId : null,
                         winnerCount
                     }
                 });

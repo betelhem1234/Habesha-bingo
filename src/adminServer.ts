@@ -2107,11 +2107,28 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 totalHouseProfit += profit;
 
                 const w2Id = (i as any).winner2Id;
-                const wCount = (i as any).winnerCount || (w2Id ? 2 : 1);
-                const splitPayout = Math.floor(payout / wCount);
+                const wCount = (i as any).winnerCount !== undefined ? Number((i as any).winnerCount) : (w2Id ? 2 : (i.winnerId ? 1 : 0));
+                const splitPayout = wCount > 0 ? Math.floor(payout / wCount) : 0;
 
-                const winner = i.winnerId ? winnerMap.get(i.winnerId.toString()) : null;
-                const winner2 = w2Id ? winnerMap.get(w2Id.toString()) : null;
+                let winner = i.winnerId ? winnerMap.get(i.winnerId.toString()) : null;
+                let isBot = false;
+                if (i.winnerId && i.winnerId >= 9000000000n) {
+                    const prof = gameRooms.botService?.getBotProfileById(i.winnerId);
+                    winner = { id: i.winnerId.toString(), firstName: prof?.firstName || 'Bot Player', username: prof?.username || null };
+                    isBot = true;
+                } else if (!i.winnerId && wCount > 0) {
+                    // Legacy bot win where winnerId was recorded as null
+                    winner = { id: 'bot', firstName: 'Bot Player', username: null };
+                    isBot = true;
+                }
+
+                let winner2 = w2Id ? winnerMap.get(w2Id.toString()) : null;
+                let isBot2 = false;
+                if (w2Id && w2Id >= 9000000000n) {
+                    const prof2 = gameRooms.botService?.getBotProfileById(w2Id);
+                    winner2 = { id: w2Id.toString(), firstName: prof2?.firstName || 'Bot Player', username: prof2?.username || null };
+                    isBot2 = true;
+                }
 
                 return {
                     id: i.id,
@@ -2122,12 +2139,14 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     splitPayout,
                     winnerCount: wCount,
                     houseProfit: profit,
-                    winnerId: i.winnerId ? i.winnerId.toString() : null,
+                    winnerId: i.winnerId ? i.winnerId.toString() : (isBot ? 'bot' : null),
                     winnerName: winner?.firstName || null,
                     winnerUsername: winner?.username || null,
+                    isBot,
                     winner2Id: w2Id ? w2Id.toString() : null,
                     winner2Name: winner2?.firstName || null,
                     winner2Username: winner2?.username || null,
+                    isBot2,
                     createdAt: i.createdAt
                 };
             });
