@@ -385,19 +385,21 @@ body{
 
 .winner-card-container{
   background:#d7c4ea;border-radius:24px;
-  width:100%;max-width:350px;overflow:hidden;
+  width:100%;max-width:365px;overflow:hidden;
   box-shadow:0 12px 36px rgba(0,0,0,0.35);
   display:flex;flex-direction:column;
+  max-height:92vh;
 }
 
 /* Orange Top Banner */
 .winner-orange-banner{
-  background:#ff7a00;padding:20px 16px 14px;
+  background:#ff7a00;padding:16px 14px 12px;
   text-align:center;
+  flex-shrink:0;
 }
 .winner-banner-title{
   color:#fff;font-size:1.85rem;font-weight:900;
-  letter-spacing:1px;margin-bottom:8px;
+  letter-spacing:1px;margin-bottom:6px;
 }
 .winner-name-row{
   display:flex;align-items:center;justify-content:center;
@@ -413,9 +415,32 @@ body{
 
 /* White Ticket Card Container */
 .winner-board-wrap{
-  background:#fff;border-radius:18px;margin:14px;
+  background:#fff;border-radius:18px;margin:10px 12px;
   padding:8px;display:flex;flex-direction:column;
   box-shadow:0 3px 12px rgba(0,0,0,0.1);
+  overflow-y:auto;
+  flex:1;
+}
+.winner-card-item{
+  display:flex;flex-direction:column;width:100%;
+}
+.winner-card-item.shared{
+  padding:6px 0 10px;
+  border-bottom:2px dashed #d1c4e9;
+  margin-bottom:8px;
+}
+.winner-card-item.shared:last-child{
+  border-bottom:none;
+  margin-bottom:0;
+  padding-bottom:2px;
+}
+.w-board-card-header{
+  display:flex;align-items:center;justify-content:space-between;
+  margin-bottom:5px;padding:0 2px;flex-wrap:wrap;gap:4px;
+}
+.w-board-badge{
+  background:#4a0e4e;color:#fff;border-radius:6px;
+  padding:2px 8px;font-size:0.8rem;font-weight:900;
 }
 .winner-board-header{
   display:grid;grid-template-columns:repeat(5,1fr);gap:3px;
@@ -433,6 +458,12 @@ body{
   background:#fff;aspect-ratio:1;border-radius:6px;
   display:flex;align-items:center;justify-content:center;
   font-size:0.88rem;font-weight:900;color:#333;
+}
+.winner-card-item.shared .w-cell{
+  font-size:0.8rem;
+}
+.winner-card-item.shared .wbh-col{
+  font-size:0.82rem;padding:3px 0;
 }
 .w-cell.daubed-yellow{
   background:#ffeb3b;color:#333;font-weight:900;
@@ -600,20 +631,22 @@ body{
       </div>
     </div>
 
-    <div class="winner-board-wrap">
-      <div class="winner-tabs" id="winner-tabs" style="display:none;"></div>
-      <div class="winner-board-header">
-        <div class="wbh-col fb-hdr-B">B</div>
-        <div class="wbh-col fb-hdr-I">I</div>
-        <div class="wbh-col fb-hdr-N">N</div>
-        <div class="wbh-col fb-hdr-G">G</div>
-        <div class="wbh-col fb-hdr-O">O</div>
+    <div class="winner-board-wrap" id="winner-board-wrap">
+      <div id="winner-boards-container"></div>
+      <div id="winner-single-fallback" style="display:none;">
+        <div class="winner-board-header">
+          <div class="wbh-col fb-hdr-B">B</div>
+          <div class="wbh-col fb-hdr-I">I</div>
+          <div class="wbh-col fb-hdr-N">N</div>
+          <div class="wbh-col fb-hdr-G">G</div>
+          <div class="wbh-col fb-hdr-O">O</div>
+        </div>
+        <div class="winner-ticket-grid" id="winner-ticket-grid"></div>
+        <div class="winner-board-number-label" id="w-board-num">Board Number 111</div>
       </div>
-      <div class="winner-ticket-grid" id="winner-ticket-grid"></div>
-      <div class="winner-board-number-label" id="w-board-num">Board Number 111</div>
     </div>
 
-    <button class="winner-countdown-btn" id="w-countdown-btn">7</button>
+    <button class="winner-countdown-btn" id="w-countdown-btn">8</button>
   </div>
 </div>
 
@@ -1338,18 +1371,14 @@ function showWinnerOverlay(data){
     }
   }
 
-  function renderWinnerBoard(wObj){
+  function renderBoardCard(wObj, isShared){
     const winNum = wObj.winningNumber || data.winningNumber || (data.drawnNumbers && data.drawnNumbers.length ? data.drawnNumbers[data.drawnNumbers.length - 1] : lastDrawn);
     const winCallName = winNum ? (COLS[getCol(winNum)] + '-' + winNum) : '';
-    const boardNumEl = document.getElementById('w-board-num');
-    if(boardNumEl){
-      boardNumEl.innerHTML = `<span>Board Number ${wObj.boardNumber || 111}</span>` + 
-        (winCallName ? `<span class="winner-trigger-badge">🎯 Winning Call: ${winCallName}</span>` : '');
-    }
+    const daubSet = new Set(wObj.daubed || []);
+    const winningCoordSet = new Set((wObj.winningCells || []).map(c => `${c.row},${c.col}`));
+
+    let gridHtml = '';
     if(wObj.ticket){
-      const daubSet = new Set(wObj.daubed || []);
-      const winningCoordSet = new Set((wObj.winningCells || []).map(c => `${c.row},${c.col}`));
-      let html = '';
       for(let r = 0; r < 5; r++){
         for(let c = 0; c < 5; c++){
           const num = wObj.ticket[r][c];
@@ -1357,44 +1386,59 @@ function showWinnerOverlay(data){
           const isTriggerNum = (isWinCell && winNum && num === winNum);
           const isDaubed = (num === 0 || daubSet.has(num));
           if(isTriggerNum){
-            html += `<div class="w-cell win-line win-trigger" title="🎯 Winning Call">${num===0?'★':num}</div>`;
+            gridHtml += `<div class="w-cell win-line win-trigger" title="🎯 Winning Call">${num===0?'★':num}</div>`;
           }else if(isWinCell){
-            html += `<div class="w-cell win-line">${num===0?'★':num}</div>`;
+            gridHtml += `<div class="w-cell win-line">${num===0?'★':num}</div>`;
           }else if(isDaubed){
-            html += `<div class="w-cell daubed-yellow">${num===0?'★':num}</div>`;
+            gridHtml += `<div class="w-cell daubed-yellow">${num===0?'★':num}</div>`;
           }else{
-            html += `<div class="w-cell">${num}</div>`;
+            gridHtml += `<div class="w-cell">${num}</div>`;
           }
         }
       }
-      document.getElementById('winner-ticket-grid').innerHTML = html;
     }
+
+    const winnerName = cleanWinnerName(wObj.firstName);
+    const cardClass = isShared ? 'winner-card-item shared' : 'winner-card-item';
+
+    return `
+      <div class="${cardClass}">
+        ${isShared ? `
+          <div class="w-board-card-header">
+            <span class="winner-name-badge">${winnerName}</span>
+            <span class="w-board-badge">Board #${wObj.boardNumber || 111}</span>
+            ${winCallName ? `<span class="winner-trigger-badge">🎯 ${winCallName}</span>` : ''}
+          </div>
+        ` : ''}
+        <div class="winner-board-header">
+          <div class="wbh-col fb-hdr-B">B</div>
+          <div class="wbh-col fb-hdr-I">I</div>
+          <div class="wbh-col fb-hdr-N">N</div>
+          <div class="wbh-col fb-hdr-G">G</div>
+          <div class="wbh-col fb-hdr-O">O</div>
+        </div>
+        <div class="winner-ticket-grid">${gridHtml}</div>
+        ${!isShared ? `
+          <div class="winner-board-number-label">
+            <span>Board Number ${wObj.boardNumber || 111}</span>
+            ${winCallName ? `<span class="winner-trigger-badge">🎯 Winning Call: ${winCallName}</span>` : ''}
+          </div>
+        ` : ''}
+      </div>
+    `;
   }
 
-  const tabsContainer = document.getElementById('winner-tabs');
-  if(winnersList.length > 1 && tabsContainer){
-    tabsContainer.style.display = 'flex';
-    tabsContainer.innerHTML = '';
-    winnersList.forEach((w, idx) => {
-      const btn = document.createElement('button');
-      btn.className = 'w-tab-btn' + (idx === 0 ? ' active' : '');
-      btn.textContent = `${cleanWinnerName(w.firstName)} (#${w.boardNumber})`;
-      btn.onclick = () => {
-        tabsContainer.querySelectorAll('.w-tab-btn').forEach(b => b.classList.remove('active'));
-        btn.classList.add('active');
-        renderWinnerBoard(w);
-      };
-      tabsContainer.appendChild(btn);
-    });
-    renderWinnerBoard(winnersList[0]);
-  } else {
-    if(tabsContainer) tabsContainer.style.display = 'none';
-    renderWinnerBoard(winnersList[0]);
+  const fallback = document.getElementById('winner-single-fallback');
+  const bContainer = document.getElementById('winner-boards-container');
+  if(fallback) fallback.style.display = 'none';
+  if(bContainer){
+    const isShared = winnersList.length > 1;
+    bContainer.innerHTML = winnersList.map(w => renderBoardCard(w, isShared)).join('');
   }
 
   document.getElementById('winner-overlay').classList.add('show');
 
-  let cnt=7; // Countdown from 7 to 0
+  let cnt = winnersList.length > 1 ? 8 : 7; // Give 8 seconds for dual-board viewing
   const cdBtn=document.getElementById('w-countdown-btn');
   cdBtn.textContent=cnt;
   const cd=setInterval(()=>{
@@ -1412,6 +1456,11 @@ function showAllBlockedOverlay(data){
   if(winnerShown) return;
   winnerShown = true;
   if(pollInterval) clearInterval(pollInterval);
+
+  const fallback = document.getElementById('winner-single-fallback');
+  const bContainer = document.getElementById('winner-boards-container');
+  if(bContainer) bContainer.innerHTML = '';
+  if(fallback) fallback.style.display = 'block';
 
   const bannerEl = document.querySelector('.winner-orange-banner');
   if(bannerEl){
