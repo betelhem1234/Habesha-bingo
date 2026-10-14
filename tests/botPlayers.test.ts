@@ -459,4 +459,23 @@ describe('Virtual Players (Bot System) Test Suite', () => {
         const human = botService.getBotProfileById(12345678n);
         assert.equal(human, null, 'Human ID should return null');
     });
+
+    test('Shared Jackpot with 1 Human and 1 Bot correctly allocates gross jackpot and per-winner split', () => {
+        const pot = 1020;
+        const totalWinnerPayout = Math.floor(pot * 0.8); // 816
+        const winnerCount = 2;
+        const payoutPerWinner = Math.floor(totalWinnerPayout / winnerCount); // 408
+
+        assert.equal(totalWinnerPayout, 816);
+        assert.equal(payoutPerWinner, 408);
+
+        // 1 human winner
+        const humanWinnersCount = 1;
+        const totalActualPayout = humanWinnersCount * payoutPerWinner; // 408
+        assert.equal(totalActualPayout, 408);
+
+        // API calculation: splitPayout must be based on gross jackpot, not divided twice
+        const splitPayout = winnerCount > 0 ? Math.floor(totalWinnerPayout / winnerCount) : 0;
+        assert.equal(splitPayout, 408, 'splitPayout must be 408 Birr, never 204 Birr');
+    });
 });

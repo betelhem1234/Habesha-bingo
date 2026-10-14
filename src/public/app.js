@@ -319,14 +319,23 @@ async function fetchHouseIncome() {
                     winnerDisplay = formatUserBadge(i.winnerName, i.winnerUsername, i.winnerId, i.isBot);
                 }
 
-                const isSingleBotWin = Boolean(!isAllBlocked && !hasTwoWinners && (i.isBot || (i.winnerId && String(i.winnerId).startsWith('900000')) || i.winnerId === 'bot'));
+                const isAllBots = Boolean(
+                    !isAllBlocked && (
+                        (!hasTwoWinners && (i.isBot || (i.winnerId && String(i.winnerId).startsWith('900000')) || i.winnerId === 'bot')) ||
+                        (hasTwoWinners && i.isBot && i.isBot2)
+                    )
+                );
+
+                const perWinner = (i.splitPayout !== undefined && i.splitPayout !== null && i.splitPayout > 0)
+                    ? i.splitPayout
+                    : Math.floor(((i.pot || 0) * 0.8) / (i.winnerCount || 2));
 
                 const payoutDisplay = isAllBlocked
                     ? `<strong style="color:#94a3b8;">0</strong> <span class="currency">Birr</span>`
-                    : (isSingleBotWin
+                    : (isAllBots
                         ? `<strong style="color:#94a3b8;">0</strong> <span class="currency">Birr</span> <span style="color:#a78bfa; font-size:11px; font-weight:600;">(Bot Win)</span>`
                         : (hasTwoWinners
-                            ? `<strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span><br><span style="color:#94a3b8; font-size:11px; font-weight:600;">(${(i.splitPayout ?? Math.floor((i.winnerPayout || 0) / 2)).toLocaleString()} Birr each)</span>`
+                            ? `<strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span><br><span style="color:#94a3b8; font-size:11px; font-weight:600;">(${perWinner.toLocaleString()} Birr each)</span>`
                             : `<strong style="color:#38bdf8;">${(i.winnerPayout ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span>`));
 
                 return `

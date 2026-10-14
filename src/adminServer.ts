@@ -2108,7 +2108,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
 
                 const w2Id = (i as any).winner2Id;
                 const wCount = (i as any).winnerCount !== undefined ? Number((i as any).winnerCount) : (w2Id ? 2 : (i.winnerId ? 1 : 0));
-                const splitPayout = wCount > 0 ? Math.floor(payout / wCount) : 0;
+                const totalJackpot = Math.floor(pot * 0.8);
+                const splitPayout = wCount > 0 ? Math.floor(totalJackpot / wCount) : 0;
 
                 let winner = i.winnerId ? winnerMap.get(i.winnerId.toString()) : null;
                 let isBot = false;
