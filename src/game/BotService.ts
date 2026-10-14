@@ -18,7 +18,7 @@ export interface BotProfile {
 }
 
 export const ETHIOPIAN_BOT_PROFILES: BotProfile[] = [
-    // ─── 92 Authentic Ethiopian Male Profiles (96.8%) ───
+    // ─── 213 Authentic Ethiopian Male Profiles (96.8%) ───
     { firstName: 'Dawit', username: 'dawit_b9' },
     { firstName: 'Abebe', username: 'abebe_t' },
     { firstName: 'Henok', username: 'henok_t' },
@@ -111,11 +111,136 @@ export const ETHIOPIAN_BOT_PROFILES: BotProfile[] = [
     { firstName: 'Birhan', username: 'birhan_t' },
     { firstName: 'Gedion', username: 'gedion_eth' },
     { firstName: 'Yidnekachew', username: 'yidne_m' },
+    { firstName: 'Aklilu', username: 'aklu_m' },
+    { firstName: 'Ashenafi', username: 'ashu_t' },
+    { firstName: 'Bekele', username: 'bekele_m' },
+    { firstName: 'Berihun', username: 'beri_k' },
+    { firstName: 'Bogale', username: 'boge_t' },
+    { firstName: 'Chernet', username: 'cheru_eth' },
+    { firstName: 'Degife', username: 'dege_m' },
+    { firstName: 'Dereje', username: 'dere_t' },
+    { firstName: 'Desalegn', username: 'desi_m' },
+    { firstName: 'Ephrem', username: 'ephi_k' },
+    { firstName: 'Eshetu', username: 'eshe_b' },
+    { firstName: 'Fasil', username: 'fasil_g' },
+    { firstName: 'Feleke', username: 'fele_m' },
+    { firstName: 'Fisseha', username: 'fish_t' },
+    { firstName: 'Gebre', username: 'gebre_k' },
+    { firstName: 'Gezahegn', username: 'gech_eth' },
+    { firstName: 'Gizachew', username: 'gize_m' },
+    { firstName: 'Hailu', username: 'hailu_t' },
+    { firstName: 'Kasim', username: 'kasim_a' },
+    { firstName: 'Kifle', username: 'kifle_m' },
+    { firstName: 'Lemma', username: 'lemma_t' },
+    { firstName: 'Markos', username: 'markos_eth' },
+    { firstName: 'Matiyas', username: 'mati_m' },
+    { firstName: 'Menelik', username: 'mene_k' },
+    { firstName: 'Merawi', username: 'mera_t' },
+    { firstName: 'Minase', username: 'mina_eth' },
+    { firstName: 'Moges', username: 'moge_m' },
+    { firstName: 'Negatu', username: 'nega_t' },
+    { firstName: 'Sahle', username: 'sahle_k' },
+    { firstName: 'Samson', username: 'sami_eth' },
+    { firstName: 'Setegn', username: 'sete_m' },
+    { firstName: 'Shibashi', username: 'shiba_t' },
+    { firstName: 'Shimeles', username: 'shime_k' },
+    { firstName: 'Shiferaw', username: 'shife_m' },
+    { firstName: 'Taddele', username: 'tadde_t' },
+    { firstName: 'Takele', username: 'take_b' },
+    { firstName: 'Taye', username: 'taye_m' },
+    { firstName: 'Tekeste', username: 'teke_t' },
+    { firstName: 'Tequame', username: 'teque_m' },
+    { firstName: 'Tesfa', username: 'tesfa_eth' },
+    { firstName: 'Teshale', username: 'teshe_k' },
+    { firstName: 'Tibebu', username: 'tibe_t' },
+    { firstName: 'Tigabu', username: 'tiga_m' },
+    { firstName: 'Tolosa', username: 'tolo_k' },
+    { firstName: 'Workneh', username: 'worku_m' },
+    { firstName: 'Yacob', username: 'yacob_t' },
+    { firstName: 'Yehualashet', username: 'yehua_m' },
+    { firstName: 'Yeshitila', username: 'yeshi_t' },
+    { firstName: 'Yonas', username: 'yoni_eth' },
+    { firstName: 'Yosef', username: 'yosi_m' },
+    { firstName: 'Zerihun', username: 'zeru_k' },
+    { firstName: 'Zewge', username: 'zewge_m' },
+    { firstName: 'Zinabu', username: 'zina_t' },
+    { firstName: 'Abrham', username: 'abresh_m' },
+    { firstName: 'Adane', username: 'adu_eth' },
+    { firstName: 'Addisu', username: 'addis_t' },
+    { firstName: 'Adugna', username: 'adu_m' },
+    { firstName: 'Afework', username: 'afe_k' },
+    { firstName: 'Alem', username: 'alem_t' },
+    { firstName: 'Amare', username: 'ame_m' },
+    { firstName: 'Andualem', username: 'andu_eth' },
+    { firstName: 'Aragaw', username: 'ara_t' },
+    { firstName: 'Assefa', username: 'asse_m' },
+    { firstName: 'Asteraw', username: 'aste_k' },
+    { firstName: 'Ayele', username: 'aye_t' },
+    { firstName: 'Badeg', username: 'badeg_m' },
+    { firstName: 'Balcha', username: 'balcha_eth' },
+    { firstName: 'Bayisa', username: 'baye_m' },
+    { firstName: 'Bazezew', username: 'baze_t' },
+    { firstName: 'Belew', username: 'belew_k' },
+    { firstName: 'Benyam', username: 'beny_m' },
+    { firstName: 'Birara', username: 'bire_t' },
+    { firstName: 'Bizuayehu', username: 'bizu_m' },
+    { firstName: 'Chekol', username: 'cheke_eth' },
+    { firstName: 'Dagnachew', username: 'dagne_m' },
+    { firstName: 'Damtew', username: 'damte_t' },
+    { firstName: 'Demelash', username: 'deme_k' },
+    { firstName: 'Demiss', username: 'demi_m' },
+    { firstName: 'Dinku', username: 'dinku_t' },
+    { firstName: 'Elias', username: 'eli_eth' },
+    { firstName: 'Endalkachew', username: 'enda_k' },
+    { firstName: 'Esmael', username: 'esma_m' },
+    { firstName: 'Fantahun', username: 'fante_t' },
+    { firstName: 'Fenta', username: 'fenta_eth' },
+    { firstName: 'Gashawbeza', username: 'gashu_m' },
+    { firstName: 'Gebeyehu', username: 'gebe_t' },
+    { firstName: 'Getahun', username: 'getu_m' },
+    { firstName: 'Gobeze', username: 'gobe_k' },
+    { firstName: 'Gorfu', username: 'gorfu_m' },
+    { firstName: 'Kassa', username: 'kasse_t' },
+    { firstName: 'Kelemu', username: 'kele_eth' },
+    { firstName: 'Kibret', username: 'kibre_m' },
+    { firstName: 'Kinde', username: 'kinde_t' },
+    { firstName: 'Maregu', username: 'mare_m' },
+    { firstName: 'Melkamu', username: 'melke_eth' },
+    { firstName: 'Mengesha', username: 'menge_m' },
+    { firstName: 'Mihret', username: 'mihret_t' },
+    { firstName: 'Misganaw', username: 'misge_m' },
+    { firstName: 'Mitiku', username: 'mitu_eth' },
+    { firstName: 'Molla', username: 'molla_t' },
+    { firstName: 'Mulatu', username: 'mule_k' },
+    { firstName: 'Nigatu', username: 'niga_m' },
+    { firstName: 'Senay', username: 'senay_eth' },
+    { firstName: 'Seyfe', username: 'seyfe_t' },
+    { firstName: 'Shegaw', username: 'shega_m' },
+    { firstName: 'Sileshi', username: 'sile_eth' },
+    { firstName: 'Simachew', username: 'sima_t' },
+    { firstName: 'Tarekegn', username: 'tari_m' },
+    { firstName: 'Tegegne', username: 'tege_eth' },
+    { firstName: 'Tekalign', username: 'teka_m' },
+    { firstName: 'Tenaw', username: 'tena_t' },
+    { firstName: 'Tesfahun', username: 'tesfu_m' },
+    { firstName: 'Wale', username: 'wale_eth' },
+    { firstName: 'Wassie', username: 'wase_m' },
+    { firstName: 'Welde', username: 'welde_t' },
+    { firstName: 'Wondie', username: 'wonde_eth' },
+    { firstName: 'Yabsira', username: 'yabi_m' },
+    { firstName: 'Yalew', username: 'yalew_t' },
+    { firstName: 'Yaregal', username: 'yare_eth' },
+    { firstName: 'Yetbarek', username: 'yete_m' },
+    { firstName: 'Zewdie', username: 'zewdi_eth' },
 
-    // ─── 3 Authentic Ethiopian Female Profiles (3.2%) ───
+    // ─── 7 Authentic Ethiopian Female Profiles (3.2%) ───
     { firstName: 'Selam', username: 'selam_m' },
     { firstName: 'Bethlehem', username: 'bethi_g' },
-    { firstName: 'Almaz', username: 'almaz_k' }
+    { firstName: 'Almaz', username: 'almaz_k' },
+    { firstName: 'Hanan', username: 'hanan_eth' },
+    { firstName: 'Eden', username: 'eden_m' },
+    { firstName: 'Mahlet', username: 'mahi_t' },
+    { firstName: 'Rahel', username: 'rahel_k' }
 ];
 
 export class BotService {
@@ -180,7 +305,7 @@ export class BotService {
 
     public updateSettings(partial: Partial<BotSettings>): BotSettings {
         if (partial.enabled !== undefined) this.settings.enabled = !!partial.enabled;
-        if (partial.targetPlayers !== undefined && partial.targetPlayers >= 2 && partial.targetPlayers <= 100) {
+        if (partial.targetPlayers !== undefined && partial.targetPlayers >= 2 && partial.targetPlayers <= 300) {
             this.settings.targetPlayers = Number(partial.targetPlayers);
         }
         if (partial.botReactionMinMs !== undefined && partial.botReactionMinMs >= 50) {
@@ -289,22 +414,38 @@ export class BotService {
             gm.startLobbyTimer();
         }
 
-        // Broadcast lobby updates to SSE clients
-        gm.broadcastSSE('lobby', {
-            lobbyCountdown: gm.lobbyCountdown,
-            playerCount: gm.players.length,
-            boardCount: gm.getTotalBoards(),
-            pot: gm.getPot(),
-            gameState: gm.state
-        });
+        // Broadcast lobby updates to SSE clients (throttled at 400ms for rapid bot onboarding)
+        if (typeof (gm as any).broadcastSSEThrottled === 'function') {
+            (gm as any).broadcastSSEThrottled('lobby', () => ({
+                lobbyCountdown: gm.lobbyCountdown,
+                playerCount: gm.players.length,
+                boardCount: gm.getTotalBoards(),
+                pot: gm.getPot(),
+                gameState: gm.state
+            }), 400);
 
-        // Broadcast board status update
-        gm.broadcastSSE('boards', {
-            boards: gm.getBoards(),
-            players: gm.players.length,
-            boardCount: gm.getTotalBoards(),
-            pot: gm.getPot()
-        });
+            // Broadcast board status update throttled
+            (gm as any).broadcastSSEThrottled('boards', () => ({
+                boards: gm.getBoards(),
+                players: gm.players.length,
+                boardCount: gm.getTotalBoards(),
+                pot: gm.getPot()
+            }), 400);
+        } else {
+            gm.broadcastSSE('lobby', {
+                lobbyCountdown: gm.lobbyCountdown,
+                playerCount: gm.players.length,
+                boardCount: gm.getTotalBoards(),
+                pot: gm.getPot(),
+                gameState: gm.state
+            });
+            gm.broadcastSSE('boards', {
+                boards: gm.getBoards(),
+                players: gm.players.length,
+                boardCount: gm.getTotalBoards(),
+                pot: gm.getPot()
+            });
+        }
 
         return true;
     }
@@ -342,7 +483,7 @@ export class BotService {
 
         let baseDelay: number;
         if (this.settings.joinPacing === 'rapid') {
-            baseDelay = Math.floor(Math.random() * 250) + 200; // 200ms - 450ms
+            baseDelay = Math.floor(Math.random() * 200) + 120; // 120ms - 320ms
         } else if (this.settings.joinPacing === 'relaxed') {
             baseDelay = Math.floor(Math.random() * 600) + 800; // 800ms - 1400ms
         } else {
@@ -350,13 +491,15 @@ export class BotService {
             // Reserve 2 seconds before match start so all entries finish cleanly
             const availableMs = Math.max(1000, (countdown - 2) * 1000);
             const idealInterval = Math.floor(availableMs / (remainingBots + 1));
-            // Floor of 120ms so it stays responsive, ceiling of 1400ms so it doesn't wait too long
-            baseDelay = Math.max(120, Math.min(1400, idealInterval));
+            // When remainingBots is large (> 100), allow lower floor down to 50ms so all 300 bots fit cleanly into 28s
+            const floorMs = remainingBots > 100 ? 50 : 120;
+            baseDelay = Math.max(floorMs, Math.min(1400, idealInterval));
         }
 
         // Add natural human jitter (±15%)
         const jitter = Math.floor((Math.random() * 0.3 - 0.15) * baseDelay);
-        const delay = Math.max(80, baseDelay + jitter);
+        const minDelay = remainingBots > 100 ? 40 : 80;
+        const delay = Math.max(minDelay, baseDelay + jitter);
 
         const timer = setTimeout(async () => {
             this.fillTimeouts.delete(key);

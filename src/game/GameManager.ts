@@ -144,6 +144,8 @@ export class GameManager {
         }
     }
 
+    private sseThrottles: Map<string, { timer: NodeJS.Timeout | null; latestProducer: (() => any) | null }> = new Map();
+
     broadcastSSE(event: string, data: any) {
         if (this.sseClients.size === 0) return;
         const payload = `event: ${event}\ndata: ${JSON.stringify(data)}\n\n`;
@@ -157,6 +159,29 @@ export class GameManager {
         }
         for (const dead of toDelete) {
             this.sseClients.delete(dead);
+        }
+    }
+
+    broadcastSSEThrottled(event: string, dataProducer: () => any, minIntervalMs: number = 400) {
+        if (this.sseClients.size === 0) return;
+        let entry = this.sseThrottles.get(event);
+        if (!entry) {
+            entry = { timer: null, latestProducer: null };
+            this.sseThrottles.set(event, entry);
+        }
+        entry.latestProducer = dataProducer;
+        if (!entry.timer) {
+            this.broadcastSSE(event, dataProducer());
+            entry.timer = setTimeout(() => {
+                if (entry) {
+                    entry.timer = null;
+                    if (entry.latestProducer) {
+                        const data = entry.latestProducer();
+                        entry.latestProducer = null;
+                        this.broadcastSSE(event, data);
+                    }
+                }
+            }, minIntervalMs).unref();
         }
     }
 
@@ -434,6 +459,10 @@ export class GameManager {
         this.currentWinners = [];
         this.state = 'WAITING';
         this.gameId = '';
+        for (const entry of this.sseThrottles.values()) {
+            if (entry.timer) clearTimeout(entry.timer);
+        }
+        this.sseThrottles.clear();
         this.broadcastSSE('reset', { msg: 'Game reset to waiting lobby.' });
         return { success: true, msg: 'Game reset to waiting lobby.' };
     }

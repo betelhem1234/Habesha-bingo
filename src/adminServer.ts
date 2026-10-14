@@ -2432,7 +2432,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         const { fee = 10, room = 1, count = 5 } = req.body || {};
         const parsedFee = Number(fee) || 10;
         const parsedRoom = Number(room) || 1;
-        const parsedCount = Math.max(1, Math.min(30, Number(count) || 5));
+        const parsedCount = Math.max(1, Math.min(100, Number(count) || 5));
 
         const gm = gameRooms.getRoom(parsedFee, parsedRoom);
         if (gm.state !== 'WAITING') {

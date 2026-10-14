@@ -28,7 +28,7 @@ describe('Virtual Players (Bot System) Test Suite', () => {
     });
 
     test('Bot profile pool contains authentic Ethiopian identities with no generic names', () => {
-        assert.ok(ETHIOPIAN_BOT_PROFILES.length >= 30, 'Should have at least 30 authentic profiles');
+        assert.ok(ETHIOPIAN_BOT_PROFILES.length >= 200, 'Should have at least 200 authentic profiles');
         for (const profile of ETHIOPIAN_BOT_PROFILES) {
             assert.ok(profile.firstName && profile.firstName.length > 2, 'Profile must have a valid first name');
             assert.ok(profile.username && profile.username.length > 2, 'Profile must have a valid username');
@@ -38,7 +38,7 @@ describe('Virtual Players (Bot System) Test Suite', () => {
             assert.ok(!/\s+[A-Za-z]$/.test(profile.firstName), `First name "${profile.firstName}" must not contain trailing single-letter initial`);
         }
 
-        const femaleNames = new Set(['Selam', 'Bethlehem', 'Almaz']);
+        const femaleNames = new Set(['Selam', 'Bethlehem', 'Almaz', 'Hanan', 'Eden', 'Mahlet', 'Rahel']);
         const maleCount = ETHIOPIAN_BOT_PROFILES.filter(p => !femaleNames.has(p.firstName)).length;
         const ratio = maleCount / ETHIOPIAN_BOT_PROFILES.length;
         assert.ok(ratio >= 0.90, `Expected at least 90% male profiles, got ${(ratio * 100).toFixed(1)}%`);
@@ -64,10 +64,10 @@ describe('Virtual Players (Bot System) Test Suite', () => {
 
         const rapidUpdated = botService.updateSettings({
             joinPacing: 'rapid',
-            targetPlayers: 100
+            targetPlayers: 300
         });
         assert.equal(rapidUpdated.joinPacing, 'rapid');
-        assert.equal(rapidUpdated.targetPlayers, 100);
+        assert.equal(rapidUpdated.targetPlayers, 300);
     });
 
     test('Injecting bots into waiting lobby allocates valid boards and marks them taken', async () => {
