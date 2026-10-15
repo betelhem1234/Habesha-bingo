@@ -17,6 +17,10 @@ export class GameRooms {
         this.loadSettings();
         // Periodically release boards/fees left by players who abandoned the lobby.
         setInterval(() => this.sweepStalePlayers(), 5000).unref();
+        // Auto-seed active rooms for continuous rolling loop on startup (production only)
+        if (process.env.NODE_ENV !== 'test' && !process.env.NODE_TEST_CONTEXT) {
+            setTimeout(() => this.initContinuousRooms(), 1000).unref();
+        }
     }
 
     private loadSettings() {
@@ -64,6 +68,20 @@ export class GameRooms {
         }
     }
 
+    public initContinuousRooms() {
+        const botSettings = this.botService.getSettings();
+        const roomsToInit = (botSettings.enabledRooms && botSettings.enabledRooms.length > 0)
+            ? botSettings.enabledRooms
+            : [10, 20];
+
+        for (const fee of roomsToInit) {
+            const gm = this.getRoom(fee, 1);
+            if (gm.state === 'WAITING' && gm.players.length === 0 && !gm.lobbyInterval) {
+                gm.resetToLobby();
+            }
+        }
+    }
+
     getRoom(fee: number, room: number = 1): GameManager {
         let f = Number(fee);
         let r = Number(room);
@@ -71,7 +89,18 @@ export class GameRooms {
         if (isNaN(r) || r < 1) r = 1;
         const key = f * 1000 + r;
         if (!this.rooms.has(key)) {
-            this.rooms.set(key, new GameManager(this.bot, this.botService, f, r));
+            const gm = new GameManager(this.bot, this.botService, f, r);
+            this.rooms.set(key, gm);
+            if (process.env.NODE_ENV !== 'test' && !process.env.NODE_TEST_CONTEXT) {
+                const botSettings = this.botService.getSettings();
+                if (botSettings.enabled && botSettings.enabledRooms.includes(f)) {
+                    setTimeout(() => {
+                        if (gm.state === 'WAITING' && gm.players.length === 0 && !gm.lobbyInterval) {
+                            gm.resetToLobby();
+                        }
+                    }, 50).unref();
+                }
+            }
         }
         return this.rooms.get(key)!;
     }

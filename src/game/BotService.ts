@@ -304,7 +304,15 @@ export class BotService {
     }
 
     public updateSettings(partial: Partial<BotSettings>): BotSettings {
-        if (partial.enabled !== undefined) this.settings.enabled = !!partial.enabled;
+        if (partial.enabled !== undefined) {
+            this.settings.enabled = !!partial.enabled;
+            if (!this.settings.enabled) {
+                for (const t of this.fillTimeouts.values()) {
+                    clearTimeout(t);
+                }
+                this.fillTimeouts.clear();
+            }
+        }
         if (partial.targetPlayers !== undefined && partial.targetPlayers >= 2 && partial.targetPlayers <= 300) {
             this.settings.targetPlayers = Number(partial.targetPlayers);
         }
@@ -451,9 +459,37 @@ export class BotService {
     }
 
     /**
+     * Called whenever a room enters or resets its WAITING lobby.
+     * Pre-seeds 3 to 4 baseline bots immediately and schedules remaining bots across the countdown.
+     */
+    public async onLobbyOpened(gm: GameManager, fee: number, room: number) {
+        if (!this.settings.enabled) return;
+        if (!this.settings.enabledRooms.includes(fee)) return;
+        if (gm.state !== 'WAITING') return;
+
+        const key = this.getRoomKey(fee, room);
+        if (this.fillTimeouts.has(key)) {
+            clearTimeout(this.fillTimeouts.get(key)!);
+            this.fillTimeouts.delete(key);
+        }
+
+        // Pre-seed baseline bots (3–4 bots, or up to targetPlayers)
+        const seedTarget = Math.min(this.settings.targetPlayers, Math.floor(Math.random() * 2) + 3);
+        const currentBots = gm.players.filter(p => p.isBot).length;
+        const botsNeeded = Math.max(0, seedTarget - currentBots);
+
+        for (let i = 0; i < botsNeeded; i++) {
+            if (gm.state !== 'WAITING') break;
+            await this.addSingleBot(gm, fee);
+        }
+
+        // Schedule remaining bots to join across the countdown
+        this.onRoomUpdated(gm, fee, room);
+    }
+
+    /**
      * Called whenever player membership changes in a waiting room.
-     * If human players are in the room and total bots < targetPlayers,
-     * schedules bots to join gradually.
+     * Schedules remaining bots to join gradually across the 30s countdown.
      */
     public onRoomUpdated(gm: GameManager, fee: number, room: number) {
         const key = this.getRoomKey(fee, room);
@@ -466,12 +502,6 @@ export class BotService {
         if (!this.settings.enabled) return;
         if (!this.settings.enabledRooms.includes(fee)) return;
         if (gm.state !== 'WAITING') return;
-
-        const humans = gm.players.filter(p => !p.isBot);
-        // If room is completely empty (no humans and no bots), nothing to fill
-        if (humans.length === 0 && gm.players.length === 0) {
-            return;
-        }
 
         const botCount = gm.players.filter(p => p.isBot).length;
         if (botCount >= this.settings.targetPlayers) {
@@ -510,7 +540,7 @@ export class BotService {
                     this.onRoomUpdated(gm, fee, room);
                 }
             }
-        }, delay);
+        }, delay).unref();
 
         this.fillTimeouts.set(key, timer);
     }
@@ -532,6 +562,11 @@ export class BotService {
      * Remove all bots from a GameManager instance
      */
     public clearBots(gm: GameManager): number {
+        const key = this.getRoomKey(gm.fee, gm.room);
+        if (this.fillTimeouts.has(key)) {
+            clearTimeout(this.fillTimeouts.get(key)!);
+            this.fillTimeouts.delete(key);
+        }
         const initialCount = gm.players.length;
         gm.players = gm.players.filter(p => !p.isBot);
         const removed = initialCount - gm.players.length;

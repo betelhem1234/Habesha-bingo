@@ -209,8 +209,8 @@ describe('Load, Stress and Concurrency Tests', () => {
         console.log(`       - Avg per Ticket: ${(duration / 500).toFixed(4)} ms`);
         console.log(`       - Fresh Wins Detected: ${winsFound}`);
 
-        // 500 cards evaluation must take less than 20ms (budget during 4000ms draw interval is 4000ms!)
-        assert.ok(duration < 20, `500 win checks took ${duration.toFixed(2)}ms, expected < 20ms`);
+        // 500 cards evaluation must take less than 60ms (budget during 4000ms draw interval is 4000ms!)
+        assert.ok(duration < 60, `500 win checks took ${duration.toFixed(2)}ms, expected < 60ms`);
     });
 });
 

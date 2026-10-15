@@ -71,6 +71,7 @@ export class GameManager {
     // Auto-start Lobby Timer Variables
     public lobbyCountdown: number = 0;
     private lobbyInterval: NodeJS.Timeout | null = null;
+    private lobbyResetTimeout: NodeJS.Timeout | null = null;
     private userLocks: Map<string, Promise<any>> = new Map();
     public pendingReservations: Map<number, string> = new Map();
 
@@ -187,6 +188,10 @@ export class GameManager {
 
     async selectBoards(userId: bigint, boardNumbers: number[], feePerBoard: number = 10): Promise<{ success: boolean; msg: string; boards: number[] }> {
         return this.runWithUserLock(userId, async () => {
+            if (this.lobbyResetTimeout) {
+                clearTimeout(this.lobbyResetTimeout);
+                this.lobbyResetTimeout = null;
+            }
             if (this.state !== 'WAITING') {
                 return { success: false, msg: 'A game is already in progress. Please wait.', boards: [] };
             }
@@ -415,8 +420,9 @@ export class GameManager {
                     console.log(`[Game] Lobby auto-starting with ${this.players.length} active player(s) (${this.getTotalBoards()} boards)`);
                     await this.startGame();
                 } else {
-                    console.log('[Game] Not enough players to auto-start after stale player eviction.');
+                    console.log('[Game] No players in lobby. Recycling lobby countdown.');
                     this.state = 'WAITING';
+                    await this.resetToLobby();
                 }
             }
         }, 1000).unref(); // 1-second ticks for accurate 30-second countdown (unref'd to avoid hanging tests/shutdown)
@@ -444,11 +450,13 @@ export class GameManager {
         if (this.gameLoopTimeout) clearTimeout(this.gameLoopTimeout);
         if (this.lobbyInterval) clearInterval(this.lobbyInterval);
         if (this.resolutionTimeout) clearTimeout(this.resolutionTimeout);
+        if (this.lobbyResetTimeout) clearTimeout(this.lobbyResetTimeout);
         this.startTimeout = null;
         this.gameLoopInterval = null;
         this.gameLoopTimeout = null;
         this.lobbyInterval = null;
         this.resolutionTimeout = null;
+        this.lobbyResetTimeout = null;
         this.pendingWinners = [];
         this.pendingReservations.clear();
         this.lobbyCountdown = 0;
@@ -459,12 +467,68 @@ export class GameManager {
         this.currentWinners = [];
         this.state = 'WAITING';
         this.gameId = '';
+        this.botService?.onGameEnded(this.fee, this.room);
         for (const entry of this.sseThrottles.values()) {
             if (entry.timer) clearTimeout(entry.timer);
         }
         this.sseThrottles.clear();
         this.broadcastSSE('reset', { msg: 'Game reset to waiting lobby.' });
         return { success: true, msg: 'Game reset to waiting lobby.' };
+    }
+
+    public async resetToLobby() {
+        if (this.lobbyResetTimeout) {
+            clearTimeout(this.lobbyResetTimeout);
+            this.lobbyResetTimeout = null;
+        }
+        if (this.state === 'PLAYING') return;
+
+        console.log(`[Game] Resetting room (fee ${this.fee}, room ${this.room}) to WAITING lobby.`);
+        this.state = 'WAITING';
+        this.players = [];
+        this.pendingReservations.clear();
+        this.drawnNumbers.clear();
+        this.gameId = '';
+        if (this.gameLoopInterval) {
+            clearInterval(this.gameLoopInterval);
+            this.gameLoopInterval = null;
+        }
+        if (this.gameLoopTimeout) {
+            clearTimeout(this.gameLoopTimeout);
+            this.gameLoopTimeout = null;
+        }
+        if (this.startTimeout) {
+            clearTimeout(this.startTimeout);
+            this.startTimeout = null;
+        }
+        if (this.resolutionTimeout) {
+            clearTimeout(this.resolutionTimeout);
+            this.resolutionTimeout = null;
+        }
+        this.pendingWinners = [];
+
+        // Start 30s lobby countdown
+        this.startLobbyTimer();
+
+        // Seed baseline bots if bot service is enabled
+        if (this.botService) {
+            await this.botService.onLobbyOpened(this, this.fee, this.room);
+        }
+
+        // Broadcast updated state to all connected clients
+        this.broadcastSSE('lobby', {
+            lobbyCountdown: this.lobbyCountdown,
+            playerCount: this.players.length,
+            boardCount: this.getTotalBoards(),
+            pot: this.getPot(),
+            gameState: this.state
+        });
+        this.broadcastSSE('boards', {
+            boards: this.getBoards(),
+            players: this.players.length,
+            boardCount: this.getTotalBoards(),
+            pot: this.getPot()
+        });
     }
 
     // Explicitly leave the lobby before the game starts (fee is refunded).
@@ -1102,21 +1166,23 @@ export class GameManager {
         const organicPlayers = this.players.filter(p => !p.isBot);
         const organicPot = organicPlayers.reduce((sum, p) => sum + p.fee, 0);
 
-        try {
-            await prisma.houseIncome.create({
-                data: {
-                    gameType: 'bingo',
-                    playerCount: this.players.length,
-                    totalCollected: pot,
-                    winnerPayout: 0,
-                    houseProfit: organicPot,
-                    winnerId: null,
-                    winner2Id: null,
-                    winnerCount: 0
-                }
-            });
-        } catch (e) {
-            console.error('Failed to log HouseIncome for all-blocked game:', e);
+        if (organicPlayers.length > 0) {
+            try {
+                await prisma.houseIncome.create({
+                    data: {
+                        gameType: 'bingo',
+                        playerCount: this.players.length,
+                        totalCollected: pot,
+                        winnerPayout: 0,
+                        houseProfit: organicPot,
+                        winnerId: null,
+                        winner2Id: null,
+                        winnerCount: 0
+                    }
+                });
+            } catch (e) {
+                console.error('Failed to log HouseIncome for all-blocked game:', e);
+            }
         }
 
         this.currentWinners = [];
@@ -1163,6 +1229,17 @@ export class GameManager {
             this.lobbyInterval = null;
             this.lobbyCountdown = 0;
         }
+
+        if (this.lobbyResetTimeout) {
+            clearTimeout(this.lobbyResetTimeout);
+            this.lobbyResetTimeout = null;
+        }
+        this.lobbyResetTimeout = setTimeout(async () => {
+            this.lobbyResetTimeout = null;
+            if (this.state === 'WAITING' && this.players.length === 0) {
+                await this.resetToLobby();
+            }
+        }, 8000).unref();
     }
 
     private async endGame(winners: WinnerCandidate[] | null) {
@@ -1199,22 +1276,24 @@ export class GameManager {
             const totalActualPayout = humanWinners.length * payoutPerWinner;
             const actualProfit = organicCollected - totalActualPayout;
 
-            // Log house income
-            try {
-                await prisma.houseIncome.create({
-                    data: {
-                        gameType: 'bingo',
-                        playerCount: this.players.length,
-                        totalCollected: pot,
-                        winnerPayout: totalActualPayout,
-                        houseProfit: actualProfit,
-                        winnerId: winners[0] ? winners[0].player.userId : null,
-                        winner2Id: (winners.length > 1) ? winners[1].player.userId : null,
-                        winnerCount
-                    }
-                });
-            } catch (e) {
-                console.error('Failed to log HouseIncome:', e);
+            // Log house income (only if real players participated or received payout)
+            if (organicPlayers.length > 0 || totalActualPayout > 0) {
+                try {
+                    await prisma.houseIncome.create({
+                        data: {
+                            gameType: 'bingo',
+                            playerCount: this.players.length,
+                            totalCollected: pot,
+                            winnerPayout: totalActualPayout,
+                            houseProfit: actualProfit,
+                            winnerId: winners[0] ? winners[0].player.userId : null,
+                            winner2Id: (winners.length > 1) ? winners[1].player.userId : null,
+                            winnerCount
+                        }
+                    });
+                } catch (e) {
+                    console.error('Failed to log HouseIncome:', e);
+                }
             }
 
             // Credit winners (only real human players receive DB wallet credit)
@@ -1298,21 +1377,23 @@ export class GameManager {
             this.currentWinner = null;
             const organicPlayers = this.players.filter(p => !p.isBot);
             const organicCollected = organicPlayers.reduce((sum, p) => sum + p.fee, 0);
-            try {
-                await prisma.houseIncome.create({
-                    data: {
-                        gameType: 'bingo',
-                        playerCount: this.players.length,
-                        totalCollected: pot,
-                        winnerPayout: 0,
-                        houseProfit: organicCollected,
-                        winnerId: null,
-                        winner2Id: null,
-                        winnerCount: 0
-                    }
-                });
-            } catch (e) {
-                console.error('Failed to log HouseIncome for no-winner game:', e);
+            if (organicPlayers.length > 0) {
+                try {
+                    await prisma.houseIncome.create({
+                        data: {
+                            gameType: 'bingo',
+                            playerCount: this.players.length,
+                            totalCollected: pot,
+                            winnerPayout: 0,
+                            houseProfit: organicCollected,
+                            winnerId: null,
+                            winner2Id: null,
+                            winnerCount: 0
+                        }
+                    });
+                } catch (e) {
+                    console.error('Failed to log HouseIncome for no-winner game:', e);
+                }
             }
             for (const p of this.players) {
                 if (p.isBot) continue;
@@ -1351,5 +1432,16 @@ export class GameManager {
             this.lobbyInterval = null;
             this.lobbyCountdown = 0;
         }
+
+        if (this.lobbyResetTimeout) {
+            clearTimeout(this.lobbyResetTimeout);
+            this.lobbyResetTimeout = null;
+        }
+        this.lobbyResetTimeout = setTimeout(async () => {
+            this.lobbyResetTimeout = null;
+            if (this.state === 'WAITING' && this.players.length === 0) {
+                await this.resetToLobby();
+            }
+        }, 8000).unref();
     }
 }

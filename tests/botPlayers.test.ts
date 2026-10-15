@@ -478,4 +478,116 @@ describe('Virtual Players (Bot System) Test Suite', () => {
         const splitPayout = winnerCount > 0 ? Math.floor(totalWinnerPayout / winnerCount) : 0;
         assert.equal(splitPayout, 408, 'splitPayout must be 408 Birr, never 204 Birr');
     });
+
+    test('Continuous Game Loop: onLobbyOpened pre-seeds baseline bots and auto-starts 30s countdown', async () => {
+        assert.equal(gameManager.players.length, 0);
+        assert.equal(gameManager.lobbyCountdown, 0);
+
+        await botService.onLobbyOpened(gameManager, 10, 1);
+
+        // Pre-seeded 3–4 baseline bots
+        assert.ok(gameManager.players.length >= 3, `Expected at least 3 seed bots, got ${gameManager.players.length}`);
+        assert.ok(gameManager.players.every(p => p.isBot));
+        assert.equal(gameManager.lobbyCountdown, 30);
+        assert.ok((gameManager as any).lobbyInterval !== null);
+
+        // Boards taken
+        const boards = gameManager.getBoards();
+        assert.ok(boards.filter(b => b.taken).length >= 3);
+    });
+
+    test('Continuous Game Loop: resetToLobby resets state, restarts 30s countdown, and seeds bots', async () => {
+        // Put in fake ended match state
+        gameManager.drawnNumbers.add(10);
+        gameManager.drawnNumbers.add(25);
+        gameManager.state = 'WAITING';
+
+        await gameManager.resetToLobby();
+
+        assert.equal(gameManager.state, 'WAITING');
+        assert.equal(gameManager.drawnNumbers.size, 0);
+        assert.equal(gameManager.lobbyCountdown, 30);
+        assert.ok(gameManager.players.length >= 3, 'Should seed baseline bots');
+    });
+
+    test('Financial Hygiene: bot-only matches do NOT write zero-income rows to prisma.houseIncome', async () => {
+        const initialCount = await prisma.houseIncome.count();
+
+        const testStartTime = new Date();
+
+        // Add 2 bots only
+        await botService.injectBots(gameManager, 2, 10);
+        assert.equal(gameManager.players.filter(p => !p.isBot).length, 0);
+
+        gameManager.state = 'PLAYING';
+        gameManager.drawnNumbers = new Set([1, 2, 3, 4, 5]);
+
+        // Dawit bot wins
+        const botWinner = gameManager.players[0];
+        (gameManager as any).currentWinners = [];
+        await (gameManager as any).endGame([{
+            player: botWinner,
+            boardNumber: botWinner.cards![0].boardNumber,
+            ticket: botWinner.cards![0].ticket,
+            daubed: new Set([1, 2, 3, 4, 5]),
+            winningCells: [],
+            winningNumber: 5
+        }]);
+
+        const record = await prisma.houseIncome.findFirst({
+            where: {
+                winnerId: botWinner.userId,
+                createdAt: { gte: testStartTime }
+            }
+        });
+        assert.equal(record, null, 'Bot-only match must not insert zero-cash rows into HouseIncome');
+    });
+
+    test('Financial Hygiene: match with real player and bots DOES log real collected fee and profit to HouseIncome', async () => {
+        const testStartTime = new Date();
+
+        // 1 bot + 1 human
+        await botService.injectBots(gameManager, 1, 10);
+        const botPlayer = gameManager.players[0];
+
+        const humanUserId = 999111222n;
+        gameManager.players.push({
+            userId: humanUserId,
+            cards: [{
+                boardNumber: 444,
+                ticket: Array(5).fill(0).map(() => Array(5).fill(1)),
+                daubed: new Set([1, 2, 3, 4, 5])
+            }],
+            ticket: Array(5).fill(0).map(() => Array(5).fill(1)),
+            daubed: new Set([1, 2, 3, 4, 5]),
+            fee: 10,
+            lastSeen: Date.now(),
+            isBot: false,
+            firstName: 'RealPlayer'
+        });
+
+        gameManager.state = 'PLAYING';
+        gameManager.drawnNumbers = new Set([1, 2, 3, 4, 5]);
+
+        // Bot wins
+        await (gameManager as any).endGame([{
+            player: botPlayer,
+            boardNumber: botPlayer.cards![0].boardNumber,
+            ticket: botPlayer.cards![0].ticket,
+            daubed: new Set([1, 2, 3, 4, 5]),
+            winningCells: [],
+            winningNumber: 5
+        }]);
+
+        const record = await prisma.houseIncome.findFirst({
+            where: {
+                winnerId: botPlayer.userId,
+                createdAt: { gte: testStartTime }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+        assert.ok(record, 'Match with organic player must log a record with bot winnerId');
+        assert.equal(Number(record?.winnerPayout), 0);
+        assert.equal(Number(record?.houseProfit), 10, 'House profit must be 100% of human fee (10 Birr) when bot wins');
+    });
 });
