@@ -356,6 +356,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 lastName: u.lastName,
                 phone: u.phone,
                 balance: u.balance.toNumber(),
+                withdrawableBalance: u.withdrawableBalance ? u.withdrawableBalance.toNumber() : 0,
                 bonus: u.bonus.toNumber(),
                 banned: u.banned,
                 gamesPlayed: u.gamesPlayed,
@@ -376,11 +377,12 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     // Edit user (Protected)
     app.put('/api/admin/user/:userId', adminAuthMiddleware, async (req, res) => {
         const userId = BigInt(req.params.userId);
-        const { balance, bonus, phone, username, firstName, banned } = req.body;
+        const { balance, bonus, withdrawableBalance, phone, username, firstName, banned } = req.body;
         try {
             const data: any = {};
             if (balance !== undefined && !isNaN(Number(balance))) data.balance = Number(balance);
             if (bonus !== undefined && !isNaN(Number(bonus))) data.bonus = Number(bonus);
+            if (withdrawableBalance !== undefined && !isNaN(Number(withdrawableBalance))) data.withdrawableBalance = Number(withdrawableBalance);
             if (phone !== undefined) data.phone = phone ? String(phone).trim() : null;
             if (username !== undefined) data.username = username ? String(username).trim().replace(/^@+/, '') : null;
             if (firstName !== undefined) data.firstName = firstName ? String(firstName).trim() : null;
@@ -400,6 +402,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     lastName: updated.lastName,
                     phone: updated.phone,
                     balance: updated.balance.toNumber(),
+                    withdrawableBalance: updated.withdrawableBalance ? updated.withdrawableBalance.toNumber() : 0,
                     bonus: updated.bonus.toNumber(),
                     banned: updated.banned
                 }

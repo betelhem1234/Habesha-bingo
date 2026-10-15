@@ -417,7 +417,7 @@ async function fetchUsers(searchQuery = '') {
         if (!tbody) return;
 
         if (allUsers.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:24px;">No users found.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#94a3b8; padding:24px;">No users found.</td></tr>`;
             return;
         }
 
@@ -437,6 +437,7 @@ async function fetchUsers(searchQuery = '') {
                     <td>${usernameHtml}</td>
                     <td style="color:#e2e8f0; font-size:13px;">${escapeHtml(u.phone || '—')}</td>
                     <td><strong style="color:#4ade80;">${(u.balance ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
+                    <td><strong style="color:#38bdf8;">${(u.withdrawableBalance ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
                     <td><strong style="color:#fbbf24;">${(u.bonus ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
                     <td><span style="color:#94a3b8;">${u.gamesPlayed ?? 0}</span> / <strong style="color:#38bdf8;">${u.wins ?? 0}</strong></td>
                     <td>${statusHtml}</td>
@@ -1049,6 +1050,8 @@ function openEditUserModal(userId) {
     if (unEl) unEl.value = user.username || '';
 
     document.getElementById('edit-user-balance').value = user.balance ?? 0;
+    const withEl = document.getElementById('edit-user-withdrawable');
+    if (withEl) withEl.value = user.withdrawableBalance ?? 0;
     document.getElementById('edit-user-bonus').value = user.bonus ?? 0;
     document.getElementById('edit-user-phone').value = user.phone || '';
     document.getElementById('edit-user-banned').value = user.banned ? 'true' : 'false';
@@ -1074,6 +1077,8 @@ async function saveUserEdit(e) {
     const username = rawUsername || null;
 
     const balance = parseFloat(document.getElementById('edit-user-balance').value);
+    const withEl = document.getElementById('edit-user-withdrawable');
+    const withdrawableBalance = withEl ? parseFloat(withEl.value) : 0;
     const bonus = parseFloat(document.getElementById('edit-user-bonus').value);
     const phone = document.getElementById('edit-user-phone').value.trim();
     const banned = document.getElementById('edit-user-banned').value === 'true';
@@ -1082,7 +1087,7 @@ async function saveUserEdit(e) {
         const res = await authFetch(`/api/admin/user/${userId}`, {
             method: 'PUT',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ balance, bonus, phone, username, firstName, banned })
+            body: JSON.stringify({ balance, bonus, withdrawableBalance, phone, username, firstName, banned })
         });
         const data = await res.json();
 

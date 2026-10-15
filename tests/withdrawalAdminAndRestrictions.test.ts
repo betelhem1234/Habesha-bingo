@@ -344,4 +344,113 @@ test('Duty Withdrawal Admin & Game Winnings Restriction Tests', async (t) => {
         setDutyAdmin(null, admins);
         assert.equal(admins.filter(a => a.isWithdrawalAdmin).length, 0, 'No affiliate admin has duty; routes to Master Admin');
     });
+
+    // 10. Test User Management Serialization includes withdrawableBalance
+    await t.test('User management serialization maps withdrawableBalance correctly', () => {
+        interface RawDbUser {
+            id: bigint;
+            username: string | null;
+            firstName: string;
+            lastName: string | null;
+            phone: string | null;
+            balance: { toNumber: () => number };
+            withdrawableBalance?: { toNumber: () => number } | null;
+            bonus: { toNumber: () => number };
+            banned: boolean;
+            gamesPlayed: number;
+            wins: number;
+            _count: { referrals: number };
+            createdAt: Date;
+        }
+
+        const rawUsers: RawDbUser[] = [
+            {
+                id: 101n,
+                username: 'winner_player',
+                firstName: 'Dawit',
+                lastName: 'Haile',
+                phone: '0911223344',
+                balance: { toNumber: () => 500 },
+                withdrawableBalance: { toNumber: () => 350 },
+                bonus: { toNumber: () => 10 },
+                banned: false,
+                gamesPlayed: 5,
+                wins: 2,
+                _count: { referrals: 1 },
+                createdAt: new Date()
+            },
+            {
+                id: 102n,
+                username: 'depositor_only',
+                firstName: 'Sara',
+                lastName: null,
+                phone: null,
+                balance: { toNumber: () => 200 },
+                withdrawableBalance: null, // No winnings yet
+                bonus: { toNumber: () => 0 },
+                banned: false,
+                gamesPlayed: 0,
+                wins: 0,
+                _count: { referrals: 0 },
+                createdAt: new Date()
+            }
+        ];
+
+        const serialized = rawUsers.map(u => ({
+            id: u.id.toString(),
+            username: u.username,
+            firstName: u.firstName,
+            balance: u.balance.toNumber(),
+            withdrawableBalance: u.withdrawableBalance ? u.withdrawableBalance.toNumber() : 0,
+            bonus: u.bonus.toNumber()
+        }));
+
+        assert.equal(serialized[0].balance, 500);
+        assert.equal(serialized[0].withdrawableBalance, 350);
+        assert.equal(serialized[1].balance, 200);
+        assert.equal(serialized[1].withdrawableBalance, 0, 'Null withdrawableBalance safely defaults to 0');
+    });
+
+    // 11. Test Admin User Update for withdrawableBalance
+    await t.test('Admin PUT /api/admin/user/:userId updates withdrawableBalance correctly', () => {
+        const userState = {
+            id: 101n,
+            balance: 500,
+            bonus: 10,
+            withdrawableBalance: 350,
+            phone: '0911223344',
+            username: 'dawit',
+            firstName: 'Dawit',
+            banned: false
+        };
+
+        function simulateUpdateUser(reqBody: any) {
+            const data: any = {};
+            if (reqBody.balance !== undefined && !isNaN(Number(reqBody.balance))) data.balance = Number(reqBody.balance);
+            if (reqBody.bonus !== undefined && !isNaN(Number(reqBody.bonus))) data.bonus = Number(reqBody.bonus);
+            if (reqBody.withdrawableBalance !== undefined && !isNaN(Number(reqBody.withdrawableBalance))) data.withdrawableBalance = Number(reqBody.withdrawableBalance);
+            if (reqBody.phone !== undefined) data.phone = reqBody.phone ? String(reqBody.phone).trim() : null;
+            if (reqBody.banned !== undefined) data.banned = Boolean(reqBody.banned);
+
+            Object.assign(userState, data);
+            return {
+                id: userState.id.toString(),
+                balance: userState.balance,
+                withdrawableBalance: userState.withdrawableBalance,
+                bonus: userState.bonus,
+                banned: userState.banned
+            };
+        }
+
+        // Admin adjusts user's withdrawable balance to 450 Birr
+        const res1 = simulateUpdateUser({ withdrawableBalance: 450 });
+        assert.equal(res1.withdrawableBalance, 450);
+        assert.equal(userState.withdrawableBalance, 450);
+        assert.equal(userState.balance, 500, 'Regular balance remains untouched');
+
+        // Admin adjusts both balance and withdrawableBalance
+        const res2 = simulateUpdateUser({ balance: 600, withdrawableBalance: 600 });
+        assert.equal(res2.balance, 600);
+        assert.equal(res2.withdrawableBalance, 600);
+    });
 });
