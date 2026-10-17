@@ -792,6 +792,19 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                         }
                     }
                 }
+                if (!assignedAdminId) {
+                    const activeAdm = await prisma.adminProfile.findFirst({
+                        where: { isActive: true },
+                        orderBy: { id: 'asc' }
+                    });
+                    if (activeAdm) {
+                        assignedAdminId = activeAdm.id;
+                        await prisma.user.update({
+                            where: { id: BigInt(userId) },
+                            data: { assignedAdminId: activeAdm.id }
+                        }).catch(() => {});
+                    }
+                }
 
                 const request = await prisma.transactionRequest.create({
                     data: {
@@ -903,12 +916,31 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 } catch (err) {}
             }
 
+            // If user has no assigned admin (or userId was omitted/unassigned), fallback to active affiliate admin
+            if (!assignedAdminId) {
+                try {
+                    const activeAdmin = await prisma.adminProfile.findFirst({
+                        where: { isActive: true },
+                        orderBy: { id: 'asc' }
+                    });
+                    if (activeAdmin) {
+                        assignedAdminId = activeAdmin.id;
+                        if (userIdParam) {
+                            await prisma.user.update({
+                                where: { id: BigInt(userIdParam) },
+                                data: { assignedAdminId: activeAdmin.id }
+                            }).catch(() => {});
+                        }
+                    }
+                } catch (err) {}
+            }
+
             let accounts: any[] = [];
             if (assignedAdminId) {
                 const adminProf = await prisma.adminProfile.findUnique({
                     where: { id: assignedAdminId }
                 });
-                // If assigned admin is ACTIVE, show their active payment accounts
+                // If assigned admin is ACTIVE, show strictly their active payment accounts
                 if (adminProf && adminProf.isActive) {
                     accounts = await prisma.paymentAccount.findMany({
                         where: { isActive: true, adminId: assignedAdminId },
@@ -917,17 +949,16 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 }
             }
 
-            // Fallback: If player's assigned admin is inactive, has no active accounts, or player has no admin assigned,
-            // fallback STRICTLY to Super Admin accounts (adminId: null)
-            if (accounts.length === 0) {
+            // Only fallback to Super Admin accounts (adminId: null) if there is truly NO assigned admin
+            if (accounts.length === 0 && !assignedAdminId) {
                 accounts = await prisma.paymentAccount.findMany({
                     where: { isActive: true, adminId: null },
                     orderBy: { createdAt: 'asc' }
                 });
             }
 
-            // Fallback safety: If Super Admin has no unassigned (adminId: null) accounts configured yet, show any active accounts
-            if (accounts.length === 0) {
+            // Fallback safety: If Super Admin has no unassigned (adminId: null) accounts configured yet and NO assigned admin exists
+            if (accounts.length === 0 && !assignedAdminId) {
                 accounts = await prisma.paymentAccount.findMany({
                     where: { isActive: true },
                     orderBy: { createdAt: 'asc' }

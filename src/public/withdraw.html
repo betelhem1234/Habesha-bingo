@@ -169,7 +169,7 @@
     <script>
         if (window.Telegram?.WebApp) { Telegram.WebApp.ready(); Telegram.WebApp.expand(); }
         const params = new URLSearchParams(window.location.search);
-        const userId = params.get('userId');
+        const userId = params.get('userId') || window.Telegram?.WebApp?.initDataUnsafe?.user?.id || null;
         const API_BASE = window.location.origin + '/api';
 
         let maxWithdrawable = 0;
@@ -186,7 +186,8 @@
         async function loadBanks() {
             const wrap = document.getElementById('bank-wrap');
             try {
-                const res = await fetch(`${API_BASE}/banks`);
+                const url = userId ? `${API_BASE}/banks?userId=${encodeURIComponent(userId)}` : `${API_BASE}/banks`;
+                const res = await fetch(url);
                 accounts = await res.json();
             } catch (e) { accounts = []; }
             if (!accounts.length) {

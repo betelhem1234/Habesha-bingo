@@ -174,7 +174,7 @@
     <script>
         if (window.Telegram?.WebApp) { Telegram.WebApp.ready(); Telegram.WebApp.expand(); }
         const params = new URLSearchParams(window.location.search);
-        const userId = params.get('userId');
+        const userId = params.get('userId') || window.Telegram?.WebApp?.initDataUnsafe?.user?.id || null;
         const API_BASE = window.location.origin + '/api';
 
         function setAmount(v) { document.getElementById('amount').value = v; }

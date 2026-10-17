@@ -157,7 +157,17 @@ async function sendMainMenu(ctx: Context, user: { id: bigint; phone?: string | n
         .text('📖 Instructions', 'menu_instructions').row()
         .text('✍️ Feedback', 'menu_feedback');
 
-    if (userId.toString() === config.ADMIN_USER_ID) {
+    const isSuperAdmin = userId.toString() === config.ADMIN_USER_ID;
+    let affiliateAdmin: any = null;
+    if (!isSuperAdmin) {
+        try {
+            affiliateAdmin = await prisma.adminProfile.findUnique({
+                where: { userId: BigInt(userId) }
+            });
+        } catch (e) {}
+    }
+
+    if (isSuperAdmin) {
         const v = gameRooms.getCallerVoice();
         const vLabel = v === 'female' ? '👩 Voice: Female' : '👨 Voice: Male';
         kb.row()
@@ -168,6 +178,8 @@ async function sendMainMenu(ctx: Context, user: { id: bigint; phone?: string | n
             .text('▶️ Start', 'menu_admin_start')
             .text('⏹ Stop', 'menu_admin_stop').row()
             .text(`🎙️ ${vLabel}`, 'menu_admin_voice');
+    } else if (affiliateAdmin && affiliateAdmin.isActive) {
+        kb.row().text('📋 My Requests', 'menu_admin_requests');
     }
 
     try {
@@ -234,20 +246,41 @@ bot.command('start', async (ctx: Context) => {
     const refParam = rawMatch.replace(/^ref_?/, '');
     if (/^\d+$/.test(refParam)) {
         refId = BigInt(refParam);
-        // Inherit the inviter's assigned administrator
         if (!assignedAdminId) {
             try {
-                const inviter = await prisma.user.findUnique({
-                    where: { id: refId },
-                    select: { assignedAdminId: true }
+                // Check if the inviter is an affiliate administrator (e.g. admin shared start=USER_ID from profile)
+                const adminByUserId = await prisma.adminProfile.findUnique({
+                    where: { userId: refId }
                 });
-                if (inviter && inviter.assignedAdminId) {
-                    assignedAdminId = inviter.assignedAdminId;
+                if (adminByUserId && adminByUserId.isActive) {
+                    assignedAdminId = adminByUserId.id;
+                } else {
+                    // Inherit the inviter's assigned administrator
+                    const inviter = await prisma.user.findUnique({
+                        where: { id: refId },
+                        select: { assignedAdminId: true }
+                    });
+                    if (inviter && inviter.assignedAdminId) {
+                        assignedAdminId = inviter.assignedAdminId;
+                    }
                 }
             } catch (e) {}
         }
     }
-    // 3. Fallback: Unassigned users remain assignedAdminId = null (belonging strictly to Super Admin)
+
+    // 3. Fallback: If player joined with no parameter (direct @PlayMyBingoBot) or inviter was unassigned,
+    // auto-assign to the active affiliate admin so direct players belong to the active game admin!
+    if (!assignedAdminId) {
+        try {
+            const activeAdmin = await prisma.adminProfile.findFirst({
+                where: { isActive: true },
+                orderBy: { id: 'asc' }
+            });
+            if (activeAdmin) {
+                assignedAdminId = activeAdmin.id;
+            }
+        } catch (e) {}
+    }
 
     // Check if user exists
     let user = await prisma.user.findUnique({ where: { id: BigInt(ctx.from.id) } });
@@ -342,7 +375,17 @@ bot.callbackQuery(/^lang_(en|am|om)$/, async (ctx) => {
         }
     } catch(e) {}
 
-    if (ctx.from.id.toString() === config.ADMIN_USER_ID) {
+    const isSuperAdmin = ctx.from.id.toString() === config.ADMIN_USER_ID;
+    let affiliateAdmin: any = null;
+    if (!isSuperAdmin) {
+        try {
+            affiliateAdmin = await prisma.adminProfile.findUnique({
+                where: { userId: BigInt(ctx.from.id) }
+            });
+        } catch (e) {}
+    }
+
+    if (isSuperAdmin) {
         const v = gameRooms.getCallerVoice();
         const vLabel = v === 'female' ? '👩 Voice: Female' : '👨 Voice: Male';
         kb.row()
@@ -351,6 +394,8 @@ bot.callbackQuery(/^lang_(en|am|om)$/, async (ctx) => {
             .text('🏦 Banks', 'menu_admin_banks')
             .text('📣 Broadcast', 'menu_admin_broadcast').row()
             .text(`🎙️ ${vLabel}`, 'menu_admin_voice');
+    } else if (affiliateAdmin && affiliateAdmin.isActive) {
+        kb.row().text('📋 My Requests', 'menu_admin_requests');
     }
 
     await ctx.replyWithPhoto(getBannerPhoto(), {
@@ -364,7 +409,15 @@ bot.callbackQuery(/^lang_(en|am|om)$/, async (ctx) => {
 
 
 bot.callbackQuery('menu_admin_requests', async (ctx) => {
-    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+    if (!ctx.from) return;
+    const isSuper = ctx.from.id.toString() === config.ADMIN_USER_ID;
+    let affAdmin: any = null;
+    if (!isSuper) {
+        affAdmin = await prisma.adminProfile.findUnique({
+            where: { userId: BigInt(ctx.from.id) }
+        });
+    }
+    if (!isSuper && (!affAdmin || !affAdmin.isActive)) {
         return ctx.answerCallbackQuery({ text: '⛔ Admin only.', show_alert: true });
     }
     await ctx.answerCallbackQuery();
@@ -905,16 +958,34 @@ bot.callbackQuery('menu_deposit', async (ctx) => {
         select: { assignedAdminId: true }
     });
 
-    if (dbUser?.assignedAdminId) {
+    let assignedAdminId = dbUser?.assignedAdminId;
+    if (!assignedAdminId) {
+        try {
+            const activeAdmin = await prisma.adminProfile.findFirst({
+                where: { isActive: true },
+                orderBy: { id: 'asc' }
+            });
+            if (activeAdmin) {
+                assignedAdminId = activeAdmin.id;
+                await prisma.user.update({
+                    where: { id: BigInt(ctx.from.id) },
+                    data: { assignedAdminId: activeAdmin.id }
+                }).catch(() => {});
+            }
+        } catch (e) {}
+    }
+
+    if (assignedAdminId) {
         accounts = await prisma.paymentAccount.findMany({
-            where: { isActive: true, adminId: dbUser.assignedAdminId },
+            where: { isActive: true, adminId: assignedAdminId },
             orderBy: { createdAt: 'asc' }
         });
     }
 
-    if (accounts.length === 0) {
+    // Only fallback to Super Admin accounts (adminId: null) if there is truly NO assigned admin
+    if (accounts.length === 0 && !assignedAdminId) {
         accounts = await prisma.paymentAccount.findMany({
-            where: { isActive: true },
+            where: { isActive: true, adminId: null },
             orderBy: { createdAt: 'asc' }
         });
     }
@@ -1229,8 +1300,45 @@ bot.command('income', async (ctx) => {
     }
 });
 
+async function getRequestsWhereClause(callerId: bigint | number | string) {
+    const isSuperAdmin = callerId.toString() === config.ADMIN_USER_ID;
+    if (isSuperAdmin) {
+        return { status: 'PENDING' };
+    }
+    try {
+        const affiliateAdmin = await prisma.adminProfile.findUnique({
+            where: { userId: BigInt(callerId) }
+        });
+        if (!affiliateAdmin || !affiliateAdmin.isActive) {
+            return null;
+        }
+        if (affiliateAdmin.isWithdrawalAdmin) {
+            return {
+                status: 'PENDING',
+                OR: [
+                    { type: 'withdraw' },
+                    { type: 'deposit', assignedAdminId: affiliateAdmin.id },
+                    { type: 'deposit', account: { adminId: affiliateAdmin.id } }
+                ]
+            };
+        }
+        return {
+            status: 'PENDING',
+            type: 'deposit',
+            OR: [
+                { assignedAdminId: affiliateAdmin.id },
+                { account: { adminId: affiliateAdmin.id } }
+            ]
+        };
+    } catch (e) {
+        return null;
+    }
+}
+
 bot.command('requests', async (ctx) => {
-    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+    if (!ctx.from) return;
+    const whereClause = await getRequestsWhereClause(ctx.from.id);
+    if (!whereClause) {
         return ctx.reply("⛔ This command is admin-only.");
     }
     await ctx.reply("Loading requests...");
@@ -1238,17 +1346,25 @@ bot.command('requests', async (ctx) => {
 });
 
 async function sendRequests(ctx: any, offset: number) {
+    const callerId = ctx.from?.id;
+    if (!callerId) return;
+
+    const whereClause = await getRequestsWhereClause(callerId);
+    if (!whereClause) {
+        return ctx.reply("⛔ This command is admin-only.");
+    }
+
     const PAGE = 10;
     try {
         const [requests, total] = await Promise.all([
             prisma.transactionRequest.findMany({
-                where: { status: 'PENDING' },
+                where: whereClause,
                 orderBy: { createdAt: 'asc' },
                 skip: offset,
                 take: PAGE,
                 include: { user: { select: { firstName: true, username: true } } }
             }),
-            prisma.transactionRequest.count({ where: { status: 'PENDING' } })
+            prisma.transactionRequest.count({ where: whereClause })
         ]);
 
         if (requests.length === 0) {
@@ -1303,20 +1419,22 @@ bot.callbackQuery(/^req_none$/, async (ctx) => {
 });
 
 bot.callbackQuery(/^req_page_(\d+)$/, async (ctx) => {
-    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+    if (!ctx.from) return;
+    const whereClause = await getRequestsWhereClause(ctx.from.id);
+    if (!whereClause) {
         return ctx.answerCallbackQuery({ text: "⛔ Admin only.", show_alert: true });
     }
     const offset = parseInt(ctx.match[1], 10);
     try {
         const [requests, total] = await Promise.all([
             prisma.transactionRequest.findMany({
-                where: { status: 'PENDING' },
+                where: whereClause,
                 orderBy: { createdAt: 'asc' },
                 skip: offset,
                 take: 10,
                 include: { user: { select: { firstName: true, username: true } } }
             }),
-            prisma.transactionRequest.count({ where: { status: 'PENDING' } })
+            prisma.transactionRequest.count({ where: whereClause })
         ]);
         if (requests.length === 0) return ctx.answerCallbackQuery({ text: 'No more requests.', show_alert: true });
 

@@ -47,6 +47,13 @@ export async function initDbSchema() {
                 COALESCE((SELECT SUM(amount) FROM "TransactionRequest" WHERE "TransactionRequest"."userId" = "User"."id" AND "type" = 'withdraw' AND "status" = 'APPROVED'), 0)
             )))
             WHERE "withdrawableBalance" = 0 AND "balance" > 0;
+
+            -- Backfill assignedAdminId for unassigned players when an active affiliate admin exists
+            UPDATE "User"
+            SET "assignedAdminId" = (SELECT id FROM "AdminProfile" WHERE "isActive" = true ORDER BY id ASC LIMIT 1)
+            WHERE "assignedAdminId" IS NULL
+              AND id NOT IN (SELECT "userId" FROM "AdminProfile")
+              AND EXISTS (SELECT 1 FROM "AdminProfile" WHERE "isActive" = true);
         `);
         console.log('[DB] AdminProfile, lineage, and withdrawable balance schema verified successfully.');
     } catch (e: any) {

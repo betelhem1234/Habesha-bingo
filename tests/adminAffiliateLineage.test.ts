@@ -10,6 +10,7 @@ test('Admin Affiliate Lineage & Multi-Bank Routing System Tests', async (t) => {
         customName?: string | null;
         isActive: boolean;
         assignedCount: number;
+        isWithdrawalAdmin?: boolean;
     }
 
     interface MockPaymentAccount {
@@ -52,16 +53,21 @@ test('Admin Affiliate Lineage & Multi-Bank Routing System Tests', async (t) => {
             }
         }
 
-        // 2. Check if player referral
+        // 2. Check if player or admin referral (e.g. admin shared start=USER_ID from profile)
         const refParam = raw.replace(/^ref_?/, '');
         if (/^\d+$/.test(refParam)) {
             refId = BigInt(refParam);
-            if (!assignedAdminId && inviterUser?.assignedAdminId) {
-                assignedAdminId = inviterUser.assignedAdminId;
+            if (!assignedAdminId) {
+                const adminByUserId = activeAdmins.find(a => a.userId === refId && a.isActive);
+                if (adminByUserId) {
+                    assignedAdminId = adminByUserId.id;
+                } else if (inviterUser?.assignedAdminId) {
+                    assignedAdminId = inviterUser.assignedAdminId;
+                }
             }
         }
 
-        // 3. Fallback: organic auto-balance
+        // 3. Fallback: organic auto-balance / active affiliate admin assignment
         if (!assignedAdminId && activeAdmins.length > 0) {
             const sorted = [...activeAdmins.filter(a => a.isActive)].sort((a, b) => a.assignedCount - b.assignedCount);
             if (sorted.length > 0) {
@@ -72,18 +78,49 @@ test('Admin Affiliate Lineage & Multi-Bank Routing System Tests', async (t) => {
         return { assignedAdminId, refId };
     }
 
-    // Helper: simulate deposit accounts filter
+    // Helper: simulate deposit accounts filter (strict isolation)
     function filterDepositAccounts(
         playerAssignedAdminId: number | null,
         allAccounts: MockPaymentAccount[]
     ): MockPaymentAccount[] {
         const active = allAccounts.filter(a => a.isActive);
         if (playerAssignedAdminId) {
-            const adminAccounts = active.filter(a => a.adminId === playerAssignedAdminId);
-            if (adminAccounts.length > 0) return adminAccounts;
+            // Strictly return assigned admin accounts, NEVER fallback to Super Admin accounts!
+            return active.filter(a => a.adminId === playerAssignedAdminId);
         }
-        // Fallback to active pool accounts
-        return active;
+        // Only return Super Admin accounts (adminId: null) if player is unassigned
+        return active.filter(a => a.adminId === null);
+    }
+
+    // Helper: simulate requests scoping by role
+    function getRequestsWhereClause(
+        callerTelegramId: bigint,
+        masterAdminId: string,
+        admins: MockAdminProfile[]
+    ) {
+        if (callerTelegramId.toString() === masterAdminId) {
+            return { status: 'PENDING' };
+        }
+        const affiliate = admins.find(a => a.userId === callerTelegramId && a.isActive);
+        if (!affiliate) return null;
+        if (affiliate.isWithdrawalAdmin) {
+            return {
+                status: 'PENDING',
+                OR: [
+                    { type: 'withdraw' },
+                    { type: 'deposit', assignedAdminId: affiliate.id },
+                    { type: 'deposit', account: { adminId: affiliate.id } }
+                ]
+            };
+        }
+        return {
+            status: 'PENDING',
+            type: 'deposit',
+            OR: [
+                { assignedAdminId: affiliate.id },
+                { account: { adminId: affiliate.id } }
+            ]
+        };
     }
 
     // Helper: simulate 1-click callback auth
@@ -118,6 +155,17 @@ test('Admin Affiliate Lineage & Multi-Bank Routing System Tests', async (t) => {
         assert.equal(resolveLineageOnStart('adm_branch_addis', null, admins).assignedAdminId, 3);
     });
 
+    await t.test('admin sharing profile referral link (start=USER_ID) assigns player to that admin', () => {
+        const admins: MockAdminProfile[] = [
+            { id: 1, userId: 1783441823n, code: 'adm_tinshu', isActive: true, assignedCount: 15 }
+        ];
+
+        // Admin Tinshu Bro shares their profile link (start=1783441823)
+        const result = resolveLineageOnStart('1783441823', null, admins);
+        assert.equal(result.refId, 1783441823n);
+        assert.equal(result.assignedAdminId, 1, 'Player must be assigned to Admin #1 (Tinshu Bro)');
+    });
+
     await t.test('downline player referral inherits inviter assigned admin', () => {
         const admins: MockAdminProfile[] = [
             { id: 10, userId: 5555n, code: 'adm_leader', isActive: true, assignedCount: 100 }
@@ -148,34 +196,61 @@ test('Admin Affiliate Lineage & Multi-Bank Routing System Tests', async (t) => {
         assert.equal(result.refId, null);
     });
 
-    await t.test('deposit page displays only the assigned admin multi-bank accounts', () => {
+    await t.test('deposit page displays strictly assigned admin account and NEVER leaks super admin account', () => {
         const accounts: MockPaymentAccount[] = [
-            { id: 1, bankName: 'Telebirr', accountNumber: '0911000001', isActive: true, adminId: 1 },
-            { id: 2, bankName: 'CBE', accountNumber: '100011111111', isActive: true, adminId: 1 },
-            { id: 3, bankName: 'Awash', accountNumber: '013200000000', isActive: true, adminId: 2 },
-            { id: 4, bankName: 'Telebirr', accountNumber: '0922000002', isActive: true, adminId: 2 }
+            { id: 2, bankName: 'Telebirr', accountNumber: '0962857834', accountName: 'Betelhem Lemma', isActive: true, adminId: null }, // Super Admin
+            { id: 3, bankName: 'Telebirr', accountNumber: '0923526309', accountName: 'Abrham', isActive: true, adminId: 1 } // Admin Tinshu Bro
         ];
 
-        // Player assigned to Admin #1 (Abebe)
+        // Player assigned to Admin #1 (Tinshu Bro)
         const admin1Banks = filterDepositAccounts(1, accounts);
-        assert.equal(admin1Banks.length, 2);
-        assert.deepEqual(admin1Banks.map(b => b.id), [1, 2], 'Admin 1 players see Telebirr & CBE belonging to Admin 1');
+        assert.equal(admin1Banks.length, 1);
+        assert.equal(admin1Banks[0].id, 3, 'Must be Account #3 (Abrham)');
+        assert.equal(admin1Banks[0].accountNumber, '0923526309');
+        assert.ok(!admin1Banks.some(a => a.id === 2), 'Super Admin account (Betelhem Lemma) must NEVER be in Admin 1 bank list');
 
-        // Player assigned to Admin #2
-        const admin2Banks = filterDepositAccounts(2, accounts);
-        assert.equal(admin2Banks.length, 2);
-        assert.deepEqual(admin2Banks.map(b => b.id), [3, 4], 'Admin 2 players see Awash & Telebirr belonging to Admin 2');
+        // Unassigned player fallback (no active affiliate admin)
+        const unassignedBanks = filterDepositAccounts(null, accounts);
+        assert.equal(unassignedBanks.length, 1);
+        assert.equal(unassignedBanks[0].id, 2, 'Unassigned player sees Super Admin account');
     });
 
-    await t.test('fallback ensures deposits are never blocked if assigned admin has no accounts configured', () => {
-        const accounts: MockPaymentAccount[] = [
-            { id: 1, bankName: 'Telebirr', accountNumber: '0900000000', isActive: true, adminId: null },
-            { id: 2, bankName: 'CBE', accountNumber: '1000000000', isActive: true, adminId: null }
+    await t.test('requests query scoping separates super admin, duty withdrawal admin, and ordinary affiliate admin', () => {
+        const masterAdminId = '999999999';
+        const admins: MockAdminProfile[] = [
+            { id: 1, userId: 1783441823n, code: 'adm_tinshu', isActive: true, assignedCount: 10, isWithdrawalAdmin: false },
+            { id: 2, userId: 2222222222n, code: 'adm_duty', isActive: true, assignedCount: 5, isWithdrawalAdmin: true }
         ];
 
-        // Admin #3 has no accounts assigned yet
-        const banksForAdmin3 = filterDepositAccounts(3, accounts);
-        assert.equal(banksForAdmin3.length, 2, 'Must fallback to general pool accounts so player is not blocked');
+        // 1. Super Admin
+        const superQuery = getRequestsWhereClause(999999999n, masterAdminId, admins);
+        assert.deepEqual(superQuery, { status: 'PENDING' });
+
+        // 2. Ordinary Affiliate Admin (Tinshu Bro)
+        const affQuery = getRequestsWhereClause(1783441823n, masterAdminId, admins);
+        assert.deepEqual(affQuery, {
+            status: 'PENDING',
+            type: 'deposit',
+            OR: [
+                { assignedAdminId: 1 },
+                { account: { adminId: 1 } }
+            ]
+        });
+
+        // 3. Duty Withdrawal Admin
+        const dutyQuery = getRequestsWhereClause(2222222222n, masterAdminId, admins);
+        assert.deepEqual(dutyQuery, {
+            status: 'PENDING',
+            OR: [
+                { type: 'withdraw' },
+                { type: 'deposit', assignedAdminId: 2 },
+                { type: 'deposit', account: { adminId: 2 } }
+            ]
+        });
+
+        // 4. Regular player (forbidden)
+        const playerQuery = getRequestsWhereClause(1234567890n, masterAdminId, admins);
+        assert.equal(playerQuery, null);
     });
 
     await t.test('telegram 1-click button authorization allows assigned admin and master admin, blocks unauthorized users', () => {
