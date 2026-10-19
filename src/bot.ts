@@ -1462,6 +1462,65 @@ bot.callbackQuery(/^req_page_(\d+)$/, async (ctx) => {
     }
 });
 
+export async function syncTelegramRequestNotification(
+    requestId: number,
+    newStatus: 'APPROVED' | 'REJECTED',
+    actorName: string,
+    excludeChatId?: number
+) {
+    try {
+        const req = await prisma.transactionRequest.findUnique({
+            where: { id: requestId },
+            select: { tgNotifications: true, type: true, amount: true }
+        });
+        if (!req || !req.tgNotifications) return;
+
+        let notifications: Array<{ c: number; m: number; p: number; t?: string }> = [];
+        try {
+            notifications = JSON.parse(req.tgNotifications);
+        } catch {
+            return;
+        }
+
+        const isApproved = newStatus === 'APPROVED';
+        const icon = isApproved ? '✅' : '❌';
+        const statusLabel = isApproved ? 'Approved' : 'Rejected';
+
+        for (const notif of notifications) {
+            if (excludeChatId && notif.c === excludeChatId) continue;
+            try {
+                const baseText = notif.t
+                    ? stripHtml(notif.t)
+                    : `New ${req.type.toUpperCase()} request #${requestId} (${req.amount.toNumber()} Birr)`;
+                const newContent = `${icon} <s>${escapeHtmlBot(baseText)}</s>\n\n<b>${statusLabel} by ${escapeHtmlBot(actorName)}</b>`;
+
+                if (notif.p) {
+                    await bot.api.editMessageCaption(notif.c, notif.m, {
+                        caption: newContent,
+                        parse_mode: 'HTML',
+                        reply_markup: undefined
+                    });
+                } else {
+                    await bot.api.editMessageText(notif.c, notif.m, newContent, {
+                        parse_mode: 'HTML',
+                        reply_markup: undefined
+                    });
+                }
+            } catch (err: any) {
+                // Ignore if message already modified or user deleted message
+            }
+        }
+
+        // Auto-cleanup: once synchronized, reset tgNotifications to null for 0-byte permanent storage!
+        await prisma.transactionRequest.update({
+            where: { id: requestId },
+            data: { tgNotifications: null }
+        }).catch(() => {});
+    } catch (e) {
+        console.error('syncTelegramRequestNotification error:', e);
+    }
+}
+
 bot.callbackQuery(/^req_(approve|appr|reject|rej)_(\d+)$/, async (ctx) => {
     if (!ctx.from) return;
 
@@ -1490,7 +1549,24 @@ bot.callbackQuery(/^req_(approve|appr|reject|rej)_(\d+)$/, async (ctx) => {
     try {
         const request = await prisma.transactionRequest.findUnique({ where: { id } });
         if (!request) return ctx.answerCallbackQuery({ text: "Request not found.", show_alert: true });
-        if (request.status !== 'PENDING') return ctx.answerCallbackQuery({ text: "This request was already handled.", show_alert: true });
+        if (request.status !== 'PENDING') {
+            const handler = request.processedByName || 'Admin';
+            const isAppr = request.status === 'APPROVED';
+            const icon = isAppr ? '✅' : '❌';
+            const statusLabel = isAppr ? 'Approved' : 'Rejected';
+            const msg = ctx.update.callback_query?.message;
+            const originalText = stripHtml(msg?.text || msg?.caption || '');
+            const newContent = `${icon} <s>${escapeHtmlBot(originalText)}</s>\n\n<b>Already ${statusLabel} by ${escapeHtmlBot(handler)}</b>`;
+            if (msg?.caption !== undefined) {
+                await ctx.editMessageCaption({ caption: newContent, parse_mode: 'HTML', reply_markup: undefined }).catch(() => {});
+            } else {
+                await ctx.editMessageText(newContent, { parse_mode: 'HTML', reply_markup: undefined }).catch(() => {});
+            }
+            return ctx.answerCallbackQuery({
+                text: `This request was already ${request.status.toLowerCase()} by ${handler}.`,
+                show_alert: true
+            });
+        }
 
         // Restrict withdrawal approvals exclusively to Master Admin or Duty Withdrawal Admin
         if (request.type === 'withdraw') {
@@ -1603,12 +1679,13 @@ bot.callbackQuery(/^req_(approve|appr|reject|rej)_(\d+)$/, async (ctx) => {
             await ctx.answerCallbackQuery({ text: `✅ Approved ${request.type} request #${id}.` });
             const msg = ctx.update.callback_query?.message;
             const originalText = stripHtml(msg?.text || msg?.caption || '');
-            const newContent = `✅ <s>${originalText}</s>\n\n<b>Approved by ${escapeHtmlBot(actorName)}</b>`;
+            const newContent = `✅ <s>${escapeHtmlBot(originalText)}</s>\n\n<b>Approved by ${escapeHtmlBot(actorName)}</b>`;
             if (msg?.caption !== undefined) {
                 await ctx.editMessageCaption({ caption: newContent, parse_mode: 'HTML', reply_markup: undefined }).catch(() => {});
             } else {
                 await ctx.editMessageText(newContent, { parse_mode: 'HTML', reply_markup: undefined }).catch(() => {});
             }
+            await syncTelegramRequestNotification(id, 'APPROVED', actorName, ctx.chat?.id);
         } else {
             await prisma.transactionRequest.update({
                 where: { id },
@@ -1623,12 +1700,13 @@ bot.callbackQuery(/^req_(approve|appr|reject|rej)_(\d+)$/, async (ctx) => {
             await ctx.answerCallbackQuery({ text: `❌ Rejected ${request.type} request #${id}.` });
             const msg = ctx.update.callback_query?.message;
             const originalText = stripHtml(msg?.text || msg?.caption || '');
-            const newContent = `❌ <s>${originalText}</s>\n\n<b>Rejected by ${escapeHtmlBot(actorName)}</b>`;
+            const newContent = `❌ <s>${escapeHtmlBot(originalText)}</s>\n\n<b>Rejected by ${escapeHtmlBot(actorName)}</b>`;
             if (msg?.caption !== undefined) {
                 await ctx.editMessageCaption({ caption: newContent, parse_mode: 'HTML', reply_markup: undefined }).catch(() => {});
             } else {
                 await ctx.editMessageText(newContent, { parse_mode: 'HTML', reply_markup: undefined }).catch(() => {});
             }
+            await syncTelegramRequestNotification(id, 'REJECTED', actorName, ctx.chat?.id);
         }
     } catch (e) {
         console.error('Handle request error', e);

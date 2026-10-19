@@ -37,6 +37,7 @@ export async function initDbSchema() {
             ALTER TABLE "TransactionRequest" ADD COLUMN IF NOT EXISTS "processedByAdminId" INTEGER;
             ALTER TABLE "TransactionRequest" ADD COLUMN IF NOT EXISTS "processedByName" TEXT;
             ALTER TABLE "TransactionRequest" ADD COLUMN IF NOT EXISTS "actionAt" TIMESTAMP(3);
+            ALTER TABLE "TransactionRequest" ADD COLUMN IF NOT EXISTS "tgNotifications" TEXT;
             CREATE INDEX IF NOT EXISTS "TransactionRequest_assignedAdminId_idx" ON "TransactionRequest"("assignedAdminId");
             CREATE INDEX IF NOT EXISTS "TransactionRequest_processedByAdminId_idx" ON "TransactionRequest"("processedByAdminId");
 

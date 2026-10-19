@@ -62,6 +62,7 @@ model TransactionRequest {
   processedByAdmin    AdminProfile? @relation("ProcessedAdminRequests", fields: [processedByAdminId], references: [id], onDelete: SetNull)
   processedByName     String?
   actionAt            DateTime?
+  tgNotifications     String?
 
   createdAt DateTime @default(now())
   updatedAt DateTime @updatedAt

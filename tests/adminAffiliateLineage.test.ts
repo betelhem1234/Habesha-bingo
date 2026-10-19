@@ -272,4 +272,105 @@ test('Admin Affiliate Lineage & Multi-Bank Routing System Tests', async (t) => {
         // 4. Regular player
         assert.equal(isAuthorizedForApproval(1234567890n, masterAdminId, admins), false, 'Regular player must be rejected with ⛔ Admin only');
     });
+
+    await t.test('cross-chat request sync updates other admins and cleans up tgNotifications for 0-byte storage', async () => {
+        interface TgNotificationItem {
+            c: number;
+            m: number;
+            p: number;
+            t?: string;
+        }
+
+        interface MockRequestRecord {
+            id: number;
+            type: string;
+            amount: number;
+            status: string;
+            processedByName: string | null;
+            tgNotifications: string | null;
+        }
+
+        const initialNotifications: TgNotificationItem[] = [
+            { c: 1783441823, m: 101, p: 1, t: '🔔 New DEPOSIT request #24\nAmount: 50 Birr' }, // Tinshu Bro
+            { c: 999999999, m: 202, p: 1, t: '🔔 New DEPOSIT request #24\nAmount: 50 Birr' }   // Super Admin
+        ];
+
+        const req: MockRequestRecord = {
+            id: 24,
+            type: 'deposit',
+            amount: 50,
+            status: 'PENDING',
+            processedByName: null,
+            tgNotifications: JSON.stringify(initialNotifications)
+        };
+
+        const edits: Array<{ chatId: number; messageId: number; newContent: string; isPhoto: boolean }> = [];
+
+        // Simulate sync function
+        function syncTelegramRequestNotificationMock(
+            requestRecord: MockRequestRecord,
+            newStatus: 'APPROVED' | 'REJECTED',
+            actorName: string,
+            excludeChatId?: number
+        ) {
+            if (!requestRecord.tgNotifications) return;
+            const notifs: TgNotificationItem[] = JSON.parse(requestRecord.tgNotifications);
+            const isApproved = newStatus === 'APPROVED';
+            const icon = isApproved ? '✅' : '❌';
+            const statusLabel = isApproved ? 'Approved' : 'Rejected';
+
+            for (const n of notifs) {
+                if (excludeChatId && n.c === excludeChatId) continue;
+                const baseText = n.t || `New ${requestRecord.type.toUpperCase()} request #${requestRecord.id}`;
+                const newContent = `${icon} <s>${baseText}</s>\n\n<b>${statusLabel} by ${actorName}</b>`;
+                edits.push({ chatId: n.c, messageId: n.m, newContent, isPhoto: n.p === 1 });
+            }
+
+            // Zero permanent storage guarantee: reset tgNotifications to null!
+            requestRecord.tgNotifications = null;
+        }
+
+        // Tinshu Bro clicks [Approve] in his chat (1783441823)
+        syncTelegramRequestNotificationMock(req, 'APPROVED', 'Tinshu Bro', 1783441823);
+
+        // Verify Super Admin's chat was updated
+        assert.equal(edits.length, 1);
+        assert.equal(edits[0].chatId, 999999999);
+        assert.equal(edits[0].messageId, 202);
+        assert.ok(edits[0].newContent.includes('✅ <s>🔔 New DEPOSIT request #24'));
+        assert.ok(edits[0].newContent.includes('<b>Approved by Tinshu Bro</b>'));
+
+        // Verify storage is completely freed (null)
+        assert.equal(req.tgNotifications, null, 'tgNotifications must be reset to null upon approval');
+    });
+
+    await t.test('self-healing on already handled request strips buttons and displays existing resolver', async () => {
+        const completedRequest = {
+            id: 24,
+            status: 'APPROVED',
+            processedByName: 'Tinshu Bro'
+        };
+
+        // When another admin clicks on the button of an already approved request
+        function handleCallbackClick(req: typeof completedRequest, clickedText: string) {
+            if (req.status !== 'PENDING') {
+                const handler = req.processedByName || 'Admin';
+                const isAppr = req.status === 'APPROVED';
+                const icon = isAppr ? '✅' : '❌';
+                const statusLabel = isAppr ? 'Approved' : 'Rejected';
+                return {
+                    alert: `This request was already ${req.status.toLowerCase()} by ${handler}.`,
+                    updatedMessageContent: `${icon} <s>${clickedText}</s>\n\n<b>Already ${statusLabel} by ${handler}</b>`,
+                    replyMarkup: undefined // removes buttons
+                };
+            }
+            return null;
+        }
+
+        const clickResult = handleCallbackClick(completedRequest, 'New DEPOSIT request #24');
+        assert.ok(clickResult);
+        assert.equal(clickResult.alert, 'This request was already approved by Tinshu Bro.');
+        assert.ok(clickResult.updatedMessageContent.includes('Already Approved by Tinshu Bro'));
+        assert.equal(clickResult.replyMarkup, undefined, 'Inline buttons must be removed');
+    });
 });

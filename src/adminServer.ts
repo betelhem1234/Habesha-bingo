@@ -13,6 +13,7 @@ import { adminLoginLimiter, financialLimiter, generalApiLimiter } from './rateLi
 import { requirePlayerOwnership, authenticateCaller } from './playerAuth';
 import { monitorEventLoopDelay } from 'perf_hooks';
 import { getNewUserBonus, getReferralBonus, setBonusSettings } from './bonus';
+import { syncTelegramRequestNotification } from './bot';
 
 const loopDelayHistogram = monitorEventLoopDelay({ resolution: 20 });
 loopDelayHistogram.enable();
@@ -137,6 +138,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             if (targetAdminChatId && !isNaN(targetAdminChatId) && targetAdminChatId > 0) targetChatIds.add(targetAdminChatId);
 
             const url = proof ? proofUrl(proof) : null;
+            const sentNotifications: Array<{ c: number; m: number; p: number; t?: string }> = [];
+
             for (const chatId of targetChatIds) {
                 try {
                     let msgText = text;
@@ -151,24 +154,33 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     if (type === 'deposit' && proof) {
                         try {
                             const file = fs.readFileSync(proofPath(proof));
-                            await bot.api.sendPhoto(chatId, new InputFile(file), {
+                            const sent = await bot.api.sendPhoto(chatId, new InputFile(file), {
                                 caption: msgText,
                                 parse_mode: 'Markdown',
                                 reply_markup: replyMarkup
                             });
+                            sentNotifications.push({ c: chatId, m: sent.message_id, p: 1, t: msgText });
                             continue;
                         } catch (e) {
                             console.error(`sendProofPhoto to ${chatId} failed:`, e);
                         }
                     }
-                    await bot.api.sendMessage(
+                    const sent = await bot.api.sendMessage(
                         chatId,
                         proof && type === 'deposit' ? `${msgText}\n📎 Proof: ${url}` : msgText,
                         { parse_mode: 'Markdown', reply_markup: replyMarkup }
                     );
+                    sentNotifications.push({ c: chatId, m: sent.message_id, p: 0, t: msgText });
                 } catch (sendErr) {
                     console.error(`notifyAdminNewRequest delivery to ${chatId} failed:`, sendErr);
                 }
+            }
+
+            if (sentNotifications.length > 0) {
+                await prisma.transactionRequest.update({
+                    where: { id },
+                    data: { tgNotifications: JSON.stringify(sentNotifications) }
+                }).catch(err => console.error('Failed to save tgNotifications:', err));
             }
         } catch (e) { console.error('notifyAdminNewRequest failed', e); }
     }
@@ -1665,6 +1677,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     })
                 ]);
             }
+            await syncTelegramRequestNotification(id, 'APPROVED', 'Super Admin');
             res.json({ success: true, msg: `${request.type} request #${id} approved.` });
         } catch (e) {
             res.status(500).json({ success: false, msg: 'Failed to approve request.' });
@@ -1689,6 +1702,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     actionAt: new Date()
                 }
             });
+            await syncTelegramRequestNotification(id, 'REJECTED', 'Super Admin');
             res.json({ success: true, msg: `${request.type} request #${id} rejected.` });
         } catch (e) {
             res.status(500).json({ success: false, msg: 'Failed to reject request.' });
@@ -2051,22 +2065,67 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     continue;
                 }
                 if (request.type === 'deposit') {
-                    await prisma.$transaction([
+                    let targetAdminId: number | null = null;
+                    if (request.accountId) {
+                        const acct = await prisma.paymentAccount.findUnique({ where: { id: request.accountId } });
+                        if (acct?.adminId) targetAdminId = acct.adminId;
+                    }
+                    if (!targetAdminId) {
+                        const reqUser = await prisma.user.findUnique({ where: { id: request.userId }, select: { assignedAdminId: true } });
+                        if (reqUser?.assignedAdminId) targetAdminId = reqUser.assignedAdminId;
+                    }
+
+                    const txOps: any[] = [
                         prisma.user.update({ where: { id: request.userId }, data: { balance: { increment: request.amount } } }),
-                        prisma.transactionRequest.update({ where: { id }, data: { status: 'APPROVED' } })
-                    ]);
+                        prisma.transactionRequest.update({
+                            where: { id },
+                            data: {
+                                status: 'APPROVED',
+                                processedByName: 'Super Admin',
+                                processedByAdminId: null,
+                                actionAt: new Date()
+                            }
+                        })
+                    ];
+                    if (targetAdminId) {
+                        txOps.push(
+                            prisma.adminProfile.update({
+                                where: { id: targetAdminId },
+                                data: { collectedDeposits: { increment: request.amount } }
+                            })
+                        );
+                    }
+                    await prisma.$transaction(txOps);
                     approved++;
+                    await syncTelegramRequestNotification(id, 'APPROVED', 'Super Admin');
                 } else {
                     const user = await prisma.user.findUnique({ where: { id: request.userId } });
                     if (!user || user.balance.toNumber() < request.amount.toNumber()) {
                         failed++;
                         continue;
                     }
+                    const currentWithdrawable = user.withdrawableBalance ? user.withdrawableBalance.toNumber() : 0;
+                    const newWithdrawable = Math.max(0, currentWithdrawable - request.amount.toNumber());
                     await prisma.$transaction([
-                        prisma.user.update({ where: { id: request.userId }, data: { balance: { decrement: request.amount } } }),
-                        prisma.transactionRequest.update({ where: { id }, data: { status: 'APPROVED' } })
+                        prisma.user.update({
+                            where: { id: request.userId },
+                            data: {
+                                balance: { decrement: request.amount },
+                                withdrawableBalance: { set: newWithdrawable }
+                            }
+                        }),
+                        prisma.transactionRequest.update({
+                            where: { id },
+                            data: {
+                                status: 'APPROVED',
+                                processedByName: 'Super Admin',
+                                processedByAdminId: null,
+                                actionAt: new Date()
+                            }
+                        })
                     ]);
                     approved++;
+                    await syncTelegramRequestNotification(id, 'APPROVED', 'Super Admin');
                 }
             } catch (err) {
                 failed++;
@@ -2083,10 +2142,29 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         }
         const numericIds = ids.map((i: any) => parseInt(String(i), 10)).filter(n => !isNaN(n));
         try {
-            const result = await prisma.transactionRequest.updateMany({
+            const pendingRequests = await prisma.transactionRequest.findMany({
                 where: { id: { in: numericIds }, status: 'PENDING' },
-                data: { status: 'REJECTED' }
+                select: { id: true }
             });
+            const validIds = pendingRequests.map(r => r.id);
+            if (validIds.length === 0) {
+                return res.json({ success: true, rejectedCount: 0, msg: '0 request(s) rejected.' });
+            }
+
+            const result = await prisma.transactionRequest.updateMany({
+                where: { id: { in: validIds } },
+                data: {
+                    status: 'REJECTED',
+                    processedByName: 'Super Admin',
+                    processedByAdminId: null,
+                    actionAt: new Date()
+                }
+            });
+
+            for (const id of validIds) {
+                await syncTelegramRequestNotification(id, 'REJECTED', 'Super Admin');
+            }
+
             res.json({ success: true, rejectedCount: result.count, msg: `${result.count} request(s) rejected.` });
         } catch (e) {
             console.error('Batch reject error:', e);
