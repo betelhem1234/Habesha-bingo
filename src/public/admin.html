@@ -372,18 +372,41 @@
                         <h3>Total Player Balance</h3>
                         <p class="stat-value"><span id="stat-balance">0</span> <span class="currency">Birr</span></p>
                     </div>
-                    <div class="stat-card" onclick="openActivePlayersModal()" style="cursor:pointer; position:relative; transition:all 0.2s; border:1px solid rgba(56,189,248,0.3);" title="Click to view live players in game rooms" onmouseover="this.style.borderColor='#38bdf8'; this.style.transform='translateY(-2px)';" onmouseout="this.style.borderColor='rgba(56,189,248,0.3)'; this.style.transform='none';">
+                    <div class="stat-card" onclick="openActivePlayersModal('ALL')" style="cursor:pointer; position:relative; transition:all 0.2s; border:1px solid rgba(56,189,248,0.3);" title="Click to view live players across all game rooms" onmouseover="this.style.borderColor='#38bdf8'; this.style.transform='translateY(-2px)';" onmouseout="this.style.borderColor='rgba(56,189,248,0.3)'; this.style.transform='none';">
                         <div style="display:flex; justify-content:space-between; align-items:center;">
-                            <h3 style="margin:0;">Active Players Now</h3>
-                            <span style="font-size:11px; padding:2px 8px; border-radius:12px; background:rgba(56,189,248,0.2); color:#38bdf8; font-weight:700;">🔍 View List</span>
+                            <h3 style="margin:0;">Active Players (All Rooms)</h3>
+                            <span style="font-size:11px; padding:2px 8px; border-radius:12px; background:rgba(56,189,248,0.2); color:#38bdf8; font-weight:700;">🔍 View All</span>
                         </div>
                         <p class="stat-value" id="stat-players">0</p>
-                        <div style="font-size:11px; color:#38bdf8; margin-top:4px; font-weight:600;">👉 Click to see who is playing</div>
+                        <div id="stat-players-breakdown" style="font-size:11px; color:#38bdf8; margin-top:4px; font-weight:600;">👉 Click to see who is playing</div>
                     </div>
-                    <div class="stat-card game-control">
-                        <h3>Game State</h3>
-                        <p class="stat-value" id="stat-state">WAITING</p>
-                        <button id="btn-start" class="btn-primary">Force Start Game</button>
+
+                    <!-- Dedicated 10 Birr Room Lobby Card -->
+                    <div class="stat-card" style="border-color: rgba(250, 204, 21, 0.4); background: rgba(30, 41, 59, 0.7);">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <h3 style="margin:0; color:#facc15;">🟡 10 Birr Room (№1)</h3>
+                            <span id="room-10-badge" style="font-size:11px; padding:2px 8px; border-radius:12px; background:rgba(250,204,21,0.2); color:#facc15; font-weight:700;">LOBBY</span>
+                        </div>
+                        <p class="stat-value" id="room-10-players" style="color:#facc15; margin:6px 0 2px 0;">0</p>
+                        <div id="room-10-details" style="font-size:12px; color:#94a3b8;">Pot: <strong id="room-10-pot" style="color:#fff;">0</strong> Birr</div>
+                        <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">
+                            <button type="button" onclick="openActivePlayersModal('10-1')" class="btn-primary" style="margin:0; padding:6px 10px; font-size:11px; background:rgba(250,204,21,0.15); border:1px solid rgba(250,204,21,0.35); color:#facc15; cursor:pointer;">👥 View Players</button>
+                            <button type="button" id="btn-start-10" onclick="forceStartRoom(10, 1)" class="btn-primary" style="margin:0; padding:6px 10px; font-size:11px; background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.4); color:#4ade80; cursor:pointer;">▶ Force Start</button>
+                        </div>
+                    </div>
+
+                    <!-- Dedicated 20 Birr Room Lobby Card -->
+                    <div class="stat-card" style="border-color: rgba(192, 132, 252, 0.4); background: rgba(30, 41, 59, 0.7);">
+                        <div style="display:flex; justify-content:space-between; align-items:center;">
+                            <h3 style="margin:0; color:#c084fc;">🟣 20 Birr Room (№1)</h3>
+                            <span id="room-20-badge" style="font-size:11px; padding:2px 8px; border-radius:12px; background:rgba(192,132,252,0.2); color:#c084fc; font-weight:700;">LOBBY</span>
+                        </div>
+                        <p class="stat-value" id="room-20-players" style="color:#c084fc; margin:6px 0 2px 0;">0</p>
+                        <div id="room-20-details" style="font-size:12px; color:#94a3b8;">Pot: <strong id="room-20-pot" style="color:#fff;">0</strong> Birr</div>
+                        <div style="display:flex; gap:6px; margin-top:10px; flex-wrap:wrap;">
+                            <button type="button" onclick="openActivePlayersModal('20-1')" class="btn-primary" style="margin:0; padding:6px 10px; font-size:11px; background:rgba(192,132,252,0.15); border:1px solid rgba(192,132,252,0.35); color:#c084fc; cursor:pointer;">👥 View Players</button>
+                            <button type="button" id="btn-start-20" onclick="forceStartRoom(20, 1)" class="btn-primary" style="margin:0; padding:6px 10px; font-size:11px; background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.4); color:#4ade80; cursor:pointer;">▶ Force Start</button>
+                        </div>
                     </div>
                     <div class="stat-card voice-control">
                         <h3>Caller Voice (ድምፅ)</h3>
@@ -642,6 +665,11 @@
                 </div>
             </div>
 
+            <!-- Room Filter Tabs Bar -->
+            <div id="active-players-room-filters" style="display:flex; gap:8px; margin-bottom:14px; flex-wrap:wrap; align-items:center;">
+                <!-- Populated dynamically by app.js -->
+            </div>
+
             <!-- Content Area with Scroll -->
             <div id="active-players-body" style="overflow-y:auto; flex:1; min-height:200px;">
                 <div id="active-players-loading" style="text-align:center; padding:40px; color:#94a3b8;">
@@ -653,19 +681,7 @@
                     <div style="font-size:15px; font-weight:600; color:#cbd5e1;">No Active Players Right Now</div>
                     <div style="font-size:12px; margin-top:4px;">No one has selected boards or is in a waiting lobby.</div>
                 </div>
-                <table id="active-players-table" style="display:none; width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
-                    <thead>
-                        <tr style="border-bottom:1px solid rgba(255,255,255,0.12); color:#94a3b8; font-size:11px; text-transform:uppercase;">
-                            <th style="padding:10px 8px;">Player</th>
-                            <th style="padding:10px 8px;">Room / Stake</th>
-                            <th style="padding:10px 8px;">Board(s)</th>
-                            <th style="padding:10px 8px;">Game State</th>
-                            <th style="padding:10px 8px;">Last Seen</th>
-                            <th style="padding:10px 8px; text-align:right;">Action</th>
-                        </tr>
-                    </thead>
-                    <tbody id="active-players-tbody"></tbody>
-                </table>
+                <div id="active-players-content"></div>
             </div>
 
             <!-- Footer -->

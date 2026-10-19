@@ -174,11 +174,25 @@ export class GameRooms {
 
     getAdminStats() {
         const all = this.roomsList();
+        const rooms = all
+            .filter(gm => gm.fee > 0 || gm.players.length > 0)
+            .map(gm => ({
+                fee: gm.fee,
+                room: gm.room,
+                playersCount: gm.players.length,
+                state: gm.state,
+                lobbyCountdown: gm.lobbyCountdown,
+                pot: gm.getPot(),
+                drawnCount: gm.drawnNumbers.size
+            }))
+            .sort((a, b) => a.fee - b.fee || a.room - b.room);
+
         return {
             activePlayers: all.reduce((s, gm) => s + gm.players.length, 0),
             gameState: all.some(gm => gm.state === 'PLAYING') ? 'PLAYING' : 'WAITING',
             pot: all.reduce((s, gm) => s + gm.getPot(), 0),
-            drawnCount: all.reduce((s, gm) => s + gm.drawnNumbers.size, 0)
+            drawnCount: all.reduce((s, gm) => s + gm.drawnNumbers.size, 0),
+            rooms
         };
     }
 

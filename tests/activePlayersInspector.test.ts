@@ -204,4 +204,57 @@ test('Active Players Inspector and Lobby Hardening Tests', async (t) => {
         assert.equal(details.length, 1);
         assert.equal(details[0].player.userId, '999');
     });
+
+    await t.test('getAdminStats returns separated room metrics for 10 Birr and 20 Birr rooms', () => {
+        const gameRooms = new GameRooms(mockBot);
+        const r10 = gameRooms.getRoom(10, 1);
+        const r20 = gameRooms.getRoom(20, 1);
+
+        // Populate 8 players in 10 Birr room
+        for (let i = 1; i <= 8; i++) {
+            r10.players.push({
+                userId: BigInt(1000 + i),
+                cards: [{ boardNumber: i, ticket: [] as any, daubed: new Set() }],
+                ticket: [] as any,
+                daubed: new Set(),
+                boardNumber: i,
+                fee: 10,
+                firstName: `Player10_${i}`,
+                lastSeen: Date.now()
+            });
+        }
+
+        // Populate 8 players in 20 Birr room
+        for (let i = 1; i <= 8; i++) {
+            r20.players.push({
+                userId: BigInt(2000 + i),
+                cards: [{ boardNumber: i, ticket: [] as any, daubed: new Set() }],
+                ticket: [] as any,
+                daubed: new Set(),
+                boardNumber: i,
+                fee: 20,
+                firstName: `Player20_${i}`,
+                lastSeen: Date.now()
+            });
+        }
+
+        const stats = gameRooms.getAdminStats();
+        // Platform wide total is 16
+        assert.equal(stats.activePlayers, 16);
+
+        // Rooms breakdown must separate 10 Birr and 20 Birr rooms
+        assert.ok(Array.isArray(stats.rooms));
+        assert.equal(stats.rooms.length >= 2, true);
+
+        const room10Stat = stats.rooms.find(r => r.fee === 10 && r.room === 1);
+        const room20Stat = stats.rooms.find(r => r.fee === 20 && r.room === 1);
+
+        assert.ok(room10Stat);
+        assert.equal(room10Stat.playersCount, 8);
+        assert.equal(room10Stat.pot, 80);
+
+        assert.ok(room20Stat);
+        assert.equal(room20Stat.playersCount, 8);
+        assert.equal(room20Stat.pot, 160);
+    });
 });

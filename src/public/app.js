@@ -395,6 +395,77 @@ async function fetchStats() {
                 btnStart.disabled = false;
             }
         }
+
+        // Live Room Lobbies Breakdown (10 Birr & 20 Birr Rooms)
+        const rooms = Array.isArray(data.rooms) ? data.rooms : [];
+        const r10 = rooms.find(r => r.fee === 10 && r.room === 1);
+        const r20 = rooms.find(r => r.fee === 20 && r.room === 1);
+
+        // Update 10 Birr Room Card
+        if (r10) {
+            setText('room-10-players', (r10.playersCount ?? 0).toLocaleString());
+            setText('room-10-pot', (r10.pot ?? 0).toLocaleString());
+            const badge10 = document.getElementById('room-10-badge');
+            const details10 = document.getElementById('room-10-details');
+            const btnStart10 = document.getElementById('btn-start-10');
+            const isPlaying10 = r10.state === 'PLAYING';
+            if (badge10) {
+                badge10.textContent = isPlaying10 ? `🟢 PLAYING (${r10.drawnCount} calls)` : `🟡 LOBBY (${r10.lobbyCountdown}s)`;
+                badge10.style.background = isPlaying10 ? 'rgba(74, 222, 128, 0.2)' : 'rgba(250, 204, 21, 0.2)';
+                badge10.style.color = isPlaying10 ? '#4ade80' : '#facc15';
+            }
+            if (details10) {
+                details10.innerHTML = `Pot: <strong style="color:#fff;">${(r10.pot ?? 0).toLocaleString()} Birr</strong> • ${isPlaying10 ? `In Progress (${r10.drawnCount} calls)` : `Lobby (${r10.lobbyCountdown}s)`}`;
+            }
+            if (btnStart10) {
+                if (isPlaying10) {
+                    btnStart10.textContent = 'In Game...';
+                    btnStart10.disabled = true;
+                    btnStart10.style.opacity = '0.5';
+                } else {
+                    btnStart10.textContent = '▶ Force Start';
+                    btnStart10.disabled = false;
+                    btnStart10.style.opacity = '1';
+                }
+            }
+        }
+
+        // Update 20 Birr Room Card
+        if (r20) {
+            setText('room-20-players', (r20.playersCount ?? 0).toLocaleString());
+            setText('room-20-pot', (r20.pot ?? 0).toLocaleString());
+            const badge20 = document.getElementById('room-20-badge');
+            const details20 = document.getElementById('room-20-details');
+            const btnStart20 = document.getElementById('btn-start-20');
+            const isPlaying20 = r20.state === 'PLAYING';
+            if (badge20) {
+                badge20.textContent = isPlaying20 ? `🟢 PLAYING (${r20.drawnCount} calls)` : `🟡 LOBBY (${r20.lobbyCountdown}s)`;
+                badge20.style.background = isPlaying20 ? 'rgba(74, 222, 128, 0.2)' : 'rgba(192, 132, 252, 0.2)';
+                badge20.style.color = isPlaying20 ? '#4ade80' : '#c084fc';
+            }
+            if (details20) {
+                details20.innerHTML = `Pot: <strong style="color:#fff;">${(r20.pot ?? 0).toLocaleString()} Birr</strong> • ${isPlaying20 ? `In Progress (${r20.drawnCount} calls)` : `Lobby (${r20.lobbyCountdown}s)`}`;
+            }
+            if (btnStart20) {
+                if (isPlaying20) {
+                    btnStart20.textContent = 'In Game...';
+                    btnStart20.disabled = true;
+                    btnStart20.style.opacity = '0.5';
+                } else {
+                    btnStart20.textContent = '▶ Force Start';
+                    btnStart20.disabled = false;
+                    btnStart20.style.opacity = '1';
+                }
+            }
+        }
+
+        // Update Breakdown Subtitle on All Rooms Card
+        const breakdownEl = document.getElementById('stat-players-breakdown');
+        if (breakdownEl) {
+            const count10 = r10 ? (r10.playersCount ?? 0) : 0;
+            const count20 = r20 ? (r20.playersCount ?? 0) : 0;
+            breakdownEl.innerHTML = `📍 10 Birr: <strong>${count10}</strong> | 20 Birr: <strong>${count20}</strong> • <em>Click to inspect</em>`;
+        }
     } catch (err) {
         console.error('Error fetching stats:', err);
     }
@@ -1526,11 +1597,14 @@ async function clearBots() {
 }
 
 // ----------------------------------------------------
-// 9. Active Players Inspector Modal
+// 9. Active Players Inspector Modal & Room Separation
 // ----------------------------------------------------
 let activePlayersPollInterval = null;
+let currentActivePlayersFilter = 'ALL';
+let cachedActivePlayers = [];
 
-async function openActivePlayersModal() {
+async function openActivePlayersModal(initialFilter = 'ALL') {
+    currentActivePlayersFilter = initialFilter || 'ALL';
     const modal = document.getElementById('active-players-modal');
     if (!modal) return;
     modal.style.display = 'flex';
@@ -1548,73 +1622,219 @@ function closeActivePlayersModal() {
     }
 }
 
+function setActivePlayersFilter(filterKey) {
+    currentActivePlayersFilter = filterKey;
+    renderActivePlayersContent(cachedActivePlayers);
+}
+
+async function forceStartRoom(fee, room = 1) {
+    const roomLabel = `${fee} Birr Room #${room}`;
+    if (!confirm(`Are you sure you want to force start the ${roomLabel} game now?`)) return;
+
+    try {
+        const res = await authFetch('/api/start-game', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ bet: fee, room: room })
+        });
+        const data = await res.json();
+        if (res.ok && data.success) {
+            alert(`✅ ${roomLabel} force-started successfully!`);
+            await fetchStats();
+            if (document.getElementById('active-players-modal')?.style.display === 'flex') {
+                await fetchActivePlayers();
+            }
+        } else {
+            alert(`❌ ${data.error || data.msg || 'Failed to start game'}`);
+        }
+    } catch (err) {
+        console.error('Error starting game room:', err);
+        alert('Network error while starting game room.');
+    }
+}
+
+function renderPlayerRow(item) {
+    const p = item.player;
+    const boardsHtml = (p.boards && p.boards.length > 0)
+        ? p.boards.map(b => `<span style="background:rgba(56,189,248,0.2); color:#38bdf8; padding:2px 8px; border-radius:6px; font-weight:700; margin-right:4px;">#${b}</span>`).join('')
+        : '<span style="color:#64748b;">None</span>';
+
+    const isPlaying = item.gameState === 'PLAYING';
+    const stateBadge = isPlaying
+        ? `<span style="background:rgba(74,222,128,0.15); color:#4ade80; padding:3px 8px; border-radius:6px; font-weight:700; font-size:11px;">🟢 PLAYING (Called: ${item.drawnCount})</span>`
+        : `<span style="background:rgba(250,204,21,0.15); color:#facc15; padding:3px 8px; border-radius:6px; font-weight:700; font-size:11px;">🟡 LOBBY (${item.lobbyCountdown}s)</span>`;
+
+    const isIdle = p.idleSeconds > 10;
+    const lastSeenHtml = isIdle
+        ? `<span style="color:#f87171; font-size:12px;">🔴 Inactive ${p.idleSeconds}s ago</span>`
+        : `<span style="color:#4ade80; font-size:12px;">🟢 Active ${p.idleSeconds}s ago</span>`;
+
+    const kickBtn = (!isPlaying)
+        ? `<button onclick="kickActivePlayer('${p.userId}', ${item.fee}, ${item.room})" style="background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.4); color:#f87171; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;" title="Kick player and release board">👢 Kick & Free</button>`
+        : `<span style="color:#64748b; font-size:11px;">In Game</span>`;
+
+    const botBadge = p.isBot
+        ? `<span style="display:inline-block; margin-left:6px; background:rgba(192,132,252,0.22); color:#c084fc; border:1px solid rgba(192,132,252,0.45); border-radius:10px; font-size:10px; padding:1px 6px; font-weight:700;">🤖 BOT</span>`
+        : (p.autoPlay ? `<span style="display:inline-block; margin-left:6px; background:rgba(34,197,94,0.22); color:#4ade80; border:1px solid rgba(34,197,94,0.45); border-radius:10px; font-size:10px; padding:1px 6px; font-weight:700;">⚡ AUTO</span>` : '');
+
+    return `
+        <tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
+            <td style="padding:10px 8px;">
+                <div style="font-weight:700; color:#f8fafc; display:flex; align-items:center;">${escapeHtml(p.firstName || 'Player')}${botBadge}</div>
+                <div style="font-size:11px; color:#94a3b8;">${p.username ? '@' + escapeHtml(p.username) + ' • ' : ''}ID: <code>${p.userId}</code></div>
+                ${p.phone ? `<div style="font-size:11px; color:#38bdf8;">📱 ${escapeHtml(p.phone)}</div>` : ''}
+            </td>
+            <td style="padding:10px 8px;">${boardsHtml}</td>
+            <td style="padding:10px 8px;">${stateBadge}</td>
+            <td style="padding:10px 8px;">${lastSeenHtml}</td>
+            <td style="padding:10px 8px; text-align:right;">${kickBtn}</td>
+        </tr>
+    `;
+}
+
+function renderActivePlayersContent(players) {
+    const filtersEl = document.getElementById('active-players-room-filters');
+    const contentEl = document.getElementById('active-players-content');
+    const emptyEl = document.getElementById('active-players-empty');
+    const countBadge = document.getElementById('active-players-count-badge');
+
+    if (countBadge) countBadge.textContent = players.length;
+
+    // Calculate room counts
+    const count10 = players.filter(p => p.fee === 10 && p.room === 1).length;
+    const count20 = players.filter(p => p.fee === 20 && p.room === 1).length;
+
+    // Find any other rooms with active players
+    const extraRoomKeys = new Set();
+    players.forEach(p => {
+        const k = `${p.fee}-${p.room}`;
+        if (k !== '10-1' && k !== '20-1') extraRoomKeys.add(k);
+    });
+
+    const pills = [
+        { id: 'ALL', label: `🌐 All Rooms (${players.length})` },
+        { id: '10-1', label: `🟡 10 Birr Room #1 (${count10})` },
+        { id: '20-1', label: `🟣 20 Birr Room #1 (${count20})` }
+    ];
+
+    extraRoomKeys.forEach(k => {
+        const [fee, room] = k.split('-');
+        const c = players.filter(p => `${p.fee}-${p.room}` === k).length;
+        pills.push({ id: k, label: `🎲 ${fee} Birr Room #${room} (${c})` });
+    });
+
+    // Render filter buttons
+    if (filtersEl) {
+        filtersEl.innerHTML = pills.map(p => {
+            const isActive = currentActivePlayersFilter === p.id;
+            const btnStyle = isActive
+                ? 'background:#0284c7; color:#fff; font-weight:700; border:1px solid #38bdf8; box-shadow:0 0 10px rgba(56,189,248,0.4);'
+                : 'background:rgba(255,255,255,0.08); color:#cbd5e1; border:1px solid rgba(255,255,255,0.15);';
+            return `<button type="button" onclick="setActivePlayersFilter('${p.id}')" class="btn-primary" style="margin:0; padding:6px 12px; font-size:12px; border-radius:8px; cursor:pointer; ${btnStyle}">${p.label}</button>`;
+        }).join('');
+    }
+
+    if (players.length === 0) {
+        if (emptyEl) emptyEl.style.display = 'block';
+        if (contentEl) contentEl.innerHTML = '';
+        return;
+    }
+    if (emptyEl) emptyEl.style.display = 'none';
+
+    // Grouping helper
+    const renderRoomSection = (fee, room, roomPlayers, roomLabel, colorHex) => {
+        const isPlaying = roomPlayers.length > 0 && roomPlayers[0].gameState === 'PLAYING';
+        const countdown = roomPlayers.length > 0 ? roomPlayers[0].lobbyCountdown : 0;
+        const drawnCount = roomPlayers.length > 0 ? roomPlayers[0].drawnCount : 0;
+
+        const stateBadge = isPlaying
+            ? `<span style="background:rgba(74,222,128,0.2); color:#4ade80; padding:3px 10px; border-radius:8px; font-weight:700; font-size:11px;">🟢 PLAYING (Called: ${drawnCount})</span>`
+            : `<span style="background:rgba(250,204,21,0.2); color:#facc15; padding:3px 10px; border-radius:8px; font-weight:700; font-size:11px;">🟡 LOBBY (${countdown}s)</span>`;
+
+        if (roomPlayers.length === 0) {
+            return `
+                <div style="margin-bottom:18px; background:rgba(30,41,59,0.5); border:1px solid rgba(255,255,255,0.1); border-radius:12px; padding:18px; text-align:center; color:#94a3b8;">
+                    <div style="font-weight:700; color:${colorHex}; font-size:14px; margin-bottom:4px;">${roomLabel}</div>
+                    <div style="font-size:12px;">No players currently seated in this room lobby.</div>
+                </div>
+            `;
+        }
+
+        const rowsHtml = roomPlayers.map(renderPlayerRow).join('');
+
+        return `
+            <div style="margin-bottom:20px; background:rgba(30,41,59,0.6); border:1px solid rgba(255,255,255,0.12); border-radius:12px; overflow:hidden; box-shadow:0 4px 16px rgba(0,0,0,0.3);">
+                <!-- Room Header -->
+                <div style="background:rgba(255,255,255,0.04); border-bottom:1px solid rgba(255,255,255,0.08); padding:10px 14px; display:flex; justify-content:space-between; align-items:center; flex-wrap:wrap; gap:8px;">
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        <span style="font-size:15px; font-weight:700; color:${colorHex};">${roomLabel}</span>
+                        <span style="background:rgba(56,189,248,0.2); color:#38bdf8; font-size:11px; font-weight:700; padding:2px 8px; border-radius:10px;">${roomPlayers.length} Active Players</span>
+                    </div>
+                    <div style="display:flex; align-items:center; gap:8px;">
+                        ${stateBadge}
+                        ${!isPlaying ? `<button type="button" onclick="forceStartRoom(${fee}, ${room})" class="btn-primary" style="margin:0; padding:4px 10px; font-size:11px; background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.4); color:#4ade80; border-radius:6px; cursor:pointer;">▶ Start Room</button>` : ''}
+                    </div>
+                </div>
+                <!-- Room Players Table -->
+                <div style="overflow-x:auto;">
+                    <table style="width:100%; border-collapse:collapse; text-align:left; font-size:13px;">
+                        <thead>
+                            <tr style="border-bottom:1px solid rgba(255,255,255,0.08); color:#94a3b8; font-size:11px; text-transform:uppercase;">
+                                <th style="padding:10px 8px;">Player</th>
+                                <th style="padding:10px 8px;">Board(s)</th>
+                                <th style="padding:10px 8px;">Game State</th>
+                                <th style="padding:10px 8px;">Last Seen</th>
+                                <th style="padding:10px 8px; text-align:right;">Action</th>
+                            </tr>
+                        </thead>
+                        <tbody>${rowsHtml}</tbody>
+                    </table>
+                </div>
+            </div>
+        `;
+    };
+
+    if (!contentEl) return;
+
+    if (currentActivePlayersFilter === 'ALL') {
+        const p10 = players.filter(p => p.fee === 10 && p.room === 1);
+        const p20 = players.filter(p => p.fee === 20 && p.room === 1);
+
+        let html = '';
+        html += renderRoomSection(10, 1, p10, '🟡 10 Birr Room (№1)', '#facc15');
+        html += renderRoomSection(20, 1, p20, '🟣 20 Birr Room (№1)', '#c084fc');
+
+        extraRoomKeys.forEach(k => {
+            const [fStr, rStr] = k.split('-');
+            const f = parseInt(fStr, 10);
+            const r = parseInt(rStr, 10);
+            const extraPlayers = players.filter(p => p.fee === f && p.room === r);
+            html += renderRoomSection(f, r, extraPlayers, `🎲 ${f} Birr Room #${r}`, '#38bdf8');
+        });
+
+        contentEl.innerHTML = html;
+    } else {
+        const [fStr, rStr] = currentActivePlayersFilter.split('-');
+        const fee = parseInt(fStr, 10);
+        const room = parseInt(rStr, 10);
+        const filtered = players.filter(p => p.fee === fee && p.room === room);
+        const label = fee === 10 ? '🟡 10 Birr Room (№1)' : (fee === 20 ? '🟣 20 Birr Room (№1)' : `🎲 ${fee} Birr Room #${room}`);
+        const color = fee === 10 ? '#facc15' : (fee === 20 ? '#c084fc' : '#38bdf8');
+        contentEl.innerHTML = renderRoomSection(fee, room, filtered, label, color);
+    }
+}
+
 async function fetchActivePlayers() {
     const loadingEl = document.getElementById('active-players-loading');
-    const emptyEl = document.getElementById('active-players-empty');
-    const tableEl = document.getElementById('active-players-table');
-    const tbodyEl = document.getElementById('active-players-tbody');
-    const countBadge = document.getElementById('active-players-count-badge');
 
     try {
         const res = await authFetch('/api/admin/active-players');
         if (!res.ok) throw new Error('Failed to load active players');
         const data = await res.json();
-        const players = data.players || [];
+        cachedActivePlayers = data.players || [];
 
-        if (countBadge) countBadge.textContent = players.length;
         if (loadingEl) loadingEl.style.display = 'none';
-
-        if (players.length === 0) {
-            if (emptyEl) emptyEl.style.display = 'block';
-            if (tableEl) tableEl.style.display = 'none';
-            return;
-        }
-
-        if (emptyEl) emptyEl.style.display = 'none';
-        if (tableEl) tableEl.style.display = 'table';
-
-        if (tbodyEl) {
-            tbodyEl.innerHTML = players.map(item => {
-                const p = item.player;
-                const boardsHtml = (p.boards && p.boards.length > 0)
-                    ? p.boards.map(b => `<span style="background:rgba(56,189,248,0.2); color:#38bdf8; padding:2px 8px; border-radius:6px; font-weight:700; margin-right:4px;">#${b}</span>`).join('')
-                    : '<span style="color:#64748b;">None</span>';
-                
-                const roomText = item.fee > 0 ? `${item.fee} Birr (Room #${item.room})` : `Free Demo`;
-                const isPlaying = item.gameState === 'PLAYING';
-                const stateBadge = isPlaying
-                    ? `<span style="background:rgba(74,222,128,0.15); color:#4ade80; padding:3px 8px; border-radius:6px; font-weight:700; font-size:11px;">🟢 PLAYING (Called: ${item.drawnCount})</span>`
-                    : `<span style="background:rgba(250,204,21,0.15); color:#facc15; padding:3px 8px; border-radius:6px; font-weight:700; font-size:11px;">🟡 LOBBY (${item.lobbyCountdown}s)</span>`;
-
-                const isIdle = p.idleSeconds > 10;
-                const lastSeenHtml = isIdle
-                    ? `<span style="color:#f87171; font-size:12px;">🔴 Inactive ${p.idleSeconds}s ago</span>`
-                    : `<span style="color:#4ade80; font-size:12px;">🟢 Active ${p.idleSeconds}s ago</span>`;
-
-                const kickBtn = (!isPlaying)
-                    ? `<button onclick="kickActivePlayer('${p.userId}', ${item.fee}, ${item.room})" style="background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.4); color:#f87171; padding:4px 10px; border-radius:6px; font-size:11px; font-weight:700; cursor:pointer;" title="Kick player and release board">👢 Kick & Free</button>`
-                    : `<span style="color:#64748b; font-size:11px;">In Game</span>`;
-
-                const botBadge = p.isBot
-                    ? `<span style="display:inline-block; margin-left:6px; background:rgba(192,132,252,0.22); color:#c084fc; border:1px solid rgba(192,132,252,0.45); border-radius:10px; font-size:10px; padding:1px 6px; font-weight:700;">🤖 BOT</span>`
-                    : (p.autoPlay ? `<span style="display:inline-block; margin-left:6px; background:rgba(34,197,94,0.22); color:#4ade80; border:1px solid rgba(34,197,94,0.45); border-radius:10px; font-size:10px; padding:1px 6px; font-weight:700;">⚡ AUTO</span>` : '');
-
-                return `
-                    <tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
-                        <td style="padding:12px 8px;">
-                            <div style="font-weight:700; color:#f8fafc; display:flex; align-items:center;">${escapeHtml(p.firstName || 'Player')}${botBadge}</div>
-                            <div style="font-size:11px; color:#94a3b8;">${p.username ? '@' + escapeHtml(p.username) + ' • ' : ''}ID: <code>${p.userId}</code></div>
-                            ${p.phone ? `<div style="font-size:11px; color:#38bdf8;">📱 ${escapeHtml(p.phone)}</div>` : ''}
-                        </td>
-                        <td style="padding:12px 8px; font-weight:600; color:#cbd5e1;">${roomText}</td>
-                        <td style="padding:12px 8px;">${boardsHtml}</td>
-                        <td style="padding:12px 8px;">${stateBadge}</td>
-                        <td style="padding:12px 8px;">${lastSeenHtml}</td>
-                        <td style="padding:12px 8px; text-align:right;">${kickBtn}</td>
-                    </tr>
-                `;
-            }).join('');
-        }
+        renderActivePlayersContent(cachedActivePlayers);
     } catch (err) {
         console.error('Error fetching active players:', err);
         if (loadingEl) {
@@ -2196,6 +2416,8 @@ window.openActivePlayersModal = openActivePlayersModal;
 window.closeActivePlayersModal = closeActivePlayersModal;
 window.fetchActivePlayers = fetchActivePlayers;
 window.kickActivePlayer = kickActivePlayer;
+window.setActivePlayersFilter = setActivePlayersFilter;
+window.forceStartRoom = forceStartRoom;
 
 // Admin & Bank exports
 window.fetchAdmins = fetchAdmins;

@@ -277,7 +277,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             activePlayers: admin.activePlayers,
             gameState: admin.gameState,
             pot: admin.pot,
-            drawnCount: admin.drawnCount
+            drawnCount: admin.drawnCount,
+            rooms: admin.rooms
         });
     });
 
