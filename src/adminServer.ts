@@ -2502,6 +2502,25 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         res.json({ success: true, voice: gameRooms.getCallerVoice() });
     });
 
+    // Minimum Calls to Win Admin API
+    app.get('/api/admin/win-call-threshold', adminAuthMiddleware, (_req, res) => {
+        res.json({ success: true, minCallToWin: gameRooms.getMinCallToWin() });
+    });
+
+    app.post('/api/admin/win-call-threshold', adminAuthMiddleware, (req, res) => {
+        const { minCallToWin } = req.body || {};
+        const parsed = Number(minCallToWin);
+        if (isNaN(parsed) || parsed < 4 || parsed > 50) {
+            return res.status(400).json({
+                success: false,
+                msg: 'Invalid minimum calls value. Must be a number between 4 and 50.'
+            });
+        }
+        gameRooms.setMinCallToWin(parsed);
+        console.log(`[Admin] Minimum calls to win threshold updated to ${gameRooms.getMinCallToWin()} by admin`);
+        res.json({ success: true, minCallToWin: gameRooms.getMinCallToWin() });
+    });
+
     // Promotional Bonus Admin API
     app.get('/api/admin/bonus', adminAuthMiddleware, (_req, res) => {
         res.json({

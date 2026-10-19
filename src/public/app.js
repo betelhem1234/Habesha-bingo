@@ -186,6 +186,7 @@ async function refreshAllData() {
         fetchUsers(searchQuery),
         fetchRequests(),
         fetchBonusSettings(),
+        fetchWinCallThreshold(),
         fetchBotSettings(),
         fetchAdmins(),
         fetchAdminBanks(),
@@ -1237,6 +1238,103 @@ async function saveBonusSettings() {
 }
 
 // ----------------------------------------------------
+// Minimum Calls to Win Controller
+// ----------------------------------------------------
+function updateWinCallPreview() {
+    const input = document.getElementById('input-win-call-threshold');
+    const preview = document.getElementById('win-call-preview-text');
+    if (!input || !preview) return;
+    const val = parseInt(input.value, 10);
+    if (!isNaN(val) && val >= 4) {
+        const seconds = val * 4;
+        preview.textContent = `≈ ${seconds}s game`;
+    } else {
+        preview.textContent = 'Min: 4 calls';
+    }
+}
+
+function applyWinCallPreset(preset) {
+    const input = document.getElementById('input-win-call-threshold');
+    if (input) {
+        input.value = preset;
+        updateWinCallPreview();
+    }
+}
+
+async function fetchWinCallThreshold() {
+    try {
+        const res = await authFetch('/api/admin/win-call-threshold');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.success) {
+            const input = document.getElementById('input-win-call-threshold');
+            const badge = document.getElementById('win-call-badge');
+            const threshold = data.minCallToWin || 15;
+            if (input && document.activeElement !== input) {
+                input.value = threshold;
+                updateWinCallPreview();
+            }
+            if (badge) {
+                badge.textContent = `${threshold} Calls (~${threshold * 4}s)`;
+            }
+        }
+    } catch (err) {
+        console.error('Error fetching win call threshold:', err);
+    }
+}
+
+async function saveWinCallThreshold() {
+    const input = document.getElementById('input-win-call-threshold');
+    const statusEl = document.getElementById('win-call-save-status');
+    const badge = document.getElementById('win-call-badge');
+    if (!input) return;
+
+    const minCallToWin = parseInt(input.value, 10);
+    if (isNaN(minCallToWin) || minCallToWin < 4 || minCallToWin > 50) {
+        if (statusEl) {
+            statusEl.textContent = '❌ Must be between 4 and 50 calls';
+            statusEl.style.color = '#ef4444';
+        }
+        return;
+    }
+
+    if (statusEl) {
+        statusEl.textContent = '⏳ Saving...';
+        statusEl.style.color = '#38bdf8';
+    }
+
+    try {
+        const res = await authFetch('/api/admin/win-call-threshold', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ minCallToWin })
+        });
+        const data = await res.json();
+        if (data.success) {
+            if (statusEl) {
+                statusEl.textContent = `✅ Saved! Minimum ${data.minCallToWin} calls (~${data.minCallToWin * 4}s)`;
+                statusEl.style.color = '#10b981';
+                setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 4000);
+            }
+            if (badge) {
+                badge.textContent = `${data.minCallToWin} Calls (~${data.minCallToWin * 4}s)`;
+            }
+        } else {
+            if (statusEl) {
+                statusEl.textContent = `❌ ${data.msg || 'Save failed'}`;
+                statusEl.style.color = '#ef4444';
+            }
+        }
+    } catch (err) {
+        console.error('Error saving win call threshold:', err);
+        if (statusEl) {
+            statusEl.textContent = '❌ Failed to save threshold.';
+            statusEl.style.color = '#ef4444';
+        }
+    }
+}
+
+// ----------------------------------------------------
 // 8.1 Virtual Players (Bot Control) Handlers
 // ----------------------------------------------------
 async function fetchBotSettings() {
@@ -1971,6 +2069,10 @@ window.closeEditModal = closeEditModal;
 window.toggleSelectRequest = toggleSelectRequest;
 window.fetchBonusSettings = fetchBonusSettings;
 window.saveBonusSettings = saveBonusSettings;
+window.fetchWinCallThreshold = fetchWinCallThreshold;
+window.saveWinCallThreshold = saveWinCallThreshold;
+window.applyWinCallPreset = applyWinCallPreset;
+window.updateWinCallPreview = updateWinCallPreview;
 window.fetchBotSettings = fetchBotSettings;
 window.saveBotSettings = saveBotSettings;
 window.injectBots = injectBots;

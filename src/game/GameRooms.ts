@@ -9,6 +9,7 @@ const FEES = [10, 20, 50, 100, 0];
 export class GameRooms {
     private rooms: Map<number, GameManager> = new Map();
     private callerVoice: 'male' | 'female' = 'male';
+    private minCallToWin: number = 15;
     public botService: BotService;
     private settingsFilePath = path.join(process.cwd(), 'data', 'settings.json');
 
@@ -30,6 +31,9 @@ export class GameRooms {
                 if (data.callerVoice === 'female' || data.callerVoice === 'male') {
                     this.callerVoice = data.callerVoice;
                 }
+                if (typeof data.minCallToWin === 'number' && data.minCallToWin >= 4 && data.minCallToWin <= 50) {
+                    this.minCallToWin = Math.floor(data.minCallToWin);
+                }
             }
         } catch (e) {
             console.error('[GameRooms] Error reading settings file:', e);
@@ -47,6 +51,7 @@ export class GameRooms {
                 } catch {}
             }
             currentData.callerVoice = this.callerVoice;
+            currentData.minCallToWin = this.minCallToWin;
             fs.writeFileSync(this.settingsFilePath, JSON.stringify(currentData, null, 2), 'utf8');
         } catch (e) {
             console.error('[GameRooms] Error saving settings file:', e);
@@ -60,6 +65,19 @@ export class GameRooms {
     setCallerVoice(voice: 'male' | 'female') {
         this.callerVoice = voice;
         this.saveSettings();
+    }
+
+    getMinCallToWin(): number {
+        return this.minCallToWin;
+    }
+
+    setMinCallToWin(calls: number) {
+        const val = Math.max(4, Math.min(50, Math.floor(calls)));
+        this.minCallToWin = val;
+        this.saveSettings();
+        for (const gm of this.rooms.values()) {
+            gm.minCallToWin = val;
+        }
     }
 
     private async sweepStalePlayers() {
@@ -90,6 +108,7 @@ export class GameRooms {
         const key = f * 1000 + r;
         if (!this.rooms.has(key)) {
             const gm = new GameManager(this.bot, this.botService, f, r);
+            gm.minCallToWin = this.minCallToWin;
             this.rooms.set(key, gm);
             if (process.env.NODE_ENV !== 'test' && !process.env.NODE_TEST_CONTEXT) {
                 const botSettings = this.botService.getSettings();

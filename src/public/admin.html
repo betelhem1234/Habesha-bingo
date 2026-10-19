@@ -393,6 +393,40 @@
                             <button onclick="setAdminVoice('female')" class="btn-primary" style="margin:0; padding:6px 10px; font-size:12px; background:#e91e63; border:none; cursor:pointer;">👩 Female</button>
                         </div>
                     </div>
+
+                    <!-- Minimum Calls to Win Control Card -->
+                    <div class="stat-card win-calls-control" style="grid-column: 1 / -1; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(16, 185, 129, 0.35);">
+                        <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
+                            <div style="display:flex; align-items:center; gap:8px;">
+                                <h3 style="color:#34d399; font-size:1.05rem; margin:0;">🎯 Minimum Calls to Win (አነስተኛ የጥሪ ቁጥር)</h3>
+                                <span id="win-call-badge" style="font-size:11px; padding:2px 8px; border-radius:12px; background:rgba(16,185,129,0.2); color:#34d399; font-weight:700;">15 Calls (~60s)</span>
+                            </div>
+                            <span id="win-call-save-status" style="font-size:12px; font-weight:600;"></span>
+                        </div>
+                        <p style="font-size:12px; color:#94a3b8; margin:0 0 12px 0;">Configure after how many drawn/called balls players can win (BINGO). Before reaching this number, the caller draws numbers that prevent premature wins. Minimum allowed is 4 (mathematical minimum for 4 corners/line), default is 15 (~60 seconds).</p>
+                        
+                        <div style="display:flex; gap:16px; flex-wrap:wrap; align-items:flex-end;">
+                            <div style="flex:1; min-width:180px;">
+                                <label style="display:block; font-size:11px; color:#cbd5e1; margin-bottom:4px; font-weight:600;">MINIMUM DRAWN CALLS (4 - 50)</label>
+                                <div style="display:flex; align-items:center; gap:8px;">
+                                    <input type="number" id="input-win-call-threshold" min="4" max="50" step="1" value="15" oninput="updateWinCallPreview()" style="width:100%; padding:9px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:14px; font-weight:700; box-sizing:border-box;">
+                                    <span id="win-call-preview-text" style="font-size:12px; color:#38bdf8; font-weight:600; white-space:nowrap; min-width:85px;">≈ 60s game</span>
+                                </div>
+                            </div>
+                            
+                            <div style="display:flex; flex-wrap:wrap; gap:6px; align-items:center;">
+                                <button type="button" onclick="applyWinCallPreset(10)" class="btn-primary" style="margin:0; padding:8px 12px; font-size:12px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); cursor:pointer;">⚡ 10 (~40s)</button>
+                                <button type="button" onclick="applyWinCallPreset(12)" class="btn-primary" style="margin:0; padding:8px 12px; font-size:12px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); cursor:pointer;">⚡ 12 (~48s)</button>
+                                <button type="button" onclick="applyWinCallPreset(15)" class="btn-primary" style="margin:0; padding:8px 12px; font-size:12px; background:rgba(16,185,129,0.3); border:1px solid rgba(16,185,129,0.5); color:#34d399; cursor:pointer;">⭐ 15 (~60s)</button>
+                                <button type="button" onclick="applyWinCallPreset(18)" class="btn-primary" style="margin:0; padding:8px 12px; font-size:12px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); cursor:pointer;">⚡ 18 (~72s)</button>
+                                <button type="button" onclick="applyWinCallPreset(20)" class="btn-primary" style="margin:0; padding:8px 12px; font-size:12px; background:rgba(255,255,255,0.08); border:1px solid rgba(255,255,255,0.15); cursor:pointer;">⚡ 20 (~80s)</button>
+                            </div>
+
+                            <div>
+                                <button type="button" onclick="saveWinCallThreshold()" class="btn-primary" style="margin:0; padding:9px 20px; background:linear-gradient(135deg, #10b981, #059669); border:none; cursor:pointer; font-weight:700; border-radius:8px; box-shadow:0 4px 12px rgba(16,185,129,0.3);">💾 Save Threshold</button>
+                            </div>
+                        </div>
+                    </div>
                     <div class="stat-card bonus-control" style="grid-column: 1 / -1; background: rgba(30, 41, 59, 0.7); border: 1px solid rgba(245, 158, 11, 0.3);">
                         <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px; flex-wrap:wrap; gap:8px;">
                             <h3 style="color:#fbbf24; font-size:1.05rem; margin:0;">🎁 Promotional Bonus Settings (የቦነስ ቅንብሮች)</h3>
@@ -819,6 +853,7 @@
             }catch(e){}
         }
         loadVoice();
+        if (typeof fetchWinCallThreshold === 'function') fetchWinCallThreshold();
     </script>
 </body>
 </html>

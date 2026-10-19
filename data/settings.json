@@ -1,5 +1,6 @@
 {
   "callerVoice": "male",
+  "minCallToWin": 15,
   "newUserBonus": 10,
   "referralBonus": 5,
   "botSettings": {
