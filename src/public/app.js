@@ -185,6 +185,7 @@ async function refreshAllData() {
         fetchStats(),
         fetchUsers(searchQuery),
         fetchRequests(),
+        fetchCallerVoice(),
         fetchBonusSettings(),
         fetchWinCallThreshold(),
         fetchBotSettings(),
@@ -1238,6 +1239,68 @@ async function saveBonusSettings() {
 }
 
 // ----------------------------------------------------
+// Caller Voice Controller
+// ----------------------------------------------------
+function updateVoiceUI(voice) {
+    const el = document.getElementById('stat-voice');
+    if (el) {
+        el.textContent = voice === 'female' ? '👩 Female (ሴት)' : '👨 Male (ወንድ)';
+        el.style.color = voice === 'female' ? '#ff80ab' : '#90caf9';
+    }
+    const btnMale = document.getElementById('btn-voice-male');
+    const btnFemale = document.getElementById('btn-voice-female');
+    if (btnMale) {
+        btnMale.style.opacity = voice === 'male' ? '1' : '0.6';
+        btnMale.style.boxShadow = voice === 'male' ? '0 0 10px rgba(25,118,210,0.8)' : 'none';
+        btnMale.style.outline = voice === 'male' ? '2px solid #60a5fa' : 'none';
+    }
+    if (btnFemale) {
+        btnFemale.style.opacity = voice === 'female' ? '1' : '0.6';
+        btnFemale.style.boxShadow = voice === 'female' ? '0 0 10px rgba(233,30,99,0.8)' : 'none';
+        btnFemale.style.outline = voice === 'female' ? '2px solid #f472b6' : 'none';
+    }
+}
+
+async function fetchCallerVoice() {
+    try {
+        const res = await authFetch('/api/admin/voice');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.success && data.voice) {
+            updateVoiceUI(data.voice);
+        }
+    } catch (err) {
+        console.error('Error fetching caller voice:', err);
+    }
+}
+
+async function setAdminVoice(voice) {
+    if (voice !== 'male' && voice !== 'female') return;
+    const el = document.getElementById('stat-voice');
+    const oldText = el ? el.textContent : '';
+    if (el) el.textContent = '⏳ Updating...';
+
+    try {
+        const res = await authFetch('/api/admin/voice', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ voice })
+        });
+        const data = await res.json();
+        if (data && data.success && data.voice) {
+            updateVoiceUI(data.voice);
+        } else {
+            if (el) el.textContent = oldText;
+            alert(data?.msg || 'Failed to update caller voice.');
+        }
+    } catch (err) {
+        console.error('Error setting caller voice:', err);
+        if (el) el.textContent = oldText;
+        alert('Network error while updating caller voice.');
+    }
+}
+
+// ----------------------------------------------------
 // Minimum Calls to Win Controller
 // ----------------------------------------------------
 function updateWinCallPreview() {
@@ -2115,7 +2178,10 @@ window.handleRequestAction = handleRequestAction;
 window.deleteSingleRequest = deleteSingleRequest;
 window.openEditModal = openEditModal;
 window.closeEditModal = closeEditModal;
-window.toggleSelectRequest = toggleSelectRequest;
+window.fetchCallerVoice = fetchCallerVoice;
+window.setAdminVoice = setAdminVoice;
+window.loadVoice = fetchCallerVoice;
+window.updateVoiceUI = updateVoiceUI;
 window.fetchBonusSettings = fetchBonusSettings;
 window.saveBonusSettings = saveBonusSettings;
 window.fetchWinCallThreshold = fetchWinCallThreshold;
