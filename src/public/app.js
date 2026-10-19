@@ -1741,10 +1741,28 @@ async function fetchAdminBanks() {
     }
 }
 
+function showAdminProfileStatus(msg, isSuccess = false) {
+    const el = document.getElementById('admin-profile-status');
+    if (!el) return;
+    el.textContent = msg;
+    el.style.display = 'block';
+    el.style.background = isSuccess ? 'rgba(34,197,94,0.15)' : 'rgba(239,68,68,0.15)';
+    el.style.border = isSuccess ? '1px solid rgba(34,197,94,0.4)' : '1px solid rgba(239,68,68,0.4)';
+    el.style.color = isSuccess ? '#4ade80' : '#f87171';
+}
+
+function clearAdminProfileStatus() {
+    const el = document.getElementById('admin-profile-status');
+    if (!el) return;
+    el.textContent = '';
+    el.style.display = 'none';
+}
+
 function openAddAdminProfileModal(preselectedUserId = null) {
     const modal = document.getElementById('admin-profile-modal');
     if (!modal) return;
 
+    clearAdminProfileStatus();
     document.getElementById('admin-modal-title').textContent = '👑 Add Administrator from Users';
     document.getElementById('admin-profile-id').value = '';
     document.getElementById('admin-user-select-group').style.display = 'block';
@@ -1757,17 +1775,20 @@ function openAddAdminProfileModal(preselectedUserId = null) {
 
     // Populate user select dropdown
     const select = document.getElementById('admin-user-select');
-    select.innerHTML = '<option value="">-- Choose a user to promote --</option>' +
-        allUsers.map(u => {
-            const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'User';
-            const uname = u.username ? `@${u.username}` : `ID: ${u.id}`;
-            return `<option value="${u.id}">${escapeHtml(name)} (${escapeHtml(uname)}) — #${u.id}</option>`;
-        }).join('');
+    if (select) {
+        select.required = true;
+        select.innerHTML = '<option value="">-- Choose a user to promote --</option>' +
+            allUsers.map(u => {
+                const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'User';
+                const uname = u.username ? `@${u.username}` : `ID: ${u.id}`;
+                return `<option value="${u.id}">${escapeHtml(name)} (${escapeHtml(uname)}) — #${u.id}</option>`;
+            }).join('');
+    }
 
     // Populate bank checklist
     renderAdminBanksChecklist([]);
 
-    if (preselectedUserId) {
+    if (preselectedUserId && select) {
         select.value = String(preselectedUserId);
         onAdminUserSelected(String(preselectedUserId));
     }
@@ -1844,9 +1865,17 @@ function openEditAdminProfileModal(adminId) {
     const modal = document.getElementById('admin-profile-modal');
     if (!modal) return;
 
+    clearAdminProfileStatus();
     document.getElementById('admin-modal-title').textContent = `✏️ Edit Administrator (${admin.user?.firstName || admin.code})`;
     document.getElementById('admin-profile-id').value = admin.id;
     document.getElementById('admin-user-select-group').style.display = 'none';
+
+    // Disable required on hidden user select and sync its value
+    const select = document.getElementById('admin-user-select');
+    if (select) {
+        select.required = false;
+        select.value = String(admin.userId);
+    }
 
     const preview = document.getElementById('admin-user-preview-card');
     if (preview) {
@@ -1870,14 +1899,18 @@ function openEditAdminProfileModal(adminId) {
 }
 
 function closeAdminProfileModal() {
+    clearAdminProfileStatus();
     const modal = document.getElementById('admin-profile-modal');
     if (modal) modal.style.display = 'none';
 }
 
 async function saveAdminProfile(event) {
-    event.preventDefault();
+    if (event && event.preventDefault) event.preventDefault();
+    clearAdminProfileStatus();
+
     const id = document.getElementById('admin-profile-id').value;
-    const userId = document.getElementById('admin-user-select').value;
+    const select = document.getElementById('admin-user-select');
+    const userId = select ? select.value : '';
     const code = document.getElementById('admin-code').value.trim();
     const customName = document.getElementById('admin-custom-name').value.trim();
     const limitInput = document.getElementById('admin-deposit-limit');
@@ -1887,12 +1920,19 @@ async function saveAdminProfile(event) {
     const bankAccountIds = Array.from(checkBoxes).map(cb => parseInt(cb.value, 10));
 
     if (!id && !userId) {
-        alert('Please select a registered user to promote.');
+        showAdminProfileStatus('⚠️ Please select a registered user to promote.');
         return;
     }
     if (!code) {
-        alert('Please specify an affiliate code.');
+        showAdminProfileStatus('⚠️ Please specify an affiliate code.');
         return;
+    }
+
+    const submitBtn = document.getElementById('btn-save-admin-profile') || (event && event.target && event.target.querySelector('button[type="submit"]'));
+    const originalBtnText = submitBtn ? submitBtn.innerHTML : '💾 Save & Link Banks';
+    if (submitBtn) {
+        submitBtn.disabled = true;
+        submitBtn.innerHTML = '⏳ Saving...';
     }
 
     try {
@@ -1909,14 +1949,23 @@ async function saveAdminProfile(event) {
         });
         const data = await res.json();
         if (data.success) {
-            closeAdminProfileModal();
+            showAdminProfileStatus('✅ Administrator saved successfully!', true);
+            setTimeout(() => {
+                closeAdminProfileModal();
+            }, 600);
             await fetchAdmins();
             await fetchAdminBanks();
         } else {
-            alert(data.msg || 'Failed to save administrator profile.');
+            showAdminProfileStatus(`❌ ${data.msg || 'Failed to save administrator profile.'}`);
         }
     } catch (err) {
-        alert('Network error while saving administrator.');
+        console.error('Error saving admin:', err);
+        showAdminProfileStatus('❌ Network error while saving administrator.');
+    } finally {
+        if (submitBtn) {
+            submitBtn.disabled = false;
+            submitBtn.innerHTML = originalBtnText;
+        }
     }
 }
 

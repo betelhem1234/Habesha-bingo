@@ -1260,7 +1260,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 if (!cleanCode) return res.status(400).json({ success: false, msg: 'Code cannot be empty.' });
                 if (cleanCode !== admin.code) {
                     const dup = await prisma.adminProfile.findUnique({ where: { code: cleanCode } });
-                    if (dup) return res.status(400).json({ success: false, msg: `Code "${cleanCode}" is already taken.` });
+                    if (dup && dup.id !== id) return res.status(400).json({ success: false, msg: `Code "${cleanCode}" is already taken.` });
                 }
                 dataToUpdate.code = cleanCode;
             }

@@ -373,4 +373,111 @@ test('Admin Affiliate Lineage & Multi-Bank Routing System Tests', async (t) => {
         assert.ok(clickResult.updatedMessageContent.includes('Already Approved by Tinshu Bro'));
         assert.equal(clickResult.replyMarkup, undefined, 'Inline buttons must be removed');
     });
+
+    await t.test('admin profile update successfully updates code, customName, depositLimit and synchronizes linked banks', async () => {
+        // Mock existing admin profile
+        const admin: MockAdminProfile & { depositLimit?: number } = {
+            id: 1,
+            userId: 1783441823n,
+            code: 'adm_1783441823',
+            customName: null,
+            isActive: true,
+            assignedCount: 5,
+            depositLimit: 3000
+        };
+
+        // Mock existing bank accounts
+        const banks: MockPaymentAccount[] = [
+            { id: 101, bankName: 'Telebirr', accountNumber: '0974756860', accountName: 'Hoss', isActive: true, adminId: 1 },
+            { id: 102, bankName: 'Telebirr', accountNumber: '0923526309', accountName: 'Abrham', isActive: true, adminId: 1 },
+            { id: 103, bankName: 'Telebirr', accountNumber: '0962857834', accountName: 'Betelhem', isActive: true, adminId: null },
+            { id: 104, bankName: 'CBE', accountNumber: '1000312661598', accountName: 'Betelhem', isActive: true, adminId: null }
+        ];
+
+        // Simulate PUT /api/admin/admins/:id handler logic
+        function updateAdminProfile(
+            adminId: number,
+            body: { code?: string; customName?: string | null; depositLimit?: number; bankAccountIds?: number[] },
+            allAdminsList: typeof admin[],
+            allBanksList: typeof banks
+        ) {
+            const target = allAdminsList.find(a => a.id === adminId);
+            if (!target) throw new Error('Administrator not found');
+
+            if (body.code !== undefined) {
+                const clean = String(body.code).trim().toLowerCase();
+                if (!clean) throw new Error('Code cannot be empty');
+                // Self-collision immunity: dup && dup.id !== adminId
+                const dup = allAdminsList.find(a => a.code === clean);
+                if (dup && dup.id !== adminId) {
+                    throw new Error(`Code "${clean}" is already taken.`);
+                }
+                target.code = clean;
+            }
+
+            if (body.customName !== undefined) {
+                target.customName = body.customName ? String(body.customName).trim() : null;
+            }
+
+            if (body.depositLimit !== undefined) {
+                target.depositLimit = Math.max(0, Number(body.depositLimit));
+            }
+
+            if (Array.isArray(body.bankAccountIds)) {
+                const targetIds = new Set(body.bankAccountIds.map(Number));
+                for (const b of allBanksList) {
+                    if (b.adminId === adminId && !targetIds.has(b.id)) {
+                        b.adminId = null; // unlinked
+                    } else if (targetIds.has(b.id)) {
+                        b.adminId = adminId; // linked
+                    }
+                }
+            }
+
+            return target;
+        }
+
+        // 1. Updating with same code (or case-insensitive same code) succeeds without self-collision
+        const updated1 = updateAdminProfile(1, {
+            code: 'adm_1783441823',
+            customName: 'Tinshu Bro Branch',
+            depositLimit: 5000,
+            bankAccountIds: [101, 102, 104] // Link account 104 as well
+        }, [admin], banks);
+
+        assert.equal(updated1.code, 'adm_1783441823');
+        assert.equal(updated1.customName, 'Tinshu Bro Branch');
+        assert.equal(updated1.depositLimit, 5000);
+
+        // Verify bank accounts 101, 102, 104 are linked, 103 is unlinked
+        assert.equal(banks.find(b => b.id === 101)?.adminId, 1);
+        assert.equal(banks.find(b => b.id === 102)?.adminId, 1);
+        assert.equal(banks.find(b => b.id === 104)?.adminId, 1);
+        assert.equal(banks.find(b => b.id === 103)?.adminId, null);
+
+        // 2. Attempting to use another admin's code fails
+        const otherAdmin = { id: 2, userId: 99999n, code: 'adm_other', isActive: true, assignedCount: 0 };
+        assert.throws(() => {
+            updateAdminProfile(1, { code: 'adm_other' }, [admin, otherAdmin], banks);
+        }, /already taken/);
+
+        // 3. Form validation logic for edit: when id is present, userId select is optional
+        function validateAdminProfileForm(id: string | number | null, userId: string | null, code: string) {
+            if (!id && !userId) {
+                return { valid: false, error: 'Please select a registered user to promote.' };
+            }
+            if (!code || !code.trim()) {
+                return { valid: false, error: 'Please specify an affiliate code.' };
+            }
+            return { valid: true };
+        }
+
+        // Editing without userId dropdown (id='1', userId='', code='adm_1783441823') is VALID
+        const editValidation = validateAdminProfileForm('1', '', 'adm_1783441823');
+        assert.equal(editValidation.valid, true);
+
+        // New admin creation requires userId
+        const addValidation = validateAdminProfileForm('', '', 'adm_new');
+        assert.equal(addValidation.valid, false);
+    });
 });
