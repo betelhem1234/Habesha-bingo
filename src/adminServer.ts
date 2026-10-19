@@ -495,6 +495,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             isBlocked: Boolean(player.isBlocked),
             drawnNumbers: Array.from(gameManager.drawnNumbers),
             lastDrawn: Array.from(gameManager.drawnNumbers).at(-1) ?? null,
+            autoPlay: Boolean(player.autoPlay),
             lobbyCountdown: gameManager.lobbyCountdown,
             playerCount: gameManager.players.length,
             boardCount: gameManager.getTotalBoards(),
@@ -680,7 +681,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
 
     // Join a game by picking board numbers or a single boardNumber
     app.post('/api/join', requirePlayerOwnership(req => req.body?.userId), async (req, res) => {
-        const { userId, boardNumber, boards, bet, room } = req.body;
+        const { userId, boardNumber, boards, bet, room, autoPlay } = req.body;
         if (!userId) {
             return res.status(400).json({ success: false, msg: 'userId is required.' });
         }
@@ -697,8 +698,26 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         const fee = parseInt(bet, 10) > 0 ? parseInt(bet, 10) : 10;
         const rNum = parseInt(room, 10) > 0 ? parseInt(room, 10) : 1;
         const gameManager = gameRooms.getRoom(fee, rNum);
-        const result = await gameManager.selectBoards(BigInt(userId), bList, fee);
+        const result = await gameManager.selectBoards(
+            BigInt(userId),
+            bList,
+            fee,
+            autoPlay !== undefined ? Boolean(autoPlay) : undefined
+        );
         res.json(result);
+    });
+
+    // Set or toggle Auto-Play mode for a player
+    app.post('/api/player/autoplay', requirePlayerOwnership(req => req.body?.userId), async (req, res) => {
+        const { userId, autoPlay, bet, room } = req.body;
+        if (!userId) {
+            return res.status(400).json({ success: false, msg: 'userId is required.' });
+        }
+        const fee = parseInt(bet, 10) > 0 ? parseInt(bet, 10) : 10;
+        const rNum = parseInt(room, 10) > 0 ? parseInt(room, 10) : 1;
+        const gameManager = gameRooms.findPlayer(BigInt(userId)) || gameRooms.getRoom(fee, rNum);
+        const updated = gameManager.setAutoPlay(BigInt(userId), Boolean(autoPlay));
+        res.json({ success: true, updated, autoPlay: Boolean(autoPlay) });
     });
     
     app.post('/api/daub', requirePlayerOwnership(req => req.body?.userId), async (req, res) => {

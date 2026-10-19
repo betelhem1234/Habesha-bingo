@@ -668,7 +668,40 @@ let lastDrawn=null;
 const spokenNumbersInRound=new Set();
 let lastPendingDrawnNumber=null;
 let soundEnabled=true;
+
+const urlAuto=params.get('auto');
 let autoEnabled=false;
+try{
+  const stored=localStorage.getItem('bingo_auto_play');
+  if(stored !== null){
+    autoEnabled = stored === 'true';
+  } else if(urlAuto !== null){
+    autoEnabled = urlAuto === '1';
+  }
+}catch(e){}
+
+let wakeLock=null;
+async function requestWakeLock(){
+  if(autoEnabled && 'wakeLock' in navigator){
+    try{
+      wakeLock = await navigator.wakeLock.request('screen');
+    }catch(e){}
+  }
+}
+
+function releaseWakeLock(){
+  if(wakeLock){
+    try{ wakeLock.release(); }catch(e){}
+    wakeLock = null;
+  }
+}
+
+document.addEventListener('visibilitychange', ()=>{
+  if(document.visibilityState === 'visible' && autoEnabled){
+    requestWakeLock();
+  }
+});
+
 let audioCtx=null;
 let pollInterval=null;
 let winnerShown=false;
@@ -1113,11 +1146,15 @@ function onBingoClick(){
 
 function toggleAuto(){
   autoEnabled = !autoEnabled;
+  try{
+    localStorage.setItem('bingo_auto_play', autoEnabled ? 'true' : 'false');
+  }catch(e){}
   const badge = document.getElementById('auto-state-badge');
   badge.textContent = autoEnabled ? 'ON' : 'OFF';
   badge.className = autoEnabled ? 'auto-state-badge' : 'auto-state-badge off';
   updateActionButtons(currentCanBingo);
   if(autoEnabled){
+    requestWakeLock();
     autoDaubAndCheck();
     // Check if player had a stale line when turning on auto mid-game
     if(myCards && myCards.length > 0 && lastDrawnSet && lastDrawnSet.size >= 15){
@@ -1135,6 +1172,14 @@ function toggleAuto(){
         showValidationMessage('ℹ️ Auto-Play ON: Previous missed line expired. Watching for new lines!');
       }
     }
+  } else {
+    releaseWakeLock();
+  }
+  if(userId && userId !== '0'){
+    fetch('/api/player/autoplay',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({userId,autoPlay:autoEnabled,bet,room})
+    }).catch(()=>{});
   }
 }
 
@@ -1446,7 +1491,7 @@ function showWinnerOverlay(data){
     cdBtn.textContent=cnt;
     if(cnt<=0){
       clearInterval(cd);
-      window.location.href=`/boards.html?userId=${userId}&bet=${bet}&room=${room}`;
+      window.location.href=`/boards.html?userId=${userId}&bet=${bet}&room=${room}&auto=${autoEnabled?'1':'0'}`;
     }
   },1000);
 }
@@ -1519,7 +1564,7 @@ function showAllBlockedOverlay(data){
     cdBtn.textContent=cnt;
     if(cnt<=0){
       clearInterval(cd);
-      window.location.href=`/boards.html?userId=${userId}&bet=${bet}&room=${room}`;
+      window.location.href=`/boards.html?userId=${userId}&bet=${bet}&room=${room}&auto=${autoEnabled?'1':'0'}`;
     }
   },1000);
 }
@@ -1569,7 +1614,7 @@ function applyGameState(data) {
   }
 
   if (isSpectator && data.gameState === 'WAITING' && !winnerShown) {
-    window.location.href = `/boards.html?userId=${userId}&bet=${bet}&room=${room}`;
+    window.location.href = `/boards.html?userId=${userId}&bet=${bet}&room=${room}&auto=${autoEnabled?'1':'0'}`;
     return;
   }
 
@@ -1876,7 +1921,23 @@ function unlockAudio(){
   document.addEventListener(evt, unlockAudio, { passive: true });
 });
 
-// Initial startup: Attempt audio unlock + connect SSE real-time stream + fallback poll
+// Initial startup: Sync auto-play badge + attempt audio unlock + connect SSE real-time stream + fallback poll
+const initBadge = document.getElementById('auto-state-badge');
+if(initBadge){
+  initBadge.textContent = autoEnabled ? 'ON' : 'OFF';
+  initBadge.className = autoEnabled ? 'auto-state-badge' : 'auto-state-badge off';
+}
+updateActionButtons(false);
+if(autoEnabled){
+  requestWakeLock();
+  if(userId && userId !== '0'){
+    fetch('/api/player/autoplay',{
+      method:'POST',headers:{'Content-Type':'application/json'},
+      body:JSON.stringify({userId,autoPlay:autoEnabled,bet,room})
+    }).catch(()=>{});
+  }
+}
+
 unlockAudio();
 preloadAudioCalls();
 initSSE();

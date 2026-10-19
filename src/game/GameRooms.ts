@@ -179,6 +179,7 @@ export class GameRooms {
             lastSeen: number;
             isBlocked: boolean;
             isBot?: boolean;
+            autoPlay?: boolean;
         };
     }> {
         const list = [];
@@ -206,7 +207,8 @@ export class GameRooms {
                         bonusUsed: p.bonusUsed || 0,
                         lastSeen: p.lastSeen,
                         isBlocked: !!p.isBlocked,
-                        isBot: !!p.isBot
+                        isBot: !!p.isBot,
+                        autoPlay: !!p.autoPlay
                     }
                 });
             }

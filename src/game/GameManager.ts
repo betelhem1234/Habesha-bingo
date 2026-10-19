@@ -25,6 +25,7 @@ export interface Player {
     lastSeen: number;
     isBlocked?: boolean;
     isBot?: boolean;
+    autoPlay?: boolean;
 }
 
 export interface WinnerRecord {
@@ -186,7 +187,7 @@ export class GameManager {
         }
     }
 
-    async selectBoards(userId: bigint, boardNumbers: number[], feePerBoard: number = 10): Promise<{ success: boolean; msg: string; boards: number[] }> {
+    async selectBoards(userId: bigint, boardNumbers: number[], feePerBoard: number = 10, autoPlay?: boolean): Promise<{ success: boolean; msg: string; boards: number[] }> {
         return this.runWithUserLock(userId, async () => {
             if (this.lobbyResetTimeout) {
                 clearTimeout(this.lobbyResetTimeout);
@@ -293,6 +294,9 @@ export class GameManager {
                     activePlayer.bonusUsed = (activePlayer.bonusUsed || 0) + additionalBonusUsed;
                     activePlayer.withdrawableUsed = (activePlayer.withdrawableUsed || 0) + additionalWithdrawableUsed;
                     activePlayer.lastSeen = Date.now();
+                    if (autoPlay !== undefined) {
+                        activePlayer.autoPlay = autoPlay;
+                    }
                 } else {
                     const user = await prisma.user.findUnique({ where: { id: userId } });
                     this.players.push({
@@ -306,7 +310,8 @@ export class GameManager {
                         withdrawableUsed: additionalWithdrawableUsed,
                         firstName: user?.firstName ?? undefined,
                         username: user?.username ?? undefined,
-                        lastSeen: Date.now()
+                        lastSeen: Date.now(),
+                        autoPlay: autoPlay ?? false
                     });
 
                     if (this.players.length >= 1 && !this.lobbyInterval) {
@@ -442,6 +447,18 @@ export class GameManager {
         for (const p of this.players) {
             if (p.userId.toString() === idStr) p.lastSeen = Date.now();
         }
+    }
+
+    // Toggle or set Auto-Play mode for a player
+    setAutoPlay(userId: bigint, enabled: boolean): boolean {
+        const idStr = userId.toString();
+        const p = this.players.find(pl => pl.userId.toString() === idStr);
+        if (p) {
+            p.autoPlay = enabled;
+            p.lastSeen = Date.now();
+            return true;
+        }
+        return false;
     }
 
     async forceReset(): Promise<{ success: boolean; msg: string }> {
@@ -892,6 +909,41 @@ export class GameManager {
             }
 
             this.drawnNumbers.add(num);
+
+            // Auto-daub and auto-claim for human players who have autoPlay enabled (Server Safety Net)
+            for (const p of this.players) {
+                if (p.autoPlay && !p.isBlocked && !p.isBot) {
+                    const cards = p.cards && p.cards.length > 0
+                        ? p.cards
+                        : [{ boardNumber: p.boardNumber || 0, ticket: p.ticket, daubed: p.daubed }];
+
+                    for (const card of cards) {
+                        let hasNum = false;
+                        for (let r = 0; r < 5; r++) {
+                            for (let c = 0; c < 5; c++) {
+                                if (card.ticket[r][c] === num) {
+                                    hasNum = true;
+                                    break;
+                                }
+                            }
+                            if (hasNum) break;
+                        }
+
+                        if (hasNum) {
+                            card.daubed.add(num);
+                            p.daubed.add(num);
+
+                            const winRes = checkWinFreshness(card.ticket, this.drawnNumbers, num);
+                            if (winRes.hasWon && winRes.isFresh) {
+                                console.log(`[GameManager] ⚡ Auto-Play: Player ${p.firstName || p.userId} completed winning line on #${num}! Triggering claim...`);
+                                this.claimBingo(p.userId).catch(e => console.error('[GameManager] Auto-claim error:', e));
+                                break;
+                            }
+                        }
+                    }
+                }
+            }
+
             this.botService?.onNumberDrawn(this, num, this.fee, this.room);
             const numName = getNumberName(num);
             const emoji = getColumnEmoji(num);

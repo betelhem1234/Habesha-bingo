@@ -1436,7 +1436,7 @@ async function fetchActivePlayers() {
 
                 const botBadge = p.isBot
                     ? `<span style="display:inline-block; margin-left:6px; background:rgba(192,132,252,0.22); color:#c084fc; border:1px solid rgba(192,132,252,0.45); border-radius:10px; font-size:10px; padding:1px 6px; font-weight:700;">🤖 BOT</span>`
-                    : '';
+                    : (p.autoPlay ? `<span style="display:inline-block; margin-left:6px; background:rgba(34,197,94,0.22); color:#4ade80; border:1px solid rgba(34,197,94,0.45); border-radius:10px; font-size:10px; padding:1px 6px; font-weight:700;">⚡ AUTO</span>` : '');
 
                 return `
                     <tr style="border-bottom:1px solid rgba(255,255,255,0.06);">
