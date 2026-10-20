@@ -262,23 +262,96 @@ async function fetchFinancialSummary() {
     }
 }
 
+let currentIncomeLobbyFilter = localStorage.getItem('bingo_admin_income_lobby') || 'all';
+
+function setIncomeLobbyFilter(filter) {
+    currentIncomeLobbyFilter = filter;
+    try {
+        localStorage.setItem('bingo_admin_income_lobby', filter);
+    } catch {}
+    updateIncomeLobbyFilterUI();
+    fetchHouseIncome();
+}
+
+function updateIncomeLobbyFilterUI() {
+    const btnAll = document.getElementById('income-filter-btn-all');
+    const btn10 = document.getElementById('income-filter-btn-10');
+    const btn20 = document.getElementById('income-filter-btn-20');
+
+    if (btnAll) {
+        if (currentIncomeLobbyFilter === 'all') {
+            btnAll.style.background = '#8b5cf6';
+            btnAll.style.color = '#fff';
+            btnAll.style.border = 'none';
+        } else {
+            btnAll.style.background = 'rgba(139, 92, 246, 0.15)';
+            btnAll.style.color = '#c4b5fd';
+            btnAll.style.border = '1px solid rgba(139, 92, 246, 0.35)';
+        }
+    }
+
+    if (btn10) {
+        if (currentIncomeLobbyFilter === '10') {
+            btn10.style.background = '#facc15';
+            btn10.style.color = '#000';
+            btn10.style.border = 'none';
+        } else {
+            btn10.style.background = 'rgba(250, 204, 21, 0.15)';
+            btn10.style.color = '#facc15';
+            btn10.style.border = '1px solid rgba(250, 204, 21, 0.35)';
+        }
+    }
+
+    if (btn20) {
+        if (currentIncomeLobbyFilter === '20') {
+            btn20.style.background = '#c084fc';
+            btn20.style.color = '#000';
+            btn20.style.border = 'none';
+        } else {
+            btn20.style.background = 'rgba(192, 132, 252, 0.15)';
+            btn20.style.color = '#c084fc';
+            btn20.style.border = '1px solid rgba(192, 132, 252, 0.35)';
+        }
+    }
+}
+
 // ----------------------------------------------------
 // 3. House Income & Game Payouts Table
 // ----------------------------------------------------
 async function fetchHouseIncome() {
     try {
-        const res = await authFetch(`/api/admin/income?period=${currentPeriod}`);
+        const feeQuery = (currentIncomeLobbyFilter && currentIncomeLobbyFilter !== 'all') ? `&fee=${encodeURIComponent(currentIncomeLobbyFilter)}` : '';
+        const res = await authFetch(`/api/admin/income?period=${currentPeriod}${feeQuery}`);
         if (!res.ok) throw new Error('House income fetch failed');
         const data = await res.json();
+
+        updateIncomeLobbyFilterUI();
+
+        // Populate Top KPI Cards
+        const byLobby = data.byLobby || {};
+        const l10 = byLobby['10'] || { totalGames: 0, totalPot: 0, totalHouseProfit: 0 };
+        const l20 = byLobby['20'] || { totalGames: 0, totalPot: 0, totalHouseProfit: 0 };
+        const summary = data.summary || {};
+
+        setText('income-kpi-total-profit', (summary.totalHouseProfit ?? 0).toLocaleString());
+        setText('income-kpi-total-games', `${(summary.totalGames ?? 0).toLocaleString()} games`);
+        setText('income-kpi-total-pot', (summary.totalPot ?? 0).toLocaleString());
+
+        setText('income-kpi-10-profit', (l10.totalHouseProfit ?? 0).toLocaleString());
+        setText('income-kpi-10-games', `${(l10.totalGames ?? 0).toLocaleString()} games`);
+        setText('income-kpi-10-pot', (l10.totalPot ?? 0).toLocaleString());
+
+        setText('income-kpi-20-profit', (l20.totalHouseProfit ?? 0).toLocaleString());
+        setText('income-kpi-20-games', `${(l20.totalGames ?? 0).toLocaleString()} games`);
+        setText('income-kpi-20-pot', (l20.totalPot ?? 0).toLocaleString());
 
         const tbody = document.querySelector('#income-table tbody');
         if (!tbody) return;
 
         const incomes = data.incomes || [];
-        const summary = data.summary || {};
 
         if (incomes.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="7" style="text-align:center; color:#94a3b8; padding:24px;">No games recorded in this period.</td></tr>`;
+            tbody.innerHTML = `<tr><td colspan="8" style="text-align:center; color:#94a3b8; padding:24px;">No games recorded for this filter in this period.</td></tr>`;
         } else {
             tbody.innerHTML = incomes.map(i => {
                 const dateStr = i.createdAt
@@ -301,6 +374,17 @@ async function fetchHouseIncome() {
                         return `<strong>${escapeHtml(name)}</strong>`;
                     }
                     return `<span style="color:#64748b;">ID: ${escapeHtml(String(id || '—'))}</span>`;
+                }
+
+                function formatLobbyBadge(fee, room) {
+                    const rNum = room || 1;
+                    if (fee === 10) {
+                        return `<span style="background:rgba(250,204,21,0.18); border:1px solid rgba(250,204,21,0.4); color:#facc15; padding:3px 8px; border-radius:6px; font-weight:700; font-size:11px; white-space:nowrap;">🟡 10 Birr #${rNum}</span>`;
+                    }
+                    if (fee === 20) {
+                        return `<span style="background:rgba(192,132,252,0.18); border:1px solid rgba(192,132,252,0.4); color:#c084fc; padding:3px 8px; border-radius:6px; font-weight:700; font-size:11px; white-space:nowrap;">🟣 20 Birr #${rNum}</span>`;
+                    }
+                    return `<span style="background:rgba(148,163,184,0.18); border:1px solid rgba(148,163,184,0.4); color:#cbd5e1; padding:3px 8px; border-radius:6px; font-weight:700; font-size:11px; white-space:nowrap;">${fee || 10} Birr #${rNum}</span>`;
                 }
 
                 let winnerDisplay = '—';
@@ -343,6 +427,7 @@ async function fetchHouseIncome() {
                 return `
                     <tr>
                         <td style="color:#94a3b8; font-family:monospace; font-size:13px;">#${escapeHtml(String(i.id))}</td>
+                        <td>${formatLobbyBadge(i.fee, i.room)}</td>
                         <td style="color:#94a3b8; font-size:12px; white-space:nowrap;">${dateStr}</td>
                         <td><strong style="color:#f8fafc;">${i.playerCount}</strong></td>
                         <td><strong>${(i.pot ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
@@ -403,8 +488,10 @@ async function fetchStats() {
 
         // Update 10 Birr Room Card
         if (r10) {
+            const bTaken10 = r10.boardsTaken ?? r10.playersCount ?? 0;
             setText('room-10-players', (r10.playersCount ?? 0).toLocaleString());
             setText('room-10-pot', (r10.pot ?? 0).toLocaleString());
+            setText('room-10-boards', bTaken10.toLocaleString());
             const badge10 = document.getElementById('room-10-badge');
             const details10 = document.getElementById('room-10-details');
             const btnStart10 = document.getElementById('btn-start-10');
@@ -415,7 +502,7 @@ async function fetchStats() {
                 badge10.style.color = isPlaying10 ? '#4ade80' : '#facc15';
             }
             if (details10) {
-                details10.innerHTML = `Pot: <strong style="color:#fff;">${(r10.pot ?? 0).toLocaleString()} Birr</strong> • ${isPlaying10 ? `In Progress (${r10.drawnCount} calls)` : `Lobby (${r10.lobbyCountdown}s)`}`;
+                details10.innerHTML = `Pot: <strong style="color:#fff;">${(r10.pot ?? 0).toLocaleString()} Birr</strong> • Boards: <strong style="color:#facc15;">${bTaken10}/500</strong> • ${isPlaying10 ? `In Progress (${r10.drawnCount} calls)` : `Lobby (${r10.lobbyCountdown}s)`}`;
             }
             if (btnStart10) {
                 if (isPlaying10) {
@@ -432,8 +519,10 @@ async function fetchStats() {
 
         // Update 20 Birr Room Card
         if (r20) {
+            const bTaken20 = r20.boardsTaken ?? r20.playersCount ?? 0;
             setText('room-20-players', (r20.playersCount ?? 0).toLocaleString());
             setText('room-20-pot', (r20.pot ?? 0).toLocaleString());
+            setText('room-20-boards', bTaken20.toLocaleString());
             const badge20 = document.getElementById('room-20-badge');
             const details20 = document.getElementById('room-20-details');
             const btnStart20 = document.getElementById('btn-start-20');
@@ -444,7 +533,7 @@ async function fetchStats() {
                 badge20.style.color = isPlaying20 ? '#4ade80' : '#c084fc';
             }
             if (details20) {
-                details20.innerHTML = `Pot: <strong style="color:#fff;">${(r20.pot ?? 0).toLocaleString()} Birr</strong> • ${isPlaying20 ? `In Progress (${r20.drawnCount} calls)` : `Lobby (${r20.lobbyCountdown}s)`}`;
+                details20.innerHTML = `Pot: <strong style="color:#fff;">${(r20.pot ?? 0).toLocaleString()} Birr</strong> • Boards: <strong style="color:#c084fc;">${bTaken20}/500</strong> • ${isPlaying20 ? `In Progress (${r20.drawnCount} calls)` : `Lobby (${r20.lobbyCountdown}s)`}`;
             }
             if (btnStart20) {
                 if (isPlaying20) {
@@ -464,7 +553,9 @@ async function fetchStats() {
         if (breakdownEl) {
             const count10 = r10 ? (r10.playersCount ?? 0) : 0;
             const count20 = r20 ? (r20.playersCount ?? 0) : 0;
-            breakdownEl.innerHTML = `📍 10 Birr: <strong>${count10}</strong> | 20 Birr: <strong>${count20}</strong> • <em>Click to inspect</em>`;
+            const b10 = r10 ? (r10.boardsTaken ?? count10) : 0;
+            const b20 = r20 ? (r20.boardsTaken ?? count20) : 0;
+            breakdownEl.innerHTML = `📍 10 Birr: <strong>${count10}</strong> (${b10} bds) | 20 Birr: <strong>${count20}</strong> (${b20} bds) • <em>Click to inspect</em>`;
         }
     } catch (err) {
         console.error('Error fetching stats:', err);
@@ -1508,6 +1599,10 @@ async function fetchBotSettings() {
                 statusBadge.style.color = '#f87171';
             }
         }
+
+        const byFee = data.byFee || {};
+        setText('bot-count-10', (byFee['10'] || 0).toLocaleString());
+        setText('bot-count-20', (byFee['20'] || 0).toLocaleString());
     } catch (e) {
         console.error('Failed to load bot settings:', e);
     }
@@ -1557,17 +1652,18 @@ async function saveBotSettings() {
     }
 }
 
-async function injectBots(count = 5) {
+async function injectBots(count = 5, fee = 10) {
     try {
         const res = await authFetch('/api/admin/bots/inject', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fee: 10, room: 1, count })
+            body: JSON.stringify({ fee, room: 1, count })
         });
         const data = await res.json();
         if (data.success) {
             alert(data.msg);
             fetchStats();
+            fetchBotSettings();
         } else {
             alert(data.msg || 'Could not add bots.');
         }
@@ -1576,18 +1672,19 @@ async function injectBots(count = 5) {
     }
 }
 
-async function clearBots() {
-    if (!confirm('Are you sure you want to remove all fake players from the 10 Birr lobby?')) return;
+async function clearBots(fee = 10) {
+    if (!confirm(`Are you sure you want to remove all fake players from the ${fee} Birr lobby?`)) return;
     try {
         const res = await authFetch('/api/admin/bots/clear', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ fee: 10, room: 1 })
+            body: JSON.stringify({ fee, room: 1 })
         });
         const data = await res.json();
         if (data.success) {
             alert(data.msg);
             fetchStats();
+            fetchBotSettings();
         } else {
             alert(data.msg || 'Could not clear bots.');
         }
@@ -2412,6 +2509,7 @@ window.fetchBotSettings = fetchBotSettings;
 window.saveBotSettings = saveBotSettings;
 window.injectBots = injectBots;
 window.clearBots = clearBots;
+window.setIncomeLobbyFilter = setIncomeLobbyFilter;
 window.openActivePlayersModal = openActivePlayersModal;
 window.closeActivePlayersModal = closeActivePlayersModal;
 window.fetchActivePlayers = fetchActivePlayers;

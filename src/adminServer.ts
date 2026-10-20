@@ -2197,9 +2197,13 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         const period = (req.query.period as string) || 'today';
         const startDate = req.query.startDate as string | undefined;
         const endDate = req.query.endDate as string | undefined;
+        const reqFee = req.query.fee !== undefined && req.query.fee !== '' && req.query.fee !== 'all' ? Number(req.query.fee) : undefined;
 
         const { start, end } = getPeriodRange(period, startDate, endDate);
         const where: any = start ? { createdAt: { gte: start, lte: end } } : {};
+        if (reqFee !== undefined && !isNaN(reqFee)) {
+            where.fee = reqFee;
+        }
 
         try {
             const incomes = await prisma.houseIncome.findMany({
@@ -2229,6 +2233,11 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             let totalWinnerPayout = 0;
             let totalHouseProfit = 0;
 
+            const byLobby: Record<string, { totalGames: number; totalPlayers: number; totalPot: number; totalWinnerPayout: number; totalHouseProfit: number }> = {
+                '10': { totalGames: 0, totalPlayers: 0, totalPot: 0, totalWinnerPayout: 0, totalHouseProfit: 0 },
+                '20': { totalGames: 0, totalPlayers: 0, totalPot: 0, totalWinnerPayout: 0, totalHouseProfit: 0 }
+            };
+
             const safeIncomes = incomes.map(i => {
                 const pot = i.totalCollected.toNumber();
                 const payout = i.winnerPayout.toNumber();
@@ -2237,6 +2246,18 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 totalPot += pot;
                 totalWinnerPayout += payout;
                 totalHouseProfit += profit;
+
+                const rowFee = (i as any).fee !== undefined && (i as any).fee !== null ? Number((i as any).fee) : (i.playerCount > 0 ? Math.round(pot / i.playerCount) : 10);
+                const rowRoom = (i as any).room !== undefined && (i as any).room !== null ? Number((i as any).room) : 1;
+                const feeKey = String(rowFee);
+                if (!byLobby[feeKey]) {
+                    byLobby[feeKey] = { totalGames: 0, totalPlayers: 0, totalPot: 0, totalWinnerPayout: 0, totalHouseProfit: 0 };
+                }
+                byLobby[feeKey].totalGames++;
+                byLobby[feeKey].totalPlayers += i.playerCount;
+                byLobby[feeKey].totalPot += pot;
+                byLobby[feeKey].totalWinnerPayout += payout;
+                byLobby[feeKey].totalHouseProfit += profit;
 
                 const w2Id = (i as any).winner2Id;
                 const wCount = (i as any).winnerCount !== undefined ? Number((i as any).winnerCount) : (w2Id ? 2 : (i.winnerId ? 1 : 0));
@@ -2266,6 +2287,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 return {
                     id: i.id,
                     gameType: i.gameType,
+                    fee: rowFee,
+                    room: rowRoom,
                     playerCount: i.playerCount,
                     pot,
                     winnerPayout: payout,
@@ -2288,6 +2311,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 period,
                 start,
                 end,
+                filterFee: reqFee ?? null,
                 summary: {
                     totalGames: incomes.length,
                     totalPlayers,
@@ -2295,6 +2319,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     totalWinnerPayout,
                     totalHouseProfit
                 },
+                byLobby,
                 incomes: safeIncomes
             });
         } catch (e) {
@@ -2560,13 +2585,20 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     app.get('/api/admin/bots', adminAuthMiddleware, (_req, res) => {
         const settings = gameRooms.botService.getSettings();
         let totalActiveBots = 0;
+        const byRoom: Record<string, number> = {};
+        const byFee: Record<string, number> = { '10': 0, '20': 0 };
         for (const gm of gameRooms.roomsList()) {
-            totalActiveBots += gm.players.filter(p => p.isBot).length;
+            const count = gm.players.filter(p => p.isBot).length;
+            totalActiveBots += count;
+            byRoom[`${gm.fee}-${gm.room}`] = count;
+            byFee[String(gm.fee)] = (byFee[String(gm.fee)] || 0) + count;
         }
         res.json({
             success: true,
             settings,
-            totalActiveBots
+            totalActiveBots,
+            byRoom,
+            byFee
         });
     });
 

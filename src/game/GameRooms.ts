@@ -183,7 +183,8 @@ export class GameRooms {
                 state: gm.state,
                 lobbyCountdown: gm.lobbyCountdown,
                 pot: gm.getPot(),
-                drawnCount: gm.drawnNumbers.size
+                drawnCount: gm.drawnNumbers.size,
+                boardsTaken: gm.getTotalBoards()
             }))
             .sort((a, b) => a.fee - b.fee || a.room - b.room);
 

@@ -125,6 +125,8 @@ model GameHistory {
 model HouseIncome {
   id             Int      @id @default(autoincrement())
   gameType       String   // 'bingo'
+  fee            Int      @default(10) // e.g. 10, 20
+  room           Int      @default(1)  // e.g. 1
   playerCount    Int
   totalCollected Decimal
   winnerPayout   Decimal
@@ -135,4 +137,5 @@ model HouseIncome {
   createdAt      DateTime @default(now())
   
   @@index([createdAt])
+  @@index([fee, room])
 }

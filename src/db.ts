@@ -41,6 +41,10 @@ export async function initDbSchema() {
             CREATE INDEX IF NOT EXISTS "TransactionRequest_assignedAdminId_idx" ON "TransactionRequest"("assignedAdminId");
             CREATE INDEX IF NOT EXISTS "TransactionRequest_processedByAdminId_idx" ON "TransactionRequest"("processedByAdminId");
 
+            ALTER TABLE "HouseIncome" ADD COLUMN IF NOT EXISTS "fee" INTEGER NOT NULL DEFAULT 10;
+            ALTER TABLE "HouseIncome" ADD COLUMN IF NOT EXISTS "room" INTEGER NOT NULL DEFAULT 1;
+            CREATE INDEX IF NOT EXISTS "HouseIncome_fee_room_idx" ON "HouseIncome"("fee", "room");
+
             -- Backfill withdrawableBalance for existing players based on historical net winnings capped by balance
             UPDATE "User"
             SET "withdrawableBalance" = LEAST("balance", GREATEST(0, (

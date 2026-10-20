@@ -38,6 +38,8 @@ export interface WinnerRecord {
     daubed?: number[];
     winningCells?: { row: number; col: number }[];
     winningNumber?: number;
+    fee?: number;
+    room?: number;
     at: string;
 }
 
@@ -1336,6 +1338,8 @@ export class GameManager {
                     await prisma.houseIncome.create({
                         data: {
                             gameType: 'bingo',
+                            fee: this.fee,
+                            room: this.room,
                             playerCount: this.players.length,
                             totalCollected: pot,
                             winnerPayout: totalActualPayout,
@@ -1380,6 +1384,8 @@ export class GameManager {
                 daubed: Array.from(w.daubed),
                 winningCells: w.winningCells || [],
                 winningNumber: w.winningNumber || Array.from(this.drawnNumbers).at(-1),
+                fee: this.fee,
+                room: this.room,
                 at: new Date().toISOString()
             }));
             this.currentWinner = this.currentWinners[0] || null;
@@ -1436,6 +1442,8 @@ export class GameManager {
                     await prisma.houseIncome.create({
                         data: {
                             gameType: 'bingo',
+                            fee: this.fee,
+                            room: this.room,
                             playerCount: this.players.length,
                             totalCollected: pot,
                             winnerPayout: 0,
