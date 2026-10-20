@@ -233,6 +233,22 @@ body{
 }
 .auto-state-badge.off{background:#c0b2d4;color:#5e1261;}
 
+/* ─── Sound Pill in Lobby ─── */
+.sound-pill{
+  display:inline-flex;align-items:center;gap:5px;
+  background:#d1c4e9;padding:3px 8px;border-radius:12px;
+  cursor:pointer;font-size:0.72rem;font-weight:800;color:#5e1261;
+  transition:all 0.15s ease;
+  user-select:none;
+}
+.sound-pill:active{transform:scale(0.94);}
+.sound-state-badge{
+  background:#27ae60;color:#fff;
+  padding:2px 7px;border-radius:9px;font-size:0.62rem;font-weight:900;
+  display:inline-flex;align-items:center;gap:2px;
+}
+.sound-state-badge.off{background:#c0b2d4;color:#5e1261;}
+
 /* ─── Validation / Feedback Toast ─── */
 .validation-toast{
   position:fixed;bottom:85px;left:50%;transform:translateX(-50%) translateY(20px);
@@ -281,12 +297,16 @@ body{
 </div>
 
 <!-- ─── Sub-Header Status Row (Reference Image) ─── -->
-<div class="status-sub-row">
-  <div style="display:flex;align-items:center;gap:6px;">
+<div class="status-sub-row" style="flex-wrap:wrap;gap:4px 6px;">
+  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
     <span class="sub-boards-label" id="boards-counter">Boards: 0/2</span>
     <div class="auto-pill" id="lobby-auto-pill" onclick="toggleLobbyAuto()" title="Toggle Auto-Play">
       <span>Auto</span>
       <span class="auto-state-badge off" id="lobby-auto-badge">OFF</span>
+    </div>
+    <div class="sound-pill" id="lobby-sound-pill" onclick="toggleLobbySound()" title="Toggle Sound">
+      <span>Sound</span>
+      <span class="sound-state-badge" id="lobby-sound-badge">🔊 ON</span>
     </div>
   </div>
   <span class="sub-stake-label" id="room-stats-label" style="color:#5e1261; font-size:0.72rem; font-weight:900;">👥 <span id="room-players">0</span> (<span id="room-boards">0</span> 📋) | 💰 <span id="room-derash">0</span> Birr</span>
@@ -419,6 +439,38 @@ function updateLobbyAutoBadge(){
   }
 }
 
+const urlSound=params.get('sound');
+let soundEnabled=true;
+try{
+  const storedSound=localStorage.getItem('bingo_sound_enabled');
+  if(storedSound !== null){
+    soundEnabled = storedSound === 'true';
+  } else if(urlSound !== null){
+    soundEnabled = urlSound === '1';
+  }
+}catch(e){}
+
+function updateLobbySoundBadge(){
+  const badge=document.getElementById('lobby-sound-badge');
+  if(badge){
+    badge.textContent = soundEnabled ? '🔊 ON' : '🔇 OFF';
+    badge.className = soundEnabled ? 'sound-state-badge' : 'sound-state-badge off';
+  }
+}
+
+function toggleLobbySound(){
+  soundEnabled = !soundEnabled;
+  try{
+    localStorage.setItem('bingo_sound_enabled', soundEnabled ? 'true' : 'false');
+  }catch(e){}
+  updateLobbySoundBadge();
+  if(soundEnabled){
+    showToast('🔊 Sound ON: Game calls will be spoken aloud');
+  }else{
+    showToast('🔇 Sound OFF: Game calls will be muted');
+  }
+}
+
 function showToast(msg){
   const toast=document.getElementById('validation-toast');
   if(!toast) return;
@@ -453,6 +505,7 @@ function toggleLobbyAuto(){
 
 updateStakeDisplay();
 updateLobbyAutoBadge();
+updateLobbySoundBadge();
 if(autoEnabled) requestWakeLock();
 
 function updateStakeDisplay(){
@@ -594,7 +647,7 @@ async function syncBoardSelection(){
         if(data.msg && data.msg.toLowerCase().includes('in progress')){
           redirected = true;
           if(smoothTimer) clearInterval(smoothTimer);
-          window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&auto=${autoEnabled?'1':'0'}&v=${Date.now()}`;
+          window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
           return;
         }
         alert(data.msg||'Failed to update board selection.');
@@ -719,11 +772,11 @@ function startSmoothTimer(){
             body:JSON.stringify({bet,room})
           });
         }catch(e){}
-        window.location.href = `/game.html?userId=${userId}&bet=${bet}&room=${room}&boards=${selectedBoards.join(',')}&auto=${autoEnabled?'1':'0'}&v=${Date.now()}`;
+        window.location.href = `/game.html?userId=${userId}&bet=${bet}&room=${room}&boards=${selectedBoards.join(',')}&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
       } else if (!redirected) {
         // Player has NO selected boards: smoothly transition to spectator mode!
         redirected = true;
-        window.location.href = `/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&auto=${autoEnabled?'1':'0'}&v=${Date.now()}`;
+        window.location.href = `/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
       }
     }
   }, 250);
@@ -784,10 +837,10 @@ async function poll(){
       redirected = true;
       if(smoothTimer) clearInterval(smoothTimer);
       if(selectedBoards.length > 0){
-        window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&boards=${selectedBoards.join(',')}&auto=${autoEnabled?'1':'0'}&v=${Date.now()}`;
+        window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&boards=${selectedBoards.join(',')}&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
       } else {
         // Player has NO boards selected: redirect to game as spectator
-        window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&auto=${autoEnabled?'1':'0'}&v=${Date.now()}`;
+        window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
       }
     }
   }catch(e){console.error('poll error',e);}

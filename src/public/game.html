@@ -192,6 +192,12 @@ body{
   border-radius:50%;display:flex;align-items:center;justify-content:center;
   font-size:0.45rem;
 }
+.sound-btn.off{
+  background:#e2d9ec;border-color:#bca4dc;opacity:0.75;
+}
+.sound-btn.off .sound-circle{
+  background:#888;
+}
 .board-tab-group{
   display:flex;gap:2px;
 }
@@ -667,7 +673,17 @@ const COLS=['B','I','N','G','O'];
 let lastDrawn=null;
 const spokenNumbersInRound=new Set();
 let lastPendingDrawnNumber=null;
+
+const urlSound=params.get('sound');
 let soundEnabled=true;
+try{
+  const storedSound=localStorage.getItem('bingo_sound_enabled');
+  if(storedSound !== null){
+    soundEnabled = storedSound === 'true';
+  } else if(urlSound !== null){
+    soundEnabled = urlSound === '1';
+  }
+}catch(e){}
 
 const urlAuto=params.get('auto');
 let autoEnabled=false;
@@ -1101,7 +1117,8 @@ function toggleSound(){
   // do NOT mute! Activate the audio directly on this click and immediately speak the current ball!
   if(soundEnabled && ctx && ctx.state === 'suspended'){
     unlockAudio();
-    document.getElementById('sound-icon').textContent = '🔊';
+    const iconEl = document.getElementById('sound-icon');
+    if(iconEl) iconEl.textContent = '🔊';
     if(lastPendingDrawnNumber && !spokenNumbersInRound.has(lastPendingDrawnNumber)){
       speakDrawnNumber(lastPendingDrawnNumber);
     }
@@ -1109,10 +1126,21 @@ function toggleSound(){
   }
 
   soundEnabled=!soundEnabled;
-  document.getElementById('sound-icon').textContent=soundEnabled?'🔊':'🔇';
+  try{
+    localStorage.setItem('bingo_sound_enabled', soundEnabled ? 'true' : 'false');
+  }catch(e){}
+
+  const iconEl = document.getElementById('sound-icon');
+  if(iconEl) iconEl.textContent=soundEnabled?'🔊':'🔇';
+  const soundBtnEl = document.querySelector('.sound-btn');
+  if(soundBtnEl){
+    if(!soundEnabled) soundBtnEl.classList.add('off');
+    else soundBtnEl.classList.remove('off');
+  }
   if(!soundEnabled && currentCallSource){
     try{ currentCallSource.stop(); }catch(e){}
   }
+  showValidationToast(soundEnabled ? '🔊 Sound ON' : '🔇 Sound OFF');
   unlockAudio();
 }
 let isPlayerBlocked = false;
@@ -1491,7 +1519,7 @@ function showWinnerOverlay(data){
     cdBtn.textContent=cnt;
     if(cnt<=0){
       clearInterval(cd);
-      window.location.href=`/boards.html?userId=${userId}&bet=${bet}&room=${room}&auto=${autoEnabled?'1':'0'}`;
+      window.location.href=`/boards.html?userId=${userId}&bet=${bet}&room=${room}&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}`;
     }
   },1000);
 }
@@ -1564,7 +1592,7 @@ function showAllBlockedOverlay(data){
     cdBtn.textContent=cnt;
     if(cnt<=0){
       clearInterval(cd);
-      window.location.href=`/boards.html?userId=${userId}&bet=${bet}&room=${room}&auto=${autoEnabled?'1':'0'}`;
+      window.location.href=`/boards.html?userId=${userId}&bet=${bet}&room=${room}&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}`;
     }
   },1000);
 }
@@ -1614,7 +1642,7 @@ function applyGameState(data) {
   }
 
   if (isSpectator && data.gameState === 'WAITING' && !winnerShown) {
-    window.location.href = `/boards.html?userId=${userId}&bet=${bet}&room=${room}&auto=${autoEnabled?'1':'0'}`;
+    window.location.href = `/boards.html?userId=${userId}&bet=${bet}&room=${room}&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}`;
     return;
   }
 
@@ -1921,7 +1949,17 @@ function unlockAudio(){
   document.addEventListener(evt, unlockAudio, { passive: true });
 });
 
-// Initial startup: Sync auto-play badge + attempt audio unlock + connect SSE real-time stream + fallback poll
+// Initial startup: Sync sound icon + auto-play badge + attempt audio unlock + connect SSE real-time stream + fallback poll
+const initSoundIcon = document.getElementById('sound-icon');
+if(initSoundIcon){
+  initSoundIcon.textContent = soundEnabled ? '🔊' : '🔇';
+}
+const initSoundBtn = document.querySelector('.sound-btn');
+if(initSoundBtn){
+  if(!soundEnabled) initSoundBtn.classList.add('off');
+  else initSoundBtn.classList.remove('off');
+}
+
 const initBadge = document.getElementById('auto-state-badge');
 if(initBadge){
   initBadge.textContent = autoEnabled ? 'ON' : 'OFF';
