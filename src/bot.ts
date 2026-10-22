@@ -3,7 +3,7 @@ import { existsSync } from 'fs';
 import path from 'path';
 import { Bot, Context, InlineKeyboard, Keyboard, InputFile } from 'grammy';
 import { config } from './config';
-import { prisma, initDbSchema } from './db';
+import { prisma, initDbSchema, getBalancedActiveAdminId } from './db';
 import { proofUrl } from './uploads';
 import { NEW_USER_BONUS, REFERRAL_BONUS, getNewUserBonus, getReferralBonus, setBonusSettings } from './bonus';
 import { GameRooms } from './game/GameRooms';
@@ -238,6 +238,21 @@ bot.command('start', async (ctx: Context) => {
             });
             if (matchedAdmin) {
                 assignedAdminId = matchedAdmin.id;
+            } else {
+                // If code matched an inactive/departed admin, smoothly route to an active balanced admin
+                const inactiveAdmin = await prisma.adminProfile.findFirst({
+                    where: {
+                        isActive: false,
+                        OR: [
+                            { code: cleanMatch },
+                            { code: cleanNoPrefix },
+                            { code: `adm_${cleanNoPrefix}` }
+                        ]
+                    }
+                });
+                if (inactiveAdmin) {
+                    assignedAdminId = await getBalancedActiveAdminId();
+                }
             }
         } catch (e) {}
     }
@@ -269,16 +284,10 @@ bot.command('start', async (ctx: Context) => {
     }
 
     // 3. Fallback: If player joined with no parameter (direct @PlayMyBingoBot) or inviter was unassigned,
-    // auto-assign to the active affiliate admin so direct players belong to the active game admin!
+    // auto-assign fairly using round-robin so traffic is balanced across active admins!
     if (!assignedAdminId) {
         try {
-            const activeAdmin = await prisma.adminProfile.findFirst({
-                where: { isActive: true },
-                orderBy: { id: 'asc' }
-            });
-            if (activeAdmin) {
-                assignedAdminId = activeAdmin.id;
-            }
+            assignedAdminId = await getBalancedActiveAdminId();
         } catch (e) {}
     }
 
@@ -961,15 +970,11 @@ bot.callbackQuery('menu_deposit', async (ctx) => {
     let assignedAdminId = dbUser?.assignedAdminId;
     if (!assignedAdminId) {
         try {
-            const activeAdmin = await prisma.adminProfile.findFirst({
-                where: { isActive: true },
-                orderBy: { id: 'asc' }
-            });
-            if (activeAdmin) {
-                assignedAdminId = activeAdmin.id;
+            assignedAdminId = await getBalancedActiveAdminId();
+            if (assignedAdminId) {
                 await prisma.user.update({
                     where: { id: BigInt(ctx.from.id) },
-                    data: { assignedAdminId: activeAdmin.id }
+                    data: { assignedAdminId }
                 }).catch(() => {});
             }
         } catch (e) {}
@@ -982,10 +987,19 @@ bot.callbackQuery('menu_deposit', async (ctx) => {
         });
     }
 
-    // Only fallback to Super Admin accounts (adminId: null) if there is truly NO assigned admin
-    if (accounts.length === 0 && !assignedAdminId) {
+    // Resilient Fallback: If assigned admin has NO active accounts (or admin is inactive),
+    // automatically fall back to Super Admin house accounts (adminId: null) so players can deposit!
+    if (accounts.length === 0) {
         accounts = await prisma.paymentAccount.findMany({
             where: { isActive: true, adminId: null },
+            orderBy: { createdAt: 'asc' }
+        });
+    }
+
+    // Ultimate Fallback: Any active account on the system
+    if (accounts.length === 0) {
+        accounts = await prisma.paymentAccount.findMany({
+            where: { isActive: true },
             orderBy: { createdAt: 'asc' }
         });
     }

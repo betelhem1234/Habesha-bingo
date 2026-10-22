@@ -883,6 +883,61 @@
         </div>
     </div>
 
+    <!-- Admin Handover & Replacement Modal -->
+    <div id="admin-handover-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:#1e293b; border:1px solid rgba(139,92,246,0.4); border-radius:18px; padding:24px; width:92%; max-width:520px; box-shadow:0 25px 50px rgba(0,0,0,0.7); max-height:90vh; overflow-y:auto;">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 style="font-size:1.25rem; color:#f8fafc; font-weight:700; margin:0;">🔄 Administrator Handover & Replacement</h3>
+                <button type="button" onclick="closeAdminHandoverModal()" style="background:none; border:none; color:#94a3b8; font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            
+            <div style="background:rgba(139,92,246,0.12); border:1px solid rgba(139,92,246,0.3); border-radius:12px; padding:14px; margin-bottom:18px;">
+                <div style="font-size:13px; color:#cbd5e1; margin-bottom:4px;">Leaving Administrator:</div>
+                <div id="handover-source-name" style="font-size:16px; font-weight:700; color:#c4b5fd;">Admin Name</div>
+                <div style="display:flex; gap:16px; margin-top:8px; font-size:12px; color:#94a3b8;">
+                    <span>👥 Assigned Players: <strong id="handover-source-players" style="color:#4ade80;">0</strong></span>
+                    <span>⏳ Pending Requests: <strong id="handover-source-requests" style="color:#fbbf24;">0</strong></span>
+                </div>
+            </div>
+
+            <form id="admin-handover-form" onsubmit="submitAdminHandover(event)">
+                <input type="hidden" id="handover-source-id">
+
+                <div style="margin-bottom:16px;">
+                    <label style="display:block; font-size:12px; color:#cbd5e1; margin-bottom:6px; font-weight:700;">TRANSFER ASSETS & DUTIES TO:</label>
+                    <select id="handover-target-admin" style="width:100%; padding:11px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:#0f172a; color:#fff; font-size:14px; box-sizing:border-box;" required>
+                        <!-- Populated by JS -->
+                    </select>
+                    <small style="color:#94a3b8; font-size:11px; margin-top:4px; display:block;">Select an existing active administrator or the Platform General Pool.</small>
+                </div>
+
+                <div style="background:rgba(0,0,0,0.25); border-radius:10px; padding:12px 14px; margin-bottom:20px; display:flex; flex-direction:column; gap:10px;">
+                    <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#e2e8f0; cursor:pointer;">
+                        <input type="checkbox" id="handover-opt-players" checked style="accent-color:#8b5cf6;">
+                        <span>Reassign all downline players to the target administrator</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#e2e8f0; cursor:pointer;">
+                        <input type="checkbox" id="handover-opt-requests" checked style="accent-color:#8b5cf6;">
+                        <span>Transfer pending deposit & withdrawal requests</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#e2e8f0; cursor:pointer;">
+                        <input type="checkbox" id="handover-opt-banks" checked style="accent-color:#8b5cf6;">
+                        <span>Deactivate leaving admin's bank accounts (prevent payment leaks)</span>
+                    </label>
+                    <label style="display:flex; align-items:center; gap:8px; font-size:13px; color:#e2e8f0; cursor:pointer;">
+                        <input type="checkbox" id="handover-opt-deactivate" checked style="accent-color:#8b5cf6;">
+                        <span>Mark leaving admin as Inactive</span>
+                    </label>
+                </div>
+
+                <div style="display:flex; justify-content:flex-end; gap:10px;">
+                    <button type="button" onclick="closeAdminHandoverModal()" class="btn-primary" style="margin:0; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">Cancel</button>
+                    <button type="submit" id="btn-submit-handover" class="btn-primary" style="margin:0; background:#8b5cf6; font-weight:700;">🔄 Execute Handover</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
     <!-- Admin Login Screen Overlay -->
     <div id="login-overlay" style="display:none; position:fixed; inset:0; background:rgba(15,23,42,0.92); backdrop-filter:blur(14px); -webkit-backdrop-filter:blur(14px); z-index:100000; align-items:center; justify-content:center;">
         <div style="background:#1e293b; border:1px solid rgba(139,92,246,0.3); border-radius:20px; padding:32px; width:90%; max-width:420px; box-shadow:0 25px 50px -12px rgba(0,0,0,0.7); text-align:center;">

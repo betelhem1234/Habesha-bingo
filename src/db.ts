@@ -65,3 +65,31 @@ export async function initDbSchema() {
         console.warn('[DB] Schema init check (non-fatal):', e?.message || e);
     }
 }
+
+/**
+ * Resolves the active affiliate admin with the fewest assigned users
+ * to fairly balance organic / unreferred player traffic.
+ */
+export async function getBalancedActiveAdminId(): Promise<number | null> {
+    try {
+        const activeAdmins = await prisma.adminProfile.findMany({
+            where: { isActive: true },
+            select: {
+                id: true,
+                _count: {
+                    select: { assignedUsers: true }
+                }
+            },
+            orderBy: { id: 'asc' }
+        });
+        if (!activeAdmins || activeAdmins.length === 0) return null;
+
+        // Admin with the lowest user count gets the next player
+        activeAdmins.sort((a, b) => a._count.assignedUsers - b._count.assignedUsers);
+        const target = activeAdmins[0];
+        return target ? target.id : null;
+    } catch (e) {
+        console.error('getBalancedActiveAdminId error:', e);
+        return null;
+    }
+}

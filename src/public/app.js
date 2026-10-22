@@ -2057,6 +2057,7 @@ async function fetchAdmins() {
                     <td>
                         <div style="display:flex; gap:6px; flex-wrap:wrap;">
                             ${dutyBtn}
+                            <button onclick="openAdminHandoverModal(${a.id})" class="action-btn-sm" style="background:#8b5cf6; color:#fff;" title="Handover / Replace Admin">🔄 Handover</button>
                             <button onclick="openEditAdminProfileModal(${a.id})" class="action-btn-sm" style="background:#3b82f6; color:#fff;" title="Edit Administrator">✏️ Edit</button>
                             <button onclick="deleteAdminProfile(${a.id})" class="action-btn-sm" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4);" title="Remove Administrator">🗑</button>
                         </div>
@@ -2364,6 +2365,104 @@ async function refreshAdminDepositLimit(adminId, adminName, collected) {
         }
     } catch (e) {
         alert('Network error refreshing limit.');
+    }
+}
+
+function openAdminHandoverModal(adminId) {
+    const admin = allAdmins.find(a => a.id === adminId);
+    if (!admin) return;
+
+    const modal = document.getElementById('admin-handover-modal');
+    if (!modal) return;
+
+    const sourceName = admin.customName || admin.user?.firstName || admin.code;
+    const playersCount = admin.assignedUsersCount ?? 0;
+    const requestsCount = admin.pendingRequestsCount ?? 0;
+
+    document.getElementById('handover-source-id').value = admin.id;
+    document.getElementById('handover-source-name').textContent = `${sourceName} (#${admin.userId})`;
+    document.getElementById('handover-source-players').textContent = playersCount;
+    document.getElementById('handover-source-requests').textContent = requestsCount;
+
+    const targetSelect = document.getElementById('handover-target-admin');
+    if (targetSelect) {
+        // Other active admins first
+        const otherAdmins = allAdmins.filter(a => a.id !== admin.id && a.isActive);
+        let optionsHtml = '';
+        if (otherAdmins.length > 0) {
+            optionsHtml += '<optgroup label="Active Administrators">';
+            optionsHtml += otherAdmins.map(a => {
+                const name = a.customName || a.user?.firstName || a.code;
+                const count = a.assignedUsersCount ?? 0;
+                return `<option value="${a.id}">👑 ${escapeHtml(name)} (@${escapeHtml(a.user?.username || a.code)}) — has ${count} players</option>`;
+            }).join('');
+            optionsHtml += '</optgroup>';
+        }
+        optionsHtml += '<optgroup label="Platform Direct">';
+        optionsHtml += '<option value="null">🏛️ Platform General Pool (Super Admin House)</option>';
+        optionsHtml += '</optgroup>';
+        targetSelect.innerHTML = optionsHtml;
+    }
+
+    modal.style.display = 'flex';
+}
+
+function closeAdminHandoverModal() {
+    const modal = document.getElementById('admin-handover-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function submitAdminHandover(event) {
+    if (event) event.preventDefault();
+    const sourceId = parseInt(document.getElementById('handover-source-id').value, 10);
+    const targetVal = document.getElementById('handover-target-admin').value;
+    const targetAdminId = (targetVal && targetVal !== 'null') ? parseInt(targetVal, 10) : null;
+
+    const reassignPlayers = document.getElementById('handover-opt-players').checked;
+    const transferPendingRequests = document.getElementById('handover-opt-requests').checked;
+    const deactivateSourceBanks = document.getElementById('handover-opt-banks').checked;
+    const deactivateSourceAdmin = document.getElementById('handover-opt-deactivate').checked;
+
+    const targetText = document.getElementById('handover-target-admin').selectedOptions[0]?.text || 'selected destination';
+
+    if (!confirm(`Are you sure you want to transfer players and responsibilities to ${targetText}?`)) {
+        return;
+    }
+
+    const btn = document.getElementById('btn-submit-handover');
+    const origText = btn ? btn.innerHTML : '🔄 Execute Handover';
+    if (btn) {
+        btn.disabled = true;
+        btn.innerHTML = '⏳ Processing Handover...';
+    }
+
+    try {
+        const res = await authFetch(`/api/admin/admins/${sourceId}/transfer`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                targetAdminId,
+                deactivateSourceAdmin,
+                deactivateSourceBanks,
+                transferPendingRequests
+            })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(data.msg || 'Handover completed successfully.');
+            closeAdminHandoverModal();
+            await fetchAdmins();
+            await fetchAdminBanks();
+        } else {
+            alert(data.msg || 'Failed to complete handover.');
+        }
+    } catch (e) {
+        alert('Network error while completing handover.');
+    } finally {
+        if (btn) {
+            btn.disabled = false;
+            btn.innerHTML = origText;
+        }
     }
 }
 

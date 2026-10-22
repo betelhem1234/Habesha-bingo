@@ -4,7 +4,7 @@ import express from 'express';
 import cors from 'cors';
 import multer from 'multer';
 import { Bot, InputFile, InlineKeyboard } from 'grammy';
-import { prisma } from './db';
+import { prisma, getBalancedActiveAdminId } from './db';
 import { UPLOADS_DIR, proofPath, proofUrl } from './uploads';
 import { GameRooms } from './game/GameRooms';
 import { config } from './config';
@@ -825,15 +825,11 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     }
                 }
                 if (!assignedAdminId) {
-                    const activeAdm = await prisma.adminProfile.findFirst({
-                        where: { isActive: true },
-                        orderBy: { id: 'asc' }
-                    });
-                    if (activeAdm) {
-                        assignedAdminId = activeAdm.id;
+                    assignedAdminId = await getBalancedActiveAdminId();
+                    if (assignedAdminId) {
                         await prisma.user.update({
                             where: { id: BigInt(userId) },
-                            data: { assignedAdminId: activeAdm.id }
+                            data: { assignedAdminId }
                         }).catch(() => {});
                     }
                 }
@@ -948,21 +944,15 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 } catch (err) {}
             }
 
-            // If user has no assigned admin (or userId was omitted/unassigned), fallback to active affiliate admin
+            // If user has no assigned admin (or userId was omitted/unassigned), fallback to balanced active affiliate admin
             if (!assignedAdminId) {
                 try {
-                    const activeAdmin = await prisma.adminProfile.findFirst({
-                        where: { isActive: true },
-                        orderBy: { id: 'asc' }
-                    });
-                    if (activeAdmin) {
-                        assignedAdminId = activeAdmin.id;
-                        if (userIdParam) {
-                            await prisma.user.update({
-                                where: { id: BigInt(userIdParam) },
-                                data: { assignedAdminId: activeAdmin.id }
-                            }).catch(() => {});
-                        }
+                    assignedAdminId = await getBalancedActiveAdminId();
+                    if (assignedAdminId && userIdParam) {
+                        await prisma.user.update({
+                            where: { id: BigInt(userIdParam) },
+                            data: { assignedAdminId }
+                        }).catch(() => {});
                     }
                 } catch (err) {}
             }
@@ -981,16 +971,16 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 }
             }
 
-            // Only fallback to Super Admin accounts (adminId: null) if there is truly NO assigned admin
-            if (accounts.length === 0 && !assignedAdminId) {
+            // Resilient Fallback: If assigned admin has NO active accounts, fall back to Super Admin accounts (adminId: null)
+            if (accounts.length === 0) {
                 accounts = await prisma.paymentAccount.findMany({
                     where: { isActive: true, adminId: null },
                     orderBy: { createdAt: 'asc' }
                 });
             }
 
-            // Fallback safety: If Super Admin has no unassigned (adminId: null) accounts configured yet and NO assigned admin exists
-            if (accounts.length === 0 && !assignedAdminId) {
+            // Fallback safety: If Super Admin has no unassigned accounts, fall back to any active account
+            if (accounts.length === 0) {
                 accounts = await prisma.paymentAccount.findMany({
                     where: { isActive: true },
                     orderBy: { createdAt: 'asc' }
@@ -1145,7 +1135,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     },
                     _count: {
                         select: {
-                            assignedUsers: true
+                            assignedUsers: true,
+                            assignedRequests: { where: { status: 'PENDING' } }
                         }
                     }
                 }
@@ -1162,6 +1153,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 collectedDeposits: a.collectedDeposits ? a.collectedDeposits.toNumber() : 0,
                 createdAt: a.createdAt,
                 assignedUsersCount: a._count.assignedUsers,
+                pendingRequestsCount: (a._count as any).assignedRequests ?? 0,
                 user: {
                     id: a.user.id.toString(),
                     firstName: a.user.firstName,
@@ -1346,6 +1338,123 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         } catch (e: any) {
             console.error('Refresh admin limit error:', e);
             res.status(500).json({ success: false, msg: 'Failed to refresh administrator deposit limit.' });
+        }
+    });
+
+    // Admin: handover/transfer players, requests and duties from a leaving admin to another admin
+    app.post('/api/admin/admins/:id/transfer', adminAuthMiddleware, async (req, res) => {
+        try {
+            const sourceAdminId = parseInt(req.params.id, 10);
+            if (isNaN(sourceAdminId)) return res.status(400).json({ success: false, msg: 'Invalid source administrator ID.' });
+
+            const {
+                targetAdminId,
+                deactivateSourceAdmin = true,
+                deactivateSourceBanks = true,
+                transferPendingRequests = true
+            } = req.body || {};
+
+            const numericTargetId = (targetAdminId !== undefined && targetAdminId !== null && targetAdminId !== '' && targetAdminId !== 'null')
+                ? parseInt(String(targetAdminId), 10)
+                : null;
+
+            if (numericTargetId !== null && isNaN(numericTargetId)) {
+                return res.status(400).json({ success: false, msg: 'Invalid target administrator ID.' });
+            }
+
+            if (numericTargetId !== null && sourceAdminId === numericTargetId) {
+                return res.status(400).json({ success: false, msg: 'Source and target administrator cannot be the same.' });
+            }
+
+            const sourceAdmin = await prisma.adminProfile.findUnique({
+                where: { id: sourceAdminId },
+                include: { user: { select: { id: true, firstName: true, username: true } } }
+            });
+            if (!sourceAdmin) return res.status(404).json({ success: false, msg: 'Source administrator not found.' });
+
+            let targetAdmin: any = null;
+            if (numericTargetId !== null) {
+                targetAdmin = await prisma.adminProfile.findUnique({
+                    where: { id: numericTargetId },
+                    include: { user: { select: { id: true, firstName: true, username: true } } }
+                });
+                if (!targetAdmin) return res.status(404).json({ success: false, msg: 'Target administrator not found.' });
+            }
+
+            const playersCount = await prisma.user.count({ where: { assignedAdminId: sourceAdminId } });
+            const pendingReqCount = await prisma.transactionRequest.count({
+                where: { assignedAdminId: sourceAdminId, status: 'PENDING' }
+            });
+
+            const txOps: any[] = [];
+
+            // 1. Reassign downline users
+            txOps.push(
+                prisma.user.updateMany({
+                    where: { assignedAdminId: sourceAdminId },
+                    data: { assignedAdminId: numericTargetId }
+                })
+            );
+
+            // 2. Transfer pending deposit & withdrawal requests
+            if (transferPendingRequests) {
+                txOps.push(
+                    prisma.transactionRequest.updateMany({
+                        where: { assignedAdminId: sourceAdminId, status: 'PENDING' },
+                        data: { assignedAdminId: numericTargetId }
+                    })
+                );
+            }
+
+            // 3. Deactivate source admin's personal bank accounts so players do not pay ex-admin
+            if (deactivateSourceBanks) {
+                txOps.push(
+                    prisma.paymentAccount.updateMany({
+                        where: { adminId: sourceAdminId },
+                        data: { isActive: false }
+                    })
+                );
+            }
+
+            // 4. Update source admin status
+            const sourceUpdates: any = {};
+            if (deactivateSourceAdmin) {
+                sourceUpdates.isActive = false;
+            }
+            if (sourceAdmin.isWithdrawalAdmin && numericTargetId) {
+                sourceUpdates.isWithdrawalAdmin = false;
+                txOps.push(
+                    prisma.adminProfile.update({
+                        where: { id: numericTargetId },
+                        data: { isWithdrawalAdmin: true }
+                    })
+                );
+            }
+            if (Object.keys(sourceUpdates).length > 0) {
+                txOps.push(
+                    prisma.adminProfile.update({
+                        where: { id: sourceAdminId },
+                        data: sourceUpdates
+                    })
+                );
+            }
+
+            await prisma.$transaction(txOps);
+
+            const sourceName = sourceAdmin.customName || sourceAdmin.user?.firstName || sourceAdmin.code;
+            const targetName = targetAdmin
+                ? (targetAdmin.customName || targetAdmin.user?.firstName || targetAdmin.code)
+                : 'Platform Pool (House)';
+
+            res.json({
+                success: true,
+                msg: `Handover complete: Transferred ${playersCount} player(s) and ${pendingReqCount} pending request(s) from ${sourceName} to ${targetName}.`,
+                transferredPlayers: playersCount,
+                transferredRequests: pendingReqCount
+            });
+        } catch (e: any) {
+            console.error('Admin transfer error:', e);
+            res.status(500).json({ success: false, msg: e?.message || 'Failed to complete administrator handover.' });
         }
     });
 
