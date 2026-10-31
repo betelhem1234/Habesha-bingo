@@ -387,114 +387,145 @@ body{
 }
 
 /* ─── Winner Modal (Image 2) ─── */
-/* ─── Winner Modal (Image 2 - Zero-Scroll Dual Board Layout) ─── */
+/* ─── Winner Modal (Pixel-Perfect Afro Bingo Alignment) ─── */
 .winner-overlay{
   display:none;position:fixed;inset:0;
-  background:rgba(15,23,42,0.7);z-index:999;
+  background:rgba(15,23,42,0.72);z-index:999;
   flex-direction:column;align-items:center;justify-content:center;
-  padding:10px;
+  padding:12px;
 }
 .winner-overlay.show{display:flex;animation:fade-in 0.25s ease;}
 @keyframes fade-in{from{opacity:0;}to{opacity:1;}}
 
 .winner-card-container{
-  background:#d8cee8;border-radius:20px;
-  width:100%;max-width:350px;overflow:hidden;
+  background:#d8cce8;border-radius:20px;
+  width:calc(100% - 24px);max-width:375px;overflow:hidden;
   box-shadow:0 12px 36px rgba(0,0,0,0.35);
   display:flex;flex-direction:column;
   max-height:calc(100dvh - 20px);
 }
 
-/* Orange Top Banner */
+/* Orange Top Banner - Single Winner Hero (Image 3) */
 .winner-orange-banner{
-  background:#ff7a00;padding:10px 10px 8px;
-  text-align:center;
-  flex-shrink:0;
+  background:#ff6e00;padding:18px 16px 14px;
+  text-align:center;flex-shrink:0;
 }
 .winner-banner-title{
-  color:#fff;font-size:1.35rem;font-weight:900;
-  letter-spacing:1px;margin-bottom:4px;
+  color:#fff;font-size:1.9rem;font-weight:900;
+  letter-spacing:0.5px;margin-bottom:6px;
 }
 .winner-name-row{
   display:flex;align-items:center;justify-content:center;
-  gap:4px;flex-wrap:wrap;line-height:1.2;
+  gap:6px;flex-wrap:wrap;line-height:1.2;
 }
 .winner-name-badge{
-  background:#16a34a;color:#fff;border-radius:12px;
-  padding:2px 8px;font-size:0.80rem;font-weight:800;
+  background:#009944;color:#fff;border-radius:14px;
+  padding:3px 12px;font-size:0.95rem;font-weight:800;
   display:inline-flex;align-items:center;
 }
 .winner-has-won-text{
-  color:#fff;font-size:0.82rem;font-weight:800;
+  color:#fff;font-size:0.95rem;font-weight:800;
 }
 
-/* Board Wrap - Contains 1 or 2 white cards */
+/* Board Wrap - Contains White Cards */
 .winner-board-wrap{
-  background:transparent;margin:6px 10px;
-  padding:0;display:flex;flex-direction:column;gap:6px;
+  background:transparent;margin:8px 12px;
+  padding:0;display:flex;flex-direction:column;gap:8px;
   overflow:hidden;
 }
 #winner-boards-container{
-  display:flex;flex-direction:column;gap:6px;width:100%;
+  display:flex;flex-direction:column;gap:8px;width:100%;
 }
 .winner-card-item{
-  background:#fff;border-radius:12px;
-  padding:5px 6px 4px;
+  background:#fff;border-radius:16px;
+  padding:10px 12px 10px;
   display:flex;flex-direction:column;width:100%;
-  box-shadow:0 1px 4px rgba(0,0,0,0.06);
+  box-shadow:0 2px 8px rgba(0,0,0,0.06);
   box-sizing:border-box;
 }
-.winner-card-item.shared{
-  padding:4px 6px 3px;
-}
 .winner-board-header{
-  display:grid;grid-template-columns:repeat(5,1fr);gap:2px;
-  margin-bottom:2px;
+  display:grid;grid-template-columns:repeat(5,1fr);gap:4px;
+  margin-bottom:4px;
 }
 .wbh-col{
-  text-align:center;font-size:0.75rem;font-weight:900;
-  color:#fff;border-radius:4px;padding:2px 0;line-height:1.1;
+  text-align:center;font-size:0.95rem;font-weight:900;
+  color:#fff;border-radius:6px;padding:4px 0;line-height:1.1;
 }
 .winner-ticket-grid{
   display:grid;grid-template-columns:repeat(5,1fr);
-  gap:2px;background:#e0d5ec;padding:2px;border-radius:6px;
+  gap:4px;background:#e2d9ee;padding:4px;border-radius:8px;
   box-sizing:border-box;
 }
 .w-cell{
-  background:#fff;aspect-ratio:1.12;border-radius:4px;
+  background:#fff;aspect-ratio:1;border-radius:8px;
   display:flex;align-items:center;justify-content:center;
-  font-size:0.75rem;font-weight:900;color:#1e293b;
-  max-height:24px;box-sizing:border-box;line-height:1;
-}
-.winner-card-item.shared .w-cell{
-  font-size:0.70rem;max-height:21px;aspect-ratio:1.15;
-}
-.winner-card-item.shared .wbh-col{
-  font-size:0.70rem;padding:1.5px 0;
+  font-size:1.05rem;font-weight:900;color:#1e293b;
+  box-sizing:border-box;line-height:1;
 }
 .w-cell.daubed-yellow{
-  background:#fde047;color:#111;font-weight:900;
+  background:#ffee33;color:#111;font-weight:900;
 }
 .w-cell.win-line{
-  background:#16a34a;color:#fff;font-weight:900;
+  background:#009944;color:#fff;font-weight:900;
 }
 .w-cell.win-trigger{
-  background:#16a34a !important;color:#fff !important;
+  background:#009944 !important;color:#fff !important;
   font-weight:900 !important;
-  box-shadow:0 0 6px #16a34a !important;
+  box-shadow:0 0 8px #009944 !important;
 }
 .winner-board-number-label{
-  text-align:center;color:#16a34a;font-size:0.76rem;font-weight:800;
-  margin:2px 0 0;line-height:1.2;
+  text-align:center;color:#008833;font-size:0.95rem;font-weight:900;
+  margin-top:8px;line-height:1.2;
 }
 
-/* Countdown Action Button */
+/* Countdown Action Button - Single Mode */
 .winner-countdown-btn{
-  background:#ff7a00;color:#fff;border:none;border-radius:12px;
-  margin:4px 10px 10px;padding:7px 0;
-  font-size:1.4rem;font-weight:900;text-align:center;
-  box-shadow:0 2px 8px rgba(255,122,0,0.35);cursor:pointer;
+  background:#ff6e00;color:#fff;border:none;border-radius:14px;
+  margin:4px 12px 14px;padding:12px 0;
+  font-size:1.8rem;font-weight:900;text-align:center;
+  box-shadow:0 3px 10px rgba(255,110,0,0.35);cursor:pointer;
   flex-shrink:0;
+}
+
+/* ─── Dual Winner Zero-Scroll Mode (Image 2) ─── */
+.winner-card-container.dual-mode .winner-orange-banner{
+  padding:10px 12px 8px;
+}
+.winner-card-container.dual-mode .winner-banner-title{
+  font-size:1.35rem;margin-bottom:3px;
+}
+.winner-card-container.dual-mode .winner-name-badge{
+  padding:2px 8px;font-size:0.80rem;border-radius:12px;
+}
+.winner-card-container.dual-mode .winner-has-won-text{
+  font-size:0.82rem;
+}
+.winner-card-container.dual-mode .winner-board-wrap{
+  margin:6px 10px;gap:6px;
+}
+.winner-card-container.dual-mode #winner-boards-container{
+  gap:6px;
+}
+.winner-card-container.dual-mode .winner-card-item{
+  border-radius:12px;padding:5px 8px 4px;
+}
+.winner-card-container.dual-mode .winner-board-header{
+  gap:2px;margin-bottom:2px;
+}
+.winner-card-container.dual-mode .wbh-col{
+  padding:2px 0;font-size:0.72rem;border-radius:4px;
+}
+.winner-card-container.dual-mode .winner-ticket-grid{
+  gap:2px;padding:2px;border-radius:6px;
+}
+.winner-card-container.dual-mode .w-cell{
+  max-height:22px;aspect-ratio:1.15;font-size:0.72rem;border-radius:4px;
+}
+.winner-card-container.dual-mode .winner-board-number-label{
+  font-size:0.76rem;margin-top:2px;
+}
+.winner-card-container.dual-mode .winner-countdown-btn{
+  padding:8px 0;margin:4px 10px 10px;font-size:1.4rem;border-radius:12px;
 }
 .winner-tabs{
   display:flex;gap:6px;justify-content:center;margin-bottom:8px;
@@ -770,6 +801,7 @@ function renderBoardBadge(){
   const stakeRoom = (room === '2' || room === 2) ? '2' : '1';
   group.innerHTML=`<button class="board-tab-btn">${bet} № ${stakeRoom}</button>`;
 }
+renderBoardBadge();
 
 let lastDrawnSet=new Set();
 let lastRenderedBlocked=false;
@@ -1394,15 +1426,23 @@ function showWinnerOverlay(data){
   const nameRow = document.getElementById('w-name-row');
   const wonText = document.getElementById('w-won-text');
 
+  const cardContainer = document.querySelector('.winner-card-container');
+  if(cardContainer){
+    if(winnersList.length > 1){
+      cardContainer.classList.add('dual-mode');
+    }else{
+      cardContainer.classList.remove('dual-mode');
+    }
+  }
+
   function cleanWinnerName(name){
     return (name || 'Player').replace(/\s*\.[A-Za-z]+|\s+[A-Za-z]\.?$/g, '').trim();
   }
 
   if(winnersList.length > 1){
     const w1 = winnersList[0];
-    const w2 = winnersList[1];
     if(nameRow){
-      const secondBadgeText = winnersList.length > 2 ? `${winnersList.length - 1} other` : cleanWinnerName(w2.firstName);
+      const secondBadgeText = `${winnersList.length - 1} other`;
       nameRow.innerHTML = `
         <span class="winner-name-badge">${cleanWinnerName(w1.firstName)}</span>
         <span class="winner-has-won-text">and</span>
@@ -1442,12 +1482,14 @@ function showWinnerOverlay(data){
           const isWinCell = winningCoordSet.has(`${r},${c}`);
           const isTriggerNum = (isWinCell && winNum && num === winNum);
           const isDaubed = (num === 0 || daubSet.has(num));
-          if(isTriggerNum){
-            gridHtml += `<div class="w-cell win-line win-trigger" title="Winning Call">${num===0?'*':num}</div>`;
+          if(num === 0){
+            gridHtml += `<div class="w-cell win-line">*</div>`;
+          }else if(isTriggerNum){
+            gridHtml += `<div class="w-cell win-line win-trigger" title="Winning Call">${num}</div>`;
           }else if(isWinCell){
-            gridHtml += `<div class="w-cell win-line">${num===0?'*':num}</div>`;
+            gridHtml += `<div class="w-cell win-line">${num}</div>`;
           }else if(isDaubed){
-            gridHtml += `<div class="w-cell daubed-yellow">${num===0?'*':num}</div>`;
+            gridHtml += `<div class="w-cell daubed-yellow">${num}</div>`;
           }else{
             gridHtml += `<div class="w-cell">${num}</div>`;
           }
