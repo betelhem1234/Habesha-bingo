@@ -6,197 +6,293 @@
 <title>Ethio Bingo — Choose Boards</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
 <style>
-*{margin:0;padding:0;box-sizing:border-box;-webkit-tap-highlight-color:transparent;}
-body{
-  font-family:'Segoe UI',system-ui,-apple-system,Roboto,sans-serif;
-  background:#dcd0ea;
-  min-height:100vh;
-  min-height:100dvh;
-  display:flex;flex-direction:column;
-  align-items:center;
-  width:100%;max-width:440px;margin:0 auto;
-  padding-bottom:75px;
-  color:#2c1b4d;
+* {
+  margin: 0;
+  padding: 0;
+  box-sizing: border-box;
+  -webkit-tap-highlight-color: transparent;
+}
+body {
+  font-family: 'Segoe UI', system-ui, -apple-system, Roboto, sans-serif;
+  background: #dcd0ea;
+  height: 100vh;
+  height: 100dvh;
+  max-height: 100dvh;
+  overflow: hidden;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  width: 100%;
+  max-width: 440px;
+  margin: 0 auto;
+  padding-bottom: 54px;
+  color: #2c1b4d;
+  box-sizing: border-box;
 }
 
 /* ─── Top App Header ─── */
-.app-header{
-  width:100%;background:#1e1a38;color:#fff;
-  display:flex;align-items:center;justify-content:flex-start;
-  padding:0 16px;padding-top:env(safe-area-inset-top, 0px);
-  min-height:calc(54px + env(safe-area-inset-top, 0px));
-  font-size:1.05rem;font-weight:800;
-  box-sizing:border-box;flex-shrink:0;
+.app-header {
+  width: 100%;
+  background: #1e1a38;
+  color: #fff;
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  padding: 0 14px;
+  padding-top: env(safe-area-inset-top, 0px);
+  min-height: calc(42px + env(safe-area-inset-top, 0px));
+  font-size: 1.02rem;
+  font-weight: 800;
+  box-sizing: border-box;
+  flex-shrink: 0;
 }
-.app-header-title{
-  font-size:1.05rem;font-weight:800;letter-spacing:0.3px;color:#ffffff;
+.app-header-title {
+  font-size: 1.02rem;
+  font-weight: 800;
+  letter-spacing: 0.3px;
+  color: #ffffff;
 }
 
-/* ─── Top Action & Stats Bar (5 Items - Reference Image) ─── */
-.top-action-bar{
-  width:100%;
-  display:grid;grid-template-columns:1.1fr 1fr 1fr 1fr 1.1fr;
-  gap:4px;padding:6px 8px 4px;
+/* ─── Top Action & Stats Bar (5 Items) ─── */
+.top-action-bar {
+  width: 100%;
+  display: grid;
+  grid-template-columns: 1.1fr 1fr 1fr 1fr 1.1fr;
+  gap: 4px;
+  padding: 4px 8px 3px;
+  flex-shrink: 0;
 }
-.top-btn{
-  background:#5e1261;color:#fff;border:none;border-radius:12px;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  padding:4px 2px;cursor:pointer;
-  box-shadow:0 1px 4px rgba(94,18,97,0.25);
-  transition:transform 0.1s;
+.top-btn {
+  background: #5e1261;
+  color: #fff;
+  border: none;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 3px 2px;
+  cursor: pointer;
+  box-shadow: 0 1px 4px rgba(94, 18, 97, 0.25);
+  transition: transform 0.1s;
 }
-.top-btn:active{transform:scale(0.95);}
-.top-btn .t-icon{font-size:0.9rem;margin-bottom:1px;}
-.top-btn .t-label{font-size:0.68rem;font-weight:800;}
+.top-btn:active {
+  transform: scale(0.95);
+}
+.top-btn .t-icon {
+  font-size: 0.85rem;
+  margin-bottom: 1px;
+}
+.top-btn .t-label {
+  font-size: 0.65rem;
+  font-weight: 800;
+}
 
-.top-pill{
-  background:#fff;border:1px solid #c9b3e8;border-radius:12px;
-  display:flex;flex-direction:column;align-items:center;justify-content:center;
-  padding:3px 2px;text-align:center;
-  box-shadow:0 1px 3px rgba(74,21,75,0.08);
+.top-pill {
+  background: #fff;
+  border: 1px solid #c9b3e8;
+  border-radius: 12px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  padding: 2px 2px;
+  text-align: center;
+  box-shadow: 0 1px 3px rgba(74, 21, 75, 0.08);
 }
-.top-pill .p-label{
-  font-size:0.55rem;color:#6b4d8a;font-weight:800;margin-bottom:1px;
+.top-pill .p-label {
+  font-size: 0.52rem;
+  color: #6b4d8a;
+  font-weight: 800;
+  margin-bottom: 1px;
 }
-.top-pill .p-value{
-  font-size:0.75rem;font-weight:900;color:#3b1e5a;
+.top-pill .p-value {
+  font-size: 0.75rem;
+  font-weight: 900;
+  color: #3b1e5a;
 }
 
 /* Prominent Orange Countdown Box (Item 2) */
-.countdown-pill{
-  background:#fff;border:1px solid #c9b3e8;border-radius:12px;
-  display:flex;align-items:center;justify-content:center;
-  box-shadow:0 1px 4px rgba(243,156,18,0.15);
+.countdown-pill {
+  background: #fff;
+  border: 1px solid #c9b3e8;
+  border-radius: 12px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  box-shadow: 0 1px 4px rgba(243, 156, 18, 0.15);
 }
-.countdown-pill .cd-val{
-  font-size:1.4rem;font-weight:900;color:#f39c12;line-height:1;
-}
-
-/* ─── Sub-Header Status Row (Reference Image) ─── */
-.status-sub-row{
-  width:100%;padding:4px 10px 4px;
-  display:flex;align-items:center;justify-content:space-between;
-}
-.sub-boards-label{
-  color:#27ae60;font-size:0.85rem;font-weight:900;
-}
-.sub-stake-label{
-  color:#27ae60;font-size:0.85rem;font-weight:900;
+.countdown-pill .cd-val {
+  font-size: 1.35rem;
+  font-weight: 900;
+  color: #f39c12;
+  line-height: 1;
 }
 
-/* ─── Range Selector Tabs (Smooth 1-500 Navigation) ─── */
-.range-tabs{
-  width:100%;padding:0 8px 4px;
-  display:flex;gap:4px;overflow-x:auto;
+/* ─── Sub-Header Status Rows ─── */
+.status-sub-row {
+  width: 100%;
+  padding: 2px 10px 4px;
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  flex-shrink: 0;
+  box-sizing: border-box;
 }
-.range-tabs::-webkit-scrollbar{display:none;}
-.range-tab-btn{
-  background:#ece3f7;border:1px solid #c9b3e8;border-radius:12px;
-  padding:3px 8px;font-size:0.62rem;font-weight:800;color:#5e1261;
-  white-space:nowrap;cursor:pointer;flex-shrink:0;
+.status-sub-line1 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
 }
-.range-tab-btn.active{
-  background:#5e1261;color:#fff;border-color:#5e1261;
+.status-sub-line2 {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
 }
-
-/* ─── Board Grid Card Container (Reference Image) ─── */
-.board-grid-wrapper{
-  width:calc(100% - 12px);
-  background:#ece3f7;border:1.5px solid #c9b3e8;
-  border-radius:16px;padding:6px;
-  box-shadow:0 2px 8px rgba(74,21,75,0.08);
+.sub-boards-label {
+  color: #009944;
+  font-size: 0.85rem;
+  font-weight: 900;
 }
-.board-grid{
-  display:grid;grid-template-columns:repeat(9, minmax(0, 1fr));
-  gap:3px;max-height:360px;overflow-y:auto;
-  padding:2px;
-}
-.board-grid::-webkit-scrollbar{width:4px;}
-.board-grid::-webkit-scrollbar-thumb{background:#c2b1db;border-radius:4px;}
-
-.board-cell{
-  aspect-ratio:1.15;border-radius:6px;border:none;
-  display:flex;align-items:center;justify-content:center;
-  font-size:0.68rem;font-weight:800;cursor:pointer;
-  transition:all 0.1s;user-select:none;
-  box-shadow:0 1px 2px rgba(0,0,0,0.08);
-  /* Default / Unselected: Neutral light lavender-grey (Reference Image) */
-  background:#c2b1db;color:#2c1b4d;
-}
-.board-cell:active{transform:scale(0.92);}
-
-/* Taken by Other Players: Solid Orange (Reference Image) */
-.board-cell.taken{
-  background:#ff7a00;color:#fff;font-weight:900;
-  cursor:not-allowed;box-shadow:0 1px 3px rgba(255,122,0,0.3);
+.sub-stake-label {
+  color: #009944;
+  font-size: 0.85rem;
+  font-weight: 900;
 }
 
-/* Selected by Current User: Solid Green (Reference Image) */
-.board-cell.selected{
-  background:#27ae60;color:#fff;font-weight:900;
-  box-shadow:0 0 8px rgba(39,174,96,0.6);
-  animation:sel-pulse 1s infinite alternate;
+/* ─── Board Grid Card Container ─── */
+.board-grid-wrapper {
+  width: calc(100% - 14px);
+  background: #ece3f7;
+  border: 2px solid #b8a6d6;
+  border-radius: 14px;
+  padding: 4px;
+  flex: 1 1 auto;
+  min-height: 150px;
+  max-height: calc(100dvh - 315px);
+  display: flex;
+  flex-direction: column;
+  box-shadow: 0 2px 8px rgba(74, 21, 75, 0.08);
+  box-sizing: border-box;
+  overflow: hidden;
 }
-@keyframes sel-pulse{
-  from{box-shadow:0 0 4px #27ae60;}to{box-shadow:0 0 10px #27ae60;}
+.board-grid {
+  display: grid;
+  grid-template-columns: repeat(9, minmax(0, 1fr));
+  gap: 3px;
+  overflow-y: auto;
+  padding: 2px;
+  height: 100%;
+}
+.board-grid::-webkit-scrollbar {
+  width: 4px;
+}
+.board-grid::-webkit-scrollbar-thumb {
+  background: #c2b1db;
+  border-radius: 4px;
 }
 
-/* ─── Selected Board Preview Section (at bottom of board selection page) ─── */
-.previews-wrapper{
-  width:calc(100% - 12px);max-width:420px;
-  margin:6px auto 0;
+.board-cell {
+  aspect-ratio: 1.15;
+  border-radius: 6px;
+  border: none;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.72rem;
+  font-weight: 900;
+  cursor: pointer;
+  transition: all 0.1s;
+  user-select: none;
+  box-shadow: 0 1px 2px rgba(0, 0, 0, 0.08);
+  /* Default / Unselected: Neutral light lavender-grey with bold black text */
+  background: #c2b1db;
+  color: #000000;
 }
-.previews-title-bar{
-  display:flex;justify-content:space-between;align-items:center;
-  padding:4px 6px 4px;
-  font-size:0.75rem;font-weight:900;color:#5e1261;
+.board-cell:active {
+  transform: scale(0.92);
 }
-.previews-hint{
-  font-size:0.62rem;font-weight:700;color:#f39c12;
+
+/* Taken by Other Players: Solid Orange with BOLD BLACK TEXT */
+.board-cell.taken {
+  background: #ff7a00;
+  color: #000000;
+  font-weight: 900;
+  cursor: not-allowed;
+  box-shadow: 0 1px 3px rgba(255, 122, 0, 0.3);
 }
-.previews-container{
-  display:flex;gap:6px;justify-content:center;align-items:flex-start;
-  flex-wrap:wrap;
+
+/* Selected by Current User: Solid Green with BOLD BLACK TEXT */
+.board-cell.selected {
+  background: #009944;
+  color: #000000;
+  font-weight: 900;
+  box-shadow: 0 0 8px rgba(0, 153, 68, 0.6);
+  animation: sel-pulse 1s infinite alternate;
 }
-.board-preview-card{
-  flex:1 1 145px;max-width:190px;
-  background:#fff;border-radius:10px;padding:5px;
-  box-shadow:0 2px 8px rgba(94,18,97,0.12);
-  border:1px solid #c9b3e8;
+@keyframes sel-pulse {
+  from {
+    box-shadow: 0 0 4px #009944;
+  }
+  to {
+    box-shadow: 0 0 10px #009944;
+  }
 }
-.preview-header{
-  display:flex;align-items:center;justify-content:space-between;
-  margin-bottom:3px;padding-bottom:2px;border-bottom:1px solid #f0e6f7;
+
+/* ─── Selected Board Preview Section ─── */
+.previews-wrapper {
+  width: 100%;
+  flex-shrink: 0;
+  padding: 4px 8px 6px;
+  display: flex;
+  justify-content: center;
+  box-sizing: border-box;
 }
-.preview-title{color:#5e1261;font-size:0.72rem;font-weight:900;}
-.preview-remove-btn{
-  background:#d32f2f;color:#fff;border:none;border-radius:4px;
-  padding:1px 5px;font-size:0.58rem;font-weight:900;cursor:pointer;
+.previews-container {
+  display: flex;
+  gap: 12px;
+  justify-content: center;
+  align-items: center;
 }
-.preview-bingo-letters{
-  display:grid;grid-template-columns:repeat(5,1fr);
-  gap:1.5px;margin-bottom:1.5px;
+.mini-cartela-box {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
 }
-.p-letter{
-  padding:2px 0;text-align:center;color:#fff;
-  font-weight:900;font-size:0.62rem;border-radius:2px;
+.mini-cartela-title {
+  color: #009944;
+  font-size: 0.85rem;
+  font-weight: 900;
+  margin-bottom: 3px;
 }
-.bl-B{background:#f39c12;}
-.bl-I{background:#27ae60;}
-.bl-N{background:#2980b9;}
-.bl-G{background:#e74c3c;}
-.bl-O{background:#8e44ad;}
-.preview-grid{
-  display:grid;grid-template-columns:repeat(5,1fr);
-  gap:1.5px;background:#e8d5f5;padding:1.5px;border-radius:4px;
+.mini-cartela-grid {
+  display: grid;
+  grid-template-columns: repeat(5, 1fr);
+  gap: 3px;
+  background: rgba(255, 255, 255, 0.7);
+  padding: 5px;
+  border-radius: 12px;
+  box-shadow: 0 3px 10px rgba(0, 0, 0, 0.08);
 }
-.p-cell{
-  background:#fff;aspect-ratio:1;
-  display:flex;align-items:center;justify-content:center;
-  font-size:0.58rem;font-weight:800;color:#333;border-radius:2px;
+.mini-c-cell {
+  width: 22px;
+  height: 22px;
+  border-radius: 4px;
+  background: #e8dff0;
+  color: #2c1b4d;
+  font-size: 0.65rem;
+  font-weight: 800;
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
-.p-cell.free{
-  background:#8e44ad;color:#fff;font-size:0.42rem;font-weight:900;
+.mini-c-cell.free {
+  background: #009944;
+  color: #fff;
+  font-weight: 900;
+  font-size: 0.75rem;
 }
 
 /* ─── Bottom App Navigation Bar ─── */
@@ -296,44 +392,34 @@ body{
   </button>
 </div>
 
-<!-- ─── Sub-Header Status Row (Reference Image) ─── -->
-<div class="status-sub-row" style="flex-wrap:wrap;gap:4px 6px;">
-  <div style="display:flex;align-items:center;gap:6px;flex-wrap:wrap;">
-    <span class="sub-boards-label" id="boards-counter">Boards: 0/2</span>
-    <div class="auto-pill" id="lobby-auto-pill" onclick="toggleLobbyAuto()" title="Toggle Auto-Play">
-      <span>Auto</span>
-      <span class="auto-state-badge off" id="lobby-auto-badge">OFF</span>
+<!-- ─── Sub-Header Status Row ─── -->
+<div class="status-sub-row">
+  <div class="status-sub-line1">
+    <div style="display:flex;align-items:center;gap:6px;">
+      <span class="sub-boards-label" id="boards-counter">Boards: 0/2</span>
+      <div class="auto-pill" id="lobby-auto-pill" onclick="toggleLobbyAuto()" title="Toggle Auto-Play">
+        <span>Auto</span>
+        <span class="auto-state-badge off" id="lobby-auto-badge">OFF</span>
+      </div>
+      <div class="sound-pill" id="lobby-sound-pill" onclick="toggleLobbySound()" title="Toggle Sound">
+        <span>Sound</span>
+        <span class="sound-state-badge" id="lobby-sound-badge">🔊 ON</span>
+      </div>
     </div>
-    <div class="sound-pill" id="lobby-sound-pill" onclick="toggleLobbySound()" title="Toggle Sound">
-      <span>Sound</span>
-      <span class="sound-state-badge" id="lobby-sound-badge">🔊 ON</span>
-    </div>
+    <span class="sub-stake-label" id="stake-label">10 № 1</span>
   </div>
-  <span class="sub-stake-label" id="room-stats-label" style="color:#5e1261; font-size:0.72rem; font-weight:900;">👥 <span id="room-players">0</span> (<span id="room-boards">0</span> 📋) | 💰 <span id="room-derash">0</span> Birr</span>
-  <span class="sub-stake-label" id="stake-label">10 № 1</span>
+  <div class="status-sub-line2">
+    <span id="room-stats-label" style="color:#5e1261; font-size:0.72rem; font-weight:900;">👥 <span id="room-players">0</span> (<span id="room-boards">0</span> 📋) | 💰 <span id="room-derash">0</span> Birr</span>
+  </div>
 </div>
 
-<!-- ─── Quick Jump Range Tabs (1-500) ─── -->
-<div class="range-tabs" id="range-tabs">
-  <button class="range-tab-btn active" onclick="filterRange(0, 500, this)">All 1–500</button>
-  <button class="range-tab-btn" onclick="filterRange(1, 100, this)">1–100</button>
-  <button class="range-tab-btn" onclick="filterRange(101, 200, this)">101–200</button>
-  <button class="range-tab-btn" onclick="filterRange(201, 300, this)">201–300</button>
-  <button class="range-tab-btn" onclick="filterRange(301, 400, this)">301–400</button>
-  <button class="range-tab-btn" onclick="filterRange(401, 500, this)">401–500</button>
-</div>
-
-<!-- ─── Board Grid Card Container (Reference Image) ─── -->
+<!-- ─── Board Grid Card Container ─── -->
 <div class="board-grid-wrapper">
   <div class="board-grid" id="board-grid"></div>
 </div>
 
 <!-- ─── Selected Board Preview Section ─── -->
 <div class="previews-wrapper" id="previews-wrapper" style="display:none;">
-  <div class="previews-title-bar">
-    <span id="previews-summary">📋 Selected: 0/2 Boards</span>
-    <span class="previews-hint" id="previews-hint">Select up to 2 boards</span>
-  </div>
   <div class="previews-container" id="previews-container"></div>
 </div>
 
@@ -388,7 +474,6 @@ document.getElementById('nav-profile').href=`/profile.html?userId=${userId}`;
 let selectedBoards=[]; // Array of 1 or 2 board numbers
 let isJoining=false;
 let cachedBoards=[];
-let currentRange={min:1, max:500};
 let targetEndTime=0;
 let countdownActive=false;
 let smoothTimer=null;
@@ -515,13 +600,6 @@ function updateStakeDisplay(){
   document.getElementById('boards-counter').textContent=`Boards: ${count}/2`;
 }
 
-function filterRange(min, max, btn){
-  currentRange={min, max};
-  document.querySelectorAll('.range-tab-btn').forEach(b=>b.classList.remove('active'));
-  if(btn) btn.classList.add('active');
-  if(cachedBoards.length>0) renderBoards(cachedBoards);
-}
-
 function mulberry32(seed){
   return function(){
     seed|=0;seed=(seed+0x6D2B79F5)|0;
@@ -559,17 +637,13 @@ function generateTicketClient(seed){
 function renderPreviews(){
   const wrapper=document.getElementById('previews-wrapper');
   const container=document.getElementById('previews-container');
-  const summary=document.getElementById('previews-summary');
-  const hint=document.getElementById('previews-hint');
 
   if(!selectedBoards||selectedBoards.length===0){
     wrapper.style.display='none';
     return;
   }
 
-  wrapper.style.display='block';
-  summary.textContent=`📋 Selected: ${selectedBoards.length}/2 Board${selectedBoards.length>1?'s':''}`;
-  hint.textContent=selectedBoards.length===1?'Tap another board to play 2 boards':'Tap a board or ✕ to change';
+  wrapper.style.display='flex';
 
   container.innerHTML=selectedBoards.map(boardNum=>{
     const ticket=generateTicketClient(boardNum);
@@ -578,26 +652,16 @@ function renderPreviews(){
       for(let c=0;c<5;c++){
         const num=ticket[r][c];
         if(num===0){
-          gridHtml+=`<div class="p-cell free">FREE</div>`;
+          gridHtml+=`<div class="mini-c-cell free">*</div>`;
         }else{
-          gridHtml+=`<div class="p-cell">${num}</div>`;
+          gridHtml+=`<div class="mini-c-cell">${num}</div>`;
         }
       }
     }
     return `
-      <div class="board-preview-card">
-        <div class="preview-header">
-          <span class="preview-title">Board #${boardNum}</span>
-          ${selectedBoards.length>1?`<button class="preview-remove-btn" onclick="removeBoard(${boardNum})">✕</button>`:''}
-        </div>
-        <div class="preview-bingo-letters">
-          <div class="p-letter bl-B">B</div>
-          <div class="p-letter bl-I">I</div>
-          <div class="p-letter bl-N">N</div>
-          <div class="p-letter bl-G">G</div>
-          <div class="p-letter bl-O">O</div>
-        </div>
-        <div class="preview-grid">${gridHtml}</div>
+      <div class="mini-cartela-box">
+        <div class="mini-cartela-title">Cartela #${boardNum}</div>
+        <div class="mini-cartela-grid">${gridHtml}</div>
       </div>
     `;
   }).join('');
@@ -606,13 +670,7 @@ function renderPreviews(){
 function renderBoards(boards){
   cachedBoards=boards;
   const grid=document.getElementById('board-grid');
-  
-  // Filter boards by range if range is not 0 (all)
-  const visibleBoards = (currentRange.min === 0)
-    ? boards
-    : boards.filter(b => b.number >= currentRange.min && b.number <= currentRange.max);
-
-  grid.innerHTML=visibleBoards.map(b=>{
+  grid.innerHTML=boards.map(b=>{
     let cls='board-cell';
     const isMine=selectedBoards.includes(b.number);
     if(isMine) cls+=' selected';
