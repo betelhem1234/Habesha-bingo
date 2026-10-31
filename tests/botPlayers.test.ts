@@ -38,7 +38,7 @@ describe('Virtual Players (Bot System) Test Suite', () => {
             assert.ok(!/\s+[A-Za-z]$/.test(profile.firstName), `First name "${profile.firstName}" must not contain trailing single-letter initial`);
         }
 
-        const femaleNames = new Set(['Selam', 'Bethlehem', 'Almaz', 'Hanan', 'Eden', 'Mahlet', 'Rahel']);
+        const femaleNames = new Set(['Beti', 'Mahi', 'Selu', 'Hani', 'Edu', 'Rahi', 'Almi', 'Fevi', 'Heli', 'Mery', 'Kali', 'Tsii', 'Sona', 'Lili']);
         const maleCount = ETHIOPIAN_BOT_PROFILES.filter(p => !femaleNames.has(p.firstName)).length;
         const ratio = maleCount / ETHIOPIAN_BOT_PROFILES.length;
         assert.ok(ratio >= 0.90, `Expected at least 90% male profiles, got ${(ratio * 100).toFixed(1)}%`);
@@ -450,11 +450,11 @@ describe('Virtual Players (Bot System) Test Suite', () => {
     test('getBotProfileById deterministically returns profile for virtual IDs and null for human IDs', () => {
         const p1 = botService.getBotProfileById(9000000001n);
         assert.ok(p1, 'Should resolve profile for 9000000001');
-        assert.equal(p1?.firstName, 'Dawit');
+        assert.equal(p1?.firstName, ETHIOPIAN_BOT_PROFILES[0].firstName);
 
         const p2 = botService.getBotProfileById(9000000002n);
         assert.ok(p2, 'Should resolve profile for 9000000002');
-        assert.equal(p2?.firstName, 'Abebe');
+        assert.equal(p2?.firstName, ETHIOPIAN_BOT_PROFILES[1].firstName);
 
         const human = botService.getBotProfileById(12345678n);
         assert.equal(human, null, 'Human ID should return null');
