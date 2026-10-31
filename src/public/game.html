@@ -471,7 +471,6 @@ body{
 .w-cell.win-trigger{
   background:#009944 !important;color:#fff !important;
   font-weight:900 !important;
-  box-shadow:0 0 8px #009944 !important;
 }
 .winner-board-number-label{
   text-align:center;color:#008833;font-size:0.95rem;font-weight:900;
@@ -487,45 +486,82 @@ body{
   flex-shrink:0;
 }
 
-/* ─── Dual Winner Zero-Scroll Mode (Image 2) ─── */
+/* ─── Dual Winner Zero-Scroll Mode (Afro Bingo Image 1 Parity) ─── */
+.winner-card-container.dual-mode{
+  max-width:325px;
+  width:calc(100% - 32px);
+  border-radius:18px;
+}
 .winner-card-container.dual-mode .winner-orange-banner{
-  padding:10px 12px 8px;
+  padding:12px 14px 10px;
 }
 .winner-card-container.dual-mode .winner-banner-title{
-  font-size:1.35rem;margin-bottom:3px;
+  font-size:1.55rem;
+  margin-bottom:4px;
+  letter-spacing:0.5px;
 }
 .winner-card-container.dual-mode .winner-name-badge{
-  padding:2px 8px;font-size:0.80rem;border-radius:12px;
+  padding:2px 10px;
+  font-size:0.82rem;
+  border-radius:12px;
 }
 .winner-card-container.dual-mode .winner-has-won-text{
-  font-size:0.82rem;
+  font-size:0.85rem;
+  font-weight:800;
 }
 .winner-card-container.dual-mode .winner-board-wrap{
-  margin:6px 10px;gap:6px;
+  margin:6px 12px;
+  gap:6px;
 }
 .winner-card-container.dual-mode #winner-boards-container{
   gap:6px;
 }
 .winner-card-container.dual-mode .winner-card-item{
-  border-radius:12px;padding:5px 8px 4px;
+  border-radius:14px;
+  padding:6px 8px 6px;
+  max-width:270px;
+  margin:0 auto;
+  box-shadow:0 2px 6px rgba(0,0,0,0.06);
 }
 .winner-card-container.dual-mode .winner-board-header{
-  gap:2px;margin-bottom:2px;
+  gap:3px;
+  margin-bottom:3px;
 }
 .winner-card-container.dual-mode .wbh-col{
-  padding:2px 0;font-size:0.72rem;border-radius:4px;
+  padding:2.5px 0;
+  font-size:0.78rem;
+  border-radius:4px;
 }
 .winner-card-container.dual-mode .winner-ticket-grid{
-  gap:2px;padding:2px;border-radius:6px;
+  gap:3px;
+  padding:3px;
+  border-radius:6px;
+  background:#e5daf0;
 }
 .winner-card-container.dual-mode .w-cell{
-  max-height:22px;aspect-ratio:1.15;font-size:0.72rem;border-radius:4px;
+  aspect-ratio:1; /* Pure square tile! */
+  max-height:none; /* No squishing! */
+  font-size:0.82rem;
+  font-weight:900;
+  border-radius:5px;
+}
+.winner-card-container.dual-mode .w-cell.win-trigger{
+  box-shadow:none !important; /* Remove blurry halo */
 }
 .winner-card-container.dual-mode .winner-board-number-label{
-  font-size:0.76rem;margin-top:2px;
+  font-size:0.80rem;
+  font-weight:900;
+  color:#008833;
+  margin-top:3px;
+  line-height:1.2;
 }
 .winner-card-container.dual-mode .winner-countdown-btn{
-  padding:8px 0;margin:4px 10px 10px;font-size:1.4rem;border-radius:12px;
+  padding:10px 0;
+  margin:6px 16px 12px;
+  font-size:1.6rem;
+  font-weight:900;
+  border-radius:12px;
+  box-shadow:0 3px 10px rgba(255,110,0,0.35);
 }
 .winner-tabs{
   display:flex;gap:6px;justify-content:center;margin-bottom:8px;
