@@ -38,10 +38,10 @@ describe('Virtual Players (Bot System) Test Suite', () => {
             assert.ok(!/\s+[A-Za-z]$/.test(profile.firstName), `First name "${profile.firstName}" must not contain trailing single-letter initial`);
         }
 
-        const femaleNames = new Set(['Beti', 'Mahi', 'Selu', 'Hani', 'Edu', 'Rahi', 'Almi', 'Fevi', 'Heli', 'Mery', 'Kali', 'Tsii', 'Sona', 'Lili']);
-        const maleCount = ETHIOPIAN_BOT_PROFILES.filter(p => !femaleNames.has(p.firstName)).length;
-        const ratio = maleCount / ETHIOPIAN_BOT_PROFILES.length;
-        assert.ok(ratio >= 0.90, `Expected at least 90% male profiles, got ${(ratio * 100).toFixed(1)}%`);
+        const formerFemaleNames = new Set(['Beti', 'Mahi', 'Selu', 'Hani', 'Edu', 'Rahi', 'Almi', 'Fevi', 'Heli', 'Mery', 'Kali', 'Tsii', 'Sona', 'Lili']);
+        const containsFormerFemale = ETHIOPIAN_BOT_PROFILES.some(p => formerFemaleNames.has(p.firstName));
+        assert.strictEqual(containsFormerFemale, false, 'Profile pool should not contain any former female names');
+        assert.strictEqual(ETHIOPIAN_BOT_PROFILES.length, 258, 'Profile pool should contain exactly 258 male profiles');
     });
 
     test('Bot settings can be read and updated', () => {

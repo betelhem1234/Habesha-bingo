@@ -266,21 +266,21 @@ export const ETHIOPIAN_BOT_PROFILES: BotProfile[] = [
     { firstName: 'Zola Ethio', username: 'cool_zola45' },
     { firstName: 'Solo Star', username: 'solo_star10' },
 
-    // ─── 14 Authentic Ethiopian Female Nicknames (5.4%) ───
-    { firstName: 'Beti', username: 'beti_cute' },
-    { firstName: 'Mahi', username: 'mahi_girl' },
-    { firstName: 'Selu', username: 'selu_love' },
-    { firstName: 'Hani', username: 'hani_beauty' },
-    { firstName: 'Edu', username: 'edu_angel' },
-    { firstName: 'Rahi', username: 'rahi_sweet' },
-    { firstName: 'Almi', username: 'almi_love' },
-    { firstName: 'Fevi', username: 'fevi_star' },
-    { firstName: 'Heli', username: 'heli_sun' },
-    { firstName: 'Mery', username: 'mery_vibes' },
-    { firstName: 'Kali', username: 'kali_queen' },
-    { firstName: 'Tsii', username: 'tsii_beauty' },
-    { firstName: 'Sona', username: 'sona_sweet' },
-    { firstName: 'Lili', username: 'lili_addis' }
+    // ─── Additional Authentic Ethiopian Male Names & Telegram Handles ───
+    { firstName: 'Robel', username: 'robel_boy7' },
+    { firstName: 'Nahom', username: 'nahom_pro9' },
+    { firstName: 'Natnael', username: 'natnael_star88' },
+    { firstName: 'Surafel', username: 'surafel_addis21' },
+    { firstName: 'Yared', username: 'yared_music' },
+    { firstName: 'Abel', username: 'abel_habesha' },
+    { firstName: 'Ermias', username: 'ermias_cool10' },
+    { firstName: 'Bereket', username: 'bereket_speed' },
+    { firstName: 'Kaleb', username: 'kaleb_king' },
+    { firstName: 'Dawit', username: 'dawit_star' },
+    { firstName: 'Henok', username: 'henok_vibes' },
+    { firstName: 'Biruk', username: 'biruk_eth' },
+    { firstName: 'Samuel', username: 'samuel_pro99' },
+    { firstName: 'Mikiyas', username: 'mikiyas_zone' }
 ];
 
 export class BotService {
