@@ -431,7 +431,7 @@ body{
 .winner-board-wrap{
   background:transparent;margin:8px 12px;
   padding:0;display:flex;flex-direction:column;gap:8px;
-  overflow:hidden;
+  flex:1;min-height:0;overflow-y:auto;overscroll-behavior:contain;
 }
 #winner-boards-container{
   display:flex;flex-direction:column;gap:8px;width:100%;
@@ -493,62 +493,78 @@ body{
 
 /* ─── Dual Winner Zero-Scroll Mode (Afro Bingo Image 1 Parity) ─── */
 .winner-card-container.dual-mode{
-  max-width:325px;
-  width:calc(100% - 32px);
+  max-width:340px;
+  width:calc(100% - 24px);
   border-radius:18px;
+  max-height:calc(100dvh - 16px);
 }
 .winner-card-container.dual-mode .winner-orange-banner{
-  padding:12px 14px 10px;
+  padding:8px 12px 6px;
 }
 .winner-card-container.dual-mode .winner-banner-title{
-  font-size:1.55rem;
-  margin-bottom:4px;
+  font-size:1.35rem;
+  margin-bottom:3px;
   letter-spacing:0.5px;
+  line-height:1.1;
+}
+.winner-card-container.dual-mode .winner-name-row{
+  gap:4px;
+  line-height:1.2;
 }
 .winner-card-container.dual-mode .winner-name-badge{
-  padding:2px 10px;
-  font-size:0.82rem;
-  border-radius:12px;
+  padding:1.5px 8px;
+  font-size:0.76rem;
+  border-radius:10px;
 }
 .winner-card-container.dual-mode .winner-has-won-text{
-  font-size:0.85rem;
+  font-size:0.78rem;
   font-weight:800;
 }
 .winner-card-container.dual-mode .winner-board-wrap{
-  margin:6px 12px;
-  gap:6px;
+  margin:4px 8px;
+  gap:4px;
+  flex:1;
+  min-height:0;
+  overflow-y:auto;
+  overscroll-behavior:contain;
+  scrollbar-width:none;
+}
+.winner-card-container.dual-mode .winner-board-wrap::-webkit-scrollbar{
+  display:none;
 }
 .winner-card-container.dual-mode #winner-boards-container{
-  gap:6px;
+  gap:4px;
 }
 .winner-card-container.dual-mode .winner-card-item{
-  border-radius:14px;
-  padding:6px 8px 6px;
-  max-width:270px;
+  border-radius:12px;
+  padding:4px 6px 4px;
+  width:min(242px, calc(50dvh - 80px));
+  max-width:242px;
   margin:0 auto;
   box-shadow:0 2px 6px rgba(0,0,0,0.06);
 }
 .winner-card-container.dual-mode .winner-board-header{
-  gap:3px;
-  margin-bottom:3px;
+  gap:2.5px;
+  margin-bottom:2px;
 }
 .winner-card-container.dual-mode .wbh-col{
-  padding:2.5px 0;
-  font-size:0.78rem;
+  padding:1.5px 0;
+  font-size:0.74rem;
   border-radius:4px;
+  line-height:1.1;
 }
 .winner-card-container.dual-mode .winner-ticket-grid{
-  gap:3px;
-  padding:3px;
+  gap:2.5px;
+  padding:2.5px;
   border-radius:6px;
   background:#e5daf0;
 }
 .winner-card-container.dual-mode .w-cell{
-  aspect-ratio:1; /* Pure square tile! */
-  max-height:none; /* No squishing! */
-  font-size:0.82rem;
+  aspect-ratio:1; /* Pure square tile */
+  max-height:none;
+  font-size:clamp(0.72rem, 2.2dvh, 0.82rem);
   font-weight:900;
-  border-radius:5px;
+  border-radius:4.5px;
 }
 .winner-card-container.dual-mode .w-cell.win-trigger{
   background:#e53935 !important;
@@ -560,19 +576,19 @@ body{
   position:relative;
 }
 .winner-card-container.dual-mode .winner-board-number-label{
-  font-size:0.80rem;
+  font-size:0.74rem;
   font-weight:900;
   color:#008833;
-  margin-top:3px;
-  line-height:1.2;
+  margin-top:2px;
+  line-height:1.1;
 }
 .winner-card-container.dual-mode .winner-countdown-btn{
-  padding:10px 0;
-  margin:6px 16px 12px;
-  font-size:1.6rem;
+  padding:6px 0;
+  margin:4px 14px 8px;
+  font-size:1.35rem;
   font-weight:900;
   border-radius:12px;
-  box-shadow:0 3px 10px rgba(255,110,0,0.35);
+  box-shadow:0 3px 8px rgba(255,110,0,0.3);
 }
 .winner-tabs{
   display:flex;gap:6px;justify-content:center;margin-bottom:8px;
