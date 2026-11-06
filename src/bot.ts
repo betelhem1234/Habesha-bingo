@@ -143,10 +143,9 @@ function getBannerPhoto(): InputFile | string {
     return `${config.BINGO_APP_URL}/images/ethio_bingo_banner.jpg`;
 }
 
-function getPersistentBottomKeyboard(playUrl: string) {
+function getPersistentBottomKeyboard() {
     return new Keyboard()
-        .webApp('🎮 Play Now (ይጫወቱ)', playUrl)
-        .text('🔗 Invite & QR (ግብዣ)')
+        .text('🔗 Invite & QR (የግብዣ ሊንክ)')
         .resized()
         .persistent();
 }
@@ -368,11 +367,9 @@ bot.command('start', async (ctx: Context) => {
     }
 
     // 2. If user is registered, ensure bottom persistent keyboard is docked and show Main Menu
-    const token = signPlayerToken(user.id);
-    const playUrl = `${config.BINGO_APP_URL}/index.html?userId=${user.id}&token=${token}&v=${Date.now()}`;
     await ctx.reply('👋 *Welcome to Ethio Bingo!*', {
         parse_mode: 'Markdown',
-        reply_markup: getPersistentBottomKeyboard(playUrl)
+        reply_markup: getPersistentBottomKeyboard()
     }).catch(() => {});
 
     await sendMainMenu(ctx, user);
@@ -924,7 +921,7 @@ bot.on('message:contact', async (ctx) => {
 
     await ctx.reply(`✅ *Registration Complete!*\n\n🎁 Your *${getNewUserBonus()} Birr Welcome Bonus* is active! Welcome to Ethio Bingo! Get ready to play and win.`, {
         parse_mode: 'Markdown',
-        reply_markup: getPersistentBottomKeyboard(playUrl)
+        reply_markup: getPersistentBottomKeyboard()
     });
 
     await sendMainMenu(ctx, updatedUser);
