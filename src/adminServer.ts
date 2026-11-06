@@ -7,7 +7,7 @@ import { Bot, InputFile, InlineKeyboard } from 'grammy';
 import { prisma, getBalancedActiveAdminId } from './db';
 import { UPLOADS_DIR, proofPath, proofUrl } from './uploads';
 import { GameRooms } from './game/GameRooms';
-import { config } from './config';
+import { config, formatEthioTime } from './config';
 import {
     isValidAdminToken,
     generateAdminToken,
@@ -282,7 +282,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 `🔐 *Admin Login Approval Requested*\n\n` +
                 `📍 *IP:* \`${ip}\`\n` +
                 `🖥 *Device:* ${userAgent}\n` +
-                `⏰ *Time:* ${new Date().toLocaleTimeString()}\n\n` +
+                `⏰ *Time:* ${formatEthioTime()}\n\n` +
                 `Did you attempt to log in to the admin dashboard?`;
 
             const kb = new InlineKeyboard()
@@ -315,7 +315,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 bot.api.sendMessage(Number(config.ADMIN_USER_ID),
                     `ℹ️ *Admin Dashboard Unlocked*\n` +
                     `📍 *IP:* \`${ip}\`\n` +
-                    `⏰ *Time:* ${new Date().toLocaleTimeString()}`,
+                    `⏰ *Time:* ${formatEthioTime()}`,
                     { parse_mode: 'Markdown' }
                 ).catch(() => {});
             } catch {}

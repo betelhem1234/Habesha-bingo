@@ -1,6 +1,34 @@
 import dotenv from 'dotenv';
 dotenv.config();
 
+// Default server timezone to East Africa Time (Ethiopia: UTC+3)
+process.env.TZ = process.env.TZ || 'Africa/Addis_Ababa';
+
+export function formatEthioTime(date: Date | number | string = new Date()): string {
+    const d = date instanceof Date ? date : new Date(date);
+    return d.toLocaleTimeString('en-US', {
+        timeZone: 'Africa/Addis_Ababa',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+    });
+}
+
+export function formatEthioDateTime(date: Date | number | string = new Date()): string {
+    const d = date instanceof Date ? date : new Date(date);
+    return d.toLocaleString('en-US', {
+        timeZone: 'Africa/Addis_Ababa',
+        year: 'numeric',
+        month: 'short',
+        day: 'numeric',
+        hour: 'numeric',
+        minute: '2-digit',
+        second: '2-digit',
+        hour12: true
+    });
+}
+
 export const config = {
     BOT_TOKEN: process.env.BOT_TOKEN || '',
     DATABASE_URL: process.env.DATABASE_URL || '',

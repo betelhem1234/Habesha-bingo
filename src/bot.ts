@@ -2,7 +2,7 @@
 import { existsSync } from 'fs';
 import path from 'path';
 import { Bot, Context, InlineKeyboard, Keyboard, InputFile } from 'grammy';
-import { config } from './config';
+import { config, formatEthioTime } from './config';
 import { prisma, initDbSchema, getBalancedActiveAdminId } from './db';
 import { proofUrl } from './uploads';
 import { NEW_USER_BONUS, REFERRAL_BONUS, getNewUserBonus, getReferralBonus, setBonusSettings } from './bonus';
@@ -1301,7 +1301,7 @@ async function renderSecurityDashboard(ctx: any, isEdit = false) {
     if (stats.recentEvents.length > 0) {
         text += `\n<b>Recent Probes & Threats (Last ${Math.min(5, stats.recentEvents.length)}):</b>\n`;
         for (const ev of stats.recentEvents.slice(0, 5)) {
-            const timeStr = new Date(ev.timestamp).toLocaleTimeString();
+            const timeStr = formatEthioTime(ev.timestamp);
             text += `• [${timeStr}] <b>${escapeHtmlBot(ev.type)}</b> from <code>${escapeHtmlBot(ev.ip)}</code>\n  <i>${escapeHtmlBot(ev.details)}</i>\n`;
         }
     }
@@ -1630,7 +1630,7 @@ function renderRow(r: any) {
     const isDep = r.type === 'deposit';
     const icon = isDep ? '💳' : '⬆️';
     const uname = user?.username ? `@${user?.username}` : `ID:${r.userId}`;
-    const time = r.createdAt.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+    const time = formatEthioTime(r.createdAt);
     const phone = r.phone ? ` · 📱 ${r.phone}` : '';
     const proof = r.proof && isDep ? `<a href="${proofUrl(r.proof)}"> · 📎 Screenshot</a>` : '';
     const account = isDep && r.bankName ? ` · 🏦 ${r.bankName}` : '';

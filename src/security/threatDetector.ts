@@ -1,6 +1,6 @@
 import type { Request, Response, NextFunction } from 'express';
 import { Bot, InlineKeyboard } from 'grammy';
-import { config } from '../config';
+import { config, formatEthioTime } from '../config';
 
 export type ThreatType =
     | 'HONEYPOT_HIT'
@@ -253,7 +253,7 @@ export class ThreatDetector {
             (info.details ? `📝 <b>Details:</b> ${this.escapeHtml(info.details)}\n` : '') +
             `⏱ <b>Duration:</b> ${durationMinutes} minutes\n` +
             `📊 <b>Threat Score:</b> ${info.threatScore} pts\n` +
-            `⏰ <b>Banned At:</b> ${new Date(info.bannedAt).toLocaleTimeString()}\n\n` +
+            `⏰ <b>Banned At:</b> ${formatEthioTime(info.bannedAt)}\n\n` +
             `<i>All incoming requests from this IP are blocked with HTTP 403.</i>`;
 
         const kb = new InlineKeyboard()
