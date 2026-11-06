@@ -50,17 +50,7 @@ const upload = multer({
 export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     const app = express();
 
-    // 1. Connect bot to ThreatDetector for real-time Telegram alerts
-    if (bot) {
-        threatDetector.setBot(bot);
-    }
-
-    // 2. Security Fortress Middlewares (Top of pipeline)
-    app.use(threatDetector.ipJailMiddleware);
-    app.use(honeypotMiddleware);
-
-    app.use(cors());
-    app.use(express.json());
+    // 1. Health & monitoring endpoint (always accessible for UptimeRobot/Render)
     app.get('/api/health', async (_req, res) => {
         const mem = process.memoryUsage();
         let dbStatus = 'ok';
@@ -104,6 +94,18 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             rooms: roomsInfo
         });
     });
+
+    // 2. Connect bot to ThreatDetector for real-time Telegram alerts
+    if (bot) {
+        threatDetector.setBot(bot);
+    }
+
+    // 3. Security Fortress Middlewares (Top of pipeline for all routes)
+    app.use(threatDetector.ipJailMiddleware);
+    app.use(honeypotMiddleware);
+
+    app.use(cors());
+    app.use(express.json());
 
     app.use('/api', generalApiLimiter);
 

@@ -1213,24 +1213,24 @@ bot.command('admin', async (ctx) => {
 async function renderSecurityDashboard(ctx: any, isEdit = false) {
     const stats = threatDetector.getStats();
     let text =
-        `🛡️ *Fortress Security & Bot Monitor*\n\n` +
-        `🚫 *Active Jailed IPs:* *${stats.totalJailedIps}*\n` +
-        `⚡ *Detection Mode:* *Active Defense (Honeypot + Rate Limit + Brute-Force Guard)*\n\n`;
+        `🛡️ <b>Fortress Security & Bot Monitor</b>\n\n` +
+        `🚫 <b>Active Jailed IPs:</b> <code>${stats.totalJailedIps}</code>\n` +
+        `⚡ <b>Detection:</b> Active (Honeypot + Brute-Force + Rate Limiter)\n\n`;
 
     if (stats.jailedList.length === 0) {
-        text += `🟢 *All systems quiet.* No active bans in place.\n`;
+        text += `🟢 <b>All systems quiet.</b> No active bans in place.\n`;
     } else {
-        text += `*Currently Blocked Attackers:*\n`;
+        text += `<b>Currently Blocked Attackers:</b>\n`;
         for (const j of stats.jailedList) {
-            text += `• \`${j.ip}\` — ${j.reason} (${j.expiresInMinutes}m left)\n`;
+            text += `• <code>${escapeHtmlBot(j.ip)}</code> — ${escapeHtmlBot(j.reason)} (${j.expiresInMinutes}m left)\n`;
         }
     }
 
     if (stats.recentEvents.length > 0) {
-        text += `\n*Recent Probes & Threats (Last ${Math.min(5, stats.recentEvents.length)}):*\n`;
+        text += `\n<b>Recent Probes & Threats (Last ${Math.min(5, stats.recentEvents.length)}):</b>\n`;
         for (const ev of stats.recentEvents.slice(0, 5)) {
             const timeStr = new Date(ev.timestamp).toLocaleTimeString();
-            text += `• \`[${timeStr}]\` *${ev.type}* from \`${ev.ip}\`\n  _${escapeHtmlBot(ev.details)}_\n`;
+            text += `• [${timeStr}] <b>${escapeHtmlBot(ev.type)}</b> from <code>${escapeHtmlBot(ev.ip)}</code>\n  <i>${escapeHtmlBot(ev.details)}</i>\n`;
         }
     }
 
@@ -1243,10 +1243,21 @@ async function renderSecurityDashboard(ctx: any, isEdit = false) {
     kb.text('🔄 Refresh Status', 'sec_stats')
       .text('🔙 Admin Menu', 'menu_admin_status');
 
-    if (isEdit) {
-        await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: kb }).catch(() => {});
-    } else {
-        await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: kb });
+    try {
+        if (isEdit) {
+            await ctx.editMessageText(text, { parse_mode: 'HTML', reply_markup: kb });
+        } else {
+            await ctx.reply(text, { parse_mode: 'HTML', reply_markup: kb });
+        }
+    } catch (err: any) {
+        console.error('[Security] Telegram reply error, falling back to plain text:', err?.message);
+        const fallbackText = `🛡️ Security Monitor\nActive Jailed IPs: ${stats.totalJailedIps}\n` +
+            (stats.jailedList.length > 0 ? `Banned: ${stats.jailedList.map(j => `${j.ip} (${j.reason})`).join('\n')}` : 'No active bans.');
+        if (isEdit) {
+            await ctx.editMessageText(fallbackText, { reply_markup: kb }).catch(() => {});
+        } else {
+            await ctx.reply(fallbackText, { reply_markup: kb }).catch(() => {});
+        }
     }
 }
 

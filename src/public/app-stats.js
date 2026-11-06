@@ -153,7 +153,8 @@ function initAuth() {
                         await loadVoiceSetting();
                     }
                 } else {
-                    showLoginOverlay(data.msg || 'Incorrect admin password.');
+                    const errMsg = data.error || data.msg || (data.reason ? `Access restricted: ${data.reason}` : 'Incorrect admin password.');
+                    showLoginOverlay(errMsg);
                 }
             } catch (err) {
                 showLoginOverlay('Network error verifying password.');

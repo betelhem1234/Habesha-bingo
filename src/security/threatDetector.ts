@@ -195,6 +195,13 @@ export class ThreatDetector {
         }
     }
 
+    private escapeHtml(str: string): string {
+        return String(str || '')
+            .replace(/&/g, '&amp;')
+            .replace(/</g, '&lt;')
+            .replace(/>/g, '&gt;');
+    }
+
     /**
      * Debounced warning alert before full ban
      */
@@ -209,23 +216,26 @@ export class ThreatDetector {
         this.alertDebounce.set(key, now);
 
         const text =
-            `⚠️ *Security Warning: Suspicious Activity*\n\n` +
-            `📍 *IP:* \`${ip}\`\n` +
-            `🎯 *Type:* \`${event.type}\`\n` +
-            (event.path ? `🔗 *Path:* \`${event.path}\`\n` : '') +
-            `📝 *Details:* ${event.details}\n` +
-            `⏱ *Time:* ${new Date(now).toISOString()}\n\n` +
-            `*System is monitoring this IP.*`;
+            `⚠️ <b>Security Warning: Suspicious Activity</b>\n\n` +
+            `📍 <b>IP:</b> <code>${this.escapeHtml(ip)}</code>\n` +
+            `🎯 <b>Type:</b> <code>${this.escapeHtml(event.type)}</code>\n` +
+            (event.path ? `🔗 <b>Path:</b> <code>${this.escapeHtml(event.path)}</code>\n` : '') +
+            `📝 <b>Details:</b> ${this.escapeHtml(event.details)}\n` +
+            `⏱ <b>Time:</b> ${new Date(now).toISOString()}\n\n` +
+            `<i>System is monitoring this IP.</i>`;
 
         const kb = new InlineKeyboard().text(`🚫 Ban IP Now`, `sec_ban_${ip}`);
 
         try {
             await this.bot.api.sendMessage(Number(config.ADMIN_USER_ID), text, {
-                parse_mode: 'Markdown',
+                parse_mode: 'HTML',
                 reply_markup: kb
             });
         } catch (e: any) {
-            console.error('[Security] Failed to deliver warning alert to Telegram:', e?.message);
+            console.error('[Security] Failed to deliver warning alert to Telegram, retrying plain text:', e?.message);
+            try {
+                await this.bot.api.sendMessage(Number(config.ADMIN_USER_ID), `⚠️ Security Warning: ${event.type} from ${ip}\n${event.details}`, { reply_markup: kb });
+            } catch {}
         }
     }
 
@@ -237,14 +247,14 @@ export class ThreatDetector {
 
         const durationMinutes = Math.round((info.expiresAt - info.bannedAt) / 60000);
         const text =
-            `🚨 *EMERGENCY: Malicious Bot / Attacker Jailed!*\n\n` +
-            `🚫 *Jailed IP:* \`${info.ip}\`\n` +
-            `🛑 *Reason:* ${info.reason}\n` +
-            (info.details ? `📝 *Details:* ${info.details}\n` : '') +
-            `⏱ *Duration:* ${durationMinutes} minutes\n` +
-            `📊 *Threat Score:* ${info.threatScore} pts\n` +
-            `⏰ *Banned At:* ${new Date(info.bannedAt).toLocaleTimeString()}\n\n` +
-            `*All incoming requests from this IP are blocked with HTTP 403.*`;
+            `🚨 <b>EMERGENCY: Malicious Bot / Attacker Jailed!</b>\n\n` +
+            `🚫 <b>Jailed IP:</b> <code>${this.escapeHtml(info.ip)}</code>\n` +
+            `🛑 <b>Reason:</b> ${this.escapeHtml(info.reason)}\n` +
+            (info.details ? `📝 <b>Details:</b> ${this.escapeHtml(info.details)}\n` : '') +
+            `⏱ <b>Duration:</b> ${durationMinutes} minutes\n` +
+            `📊 <b>Threat Score:</b> ${info.threatScore} pts\n` +
+            `⏰ <b>Banned At:</b> ${new Date(info.bannedAt).toLocaleTimeString()}\n\n` +
+            `<i>All incoming requests from this IP are blocked with HTTP 403.</i>`;
 
         const kb = new InlineKeyboard()
             .text(`🔓 Unban IP`, `sec_unban_${info.ip}`)
@@ -252,11 +262,14 @@ export class ThreatDetector {
 
         try {
             await this.bot.api.sendMessage(Number(config.ADMIN_USER_ID), text, {
-                parse_mode: 'Markdown',
+                parse_mode: 'HTML',
                 reply_markup: kb
             });
         } catch (e: any) {
-            console.error('[Security] Failed to deliver ban alert to Telegram:', e?.message);
+            console.error('[Security] Failed to deliver ban alert to Telegram, retrying plain text:', e?.message);
+            try {
+                await this.bot.api.sendMessage(Number(config.ADMIN_USER_ID), `🚨 JAILED IP: ${info.ip}\nReason: ${info.reason}\nDuration: ${durationMinutes}m`, { reply_markup: kb });
+            } catch {}
         }
     }
 

@@ -50,6 +50,8 @@ function switchAdminTab(tabId) {
         fetchDutyWithdrawalAdmin();
     } else if (tabId === 'tab-admin-audit') {
         fetchAdminAuditStats();
+    } else if (tabId === 'tab-controls') {
+        loadSecurityStats();
     }
 }
 window.switchAdminTab = switchAdminTab;
@@ -185,7 +187,8 @@ function initAuth() {
                         await refreshAllData();
                     }
                 } else {
-                    showLoginOverlay(data.msg || 'Incorrect admin password.');
+                    const errMsg = data.error || data.msg || (data.reason ? `Access restricted: ${data.reason}` : 'Incorrect admin password.');
+                    showLoginOverlay(errMsg);
                 }
             } catch (err) {
                 showLoginOverlay('Network error verifying password.');
@@ -276,9 +279,63 @@ async function refreshAllData() {
         fetchBotSettings(),
         fetchAdmins(),
         fetchAdminBanks(),
-        fetchAdminAuditStats()
+        fetchAdminAuditStats(),
+        loadSecurityStats()
     ]);
 }
+
+async function loadSecurityStats() {
+    const container = document.getElementById('sec-jailed-container');
+    if (!container) return;
+    try {
+        const res = await authFetch('/api/admin/security/stats');
+        const data = await res.json();
+        if (data.success && data.stats) {
+            const list = data.stats.jailedList || [];
+            if (list.length === 0) {
+                container.innerHTML = '<div style="color:#4ade80; font-size:13px; font-weight:600;">🟢 No IPs currently banned. All systems quiet.</div>';
+            } else {
+                let html = '<div style="display:flex; flex-direction:column; gap:8px;">';
+                list.forEach(j => {
+                    html += `
+                        <div style="display:flex; justify-content:space-between; align-items:center; background:rgba(239,68,68,0.15); border:1px solid rgba(239,68,68,0.3); padding:8px 12px; border-radius:6px; font-size:12px;">
+                            <div>
+                                <strong style="color:#f87171; font-family:monospace; font-size:13px;">${j.ip}</strong>
+                                <span style="color:#cbd5e1; margin-left:8px;">${j.reason}</span>
+                                <span style="color:#94a3b8; margin-left:6px;">(${j.expiresInMinutes}m remaining)</span>
+                            </div>
+                            <button onclick="unbanIpWeb('${j.ip}')" class="action-btn-sm" style="background:#22c55e; border:none; color:#fff; padding:4px 10px; border-radius:4px; font-weight:700; cursor:pointer; font-size:11px;">🔓 Unban</button>
+                        </div>
+                    `;
+                });
+                html += '</div>';
+                container.innerHTML = html;
+            }
+        }
+    } catch (e) {
+        container.innerHTML = '<div style="color:#94a3b8; font-size:12px;">Unable to load security stats.</div>';
+    }
+}
+window.loadSecurityStats = loadSecurityStats;
+
+async function unbanIpWeb(ip) {
+    if (!confirm(`Unban IP ${ip}?`)) return;
+    try {
+        const res = await authFetch('/api/admin/security/unban', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ ip })
+        });
+        const data = await res.json();
+        if (data.success) {
+            alert(`✅ IP ${ip} has been unbanned!`);
+            loadSecurityStats();
+        }
+    } catch (e) {
+        alert('Failed to unban IP');
+    }
+}
+window.unbanIpWeb = unbanIpWeb;
 
 // ----------------------------------------------------
 // 1. Global Period Filter (Default: Today / ዛሬ)
