@@ -319,11 +319,31 @@
     <script>
         if (window.Telegram?.WebApp) { Telegram.WebApp.ready(); Telegram.WebApp.expand(); }
         const params = new URLSearchParams(window.location.search);
-        const userId = params.get('userId') || window.Telegram?.WebApp?.initDataUnsafe?.user?.id || '0';
+        let userId = params.get('userId');
+        if (!userId || userId === '0') {
+            if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
+                userId = String(Telegram.WebApp.initDataUnsafe.user.id);
+            } else {
+                try { userId = sessionStorage.getItem('bingo_userId') || '0'; } catch(e){ userId = '0'; }
+            }
+        }
+        if (userId && userId !== '0') {
+            try { sessionStorage.setItem('bingo_userId', userId); } catch(e){}
+        }
+
+        let token = params.get('token');
+        if (!token) {
+            try { token = sessionStorage.getItem('bingo_token') || ''; } catch(e){}
+        }
+        if (token) {
+            try { sessionStorage.setItem('bingo_token', token); } catch(e){}
+        }
+
         const API_BASE = window.location.origin + '/api';
 
         function go(page) {
-            window.location.href = `/${page}.html?userId=${userId}`;
+            const tokParam = token ? `&token=${encodeURIComponent(token)}` : '';
+            window.location.href = `/${page}.html?userId=${userId}${tokParam}`;
         }
 
         function goBack() {
@@ -340,11 +360,30 @@
             return ((f[0] || '') + (l[0] || '')).toUpperCase() || '?';
         }
 
+        // Render immediate fallback if user is known
+        if (userId && userId !== '0') {
+            document.getElementById('pid').textContent = userId;
+            if (window.Telegram?.WebApp?.initDataUnsafe?.user) {
+                const u = Telegram.WebApp.initDataUnsafe.user;
+                const full = [u.first_name, u.last_name].filter(Boolean).join(' ') || 'Player';
+                document.getElementById('pname').textContent = full;
+                if (u.username) document.getElementById('phandle').textContent = '@' + u.username;
+                document.getElementById('avatar').textContent = initials({ firstName: u.first_name, lastName: u.last_name });
+            }
+            const fallbackLink = `https://t.me/PlayMyBingoBot?start=${userId}`;
+            document.getElementById('ref-link').textContent = fallbackLink;
+            renderQrCode(fallbackLink);
+        }
+
         async function load() {
             try {
+                const authHeaders = {
+                    'x-telegram-init-data': window.Telegram?.WebApp?.initData || '',
+                    'x-player-token': token || ''
+                };
                 const [profRes, histRes] = await Promise.all([
-                    fetch(`${API_BASE}/profile/${userId}`),
-                    fetch(`${API_BASE}/history/${userId}`)
+                    fetch(`${API_BASE}/profile/${userId}`, { headers: authHeaders }),
+                    fetch(`${API_BASE}/history/${userId}`, { headers: authHeaders })
                 ]);
                 const p = await profRes.json();
                 if (p.error) throw new Error(p.error);
@@ -370,8 +409,16 @@
                     renderQrCode(link);
                 }
             } catch (e) {
-                document.getElementById('pname').textContent = 'Player Profile';
-                console.error(e);
+                console.warn('Profile load notice:', e?.message || e);
+                // Ensure fallback QR is still present if userId known
+                if (userId && userId !== '0') {
+                    const fallbackLink = `https://t.me/PlayMyBingoBot?start=${userId}`;
+                    const linkEl = document.getElementById('ref-link');
+                    if (linkEl.textContent === 'Loading...') {
+                        linkEl.textContent = fallbackLink;
+                        renderQrCode(fallbackLink);
+                    }
+                }
             }
         }
 

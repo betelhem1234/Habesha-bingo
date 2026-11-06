@@ -367,7 +367,14 @@ bot.command('start', async (ctx: Context) => {
         return;
     }
 
-    // 2. If user is registered, show Main Menu directly with PLAY NOW button
+    // 2. If user is registered, ensure bottom persistent keyboard is docked and show Main Menu
+    const token = signPlayerToken(user.id);
+    const playUrl = `${config.BINGO_APP_URL}/index.html?userId=${user.id}&token=${token}&v=${Date.now()}`;
+    await ctx.reply('👋 *Welcome to Ethio Bingo!*', {
+        parse_mode: 'Markdown',
+        reply_markup: getPersistentBottomKeyboard(playUrl)
+    }).catch(() => {});
+
     await sendMainMenu(ctx, user);
 });
 
@@ -2381,11 +2388,11 @@ async function startPollingLoop() {
                         await bot.api.setChatMenuButton({
                             menu_button: {
                                 type: 'web_app',
-                                text: '🎮 Play',
+                                text: '🎮 Play Now',
                                 web_app: { url: `${config.BINGO_APP_URL}/index.html` }
                             }
                         });
-                        console.log('[Bot] Default chat menu button configured.');
+                        console.log('[Bot] Default chat menu button configured as Play Now.');
                     } catch (e: any) {
                         console.warn('[Bot] Could not set chat menu button:', e?.message || e);
                     }

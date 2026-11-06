@@ -192,8 +192,8 @@ export function requirePlayerOwnership(
             return next();
         }
 
-        // Default strict mode to true unless explicitly disabled in environment
-        const isStrict = options.strict ?? (process.env.STRICT_PLAYER_AUTH !== 'false');
+        // Strict mode is opt-in via STRICT_PLAYER_AUTH=true
+        const isStrict = options.strict ?? (process.env.STRICT_PLAYER_AUTH === 'true');
 
         if (isStrict) {
             // Allow mock requests in test mode if headers not supplied
@@ -206,7 +206,7 @@ export function requirePlayerOwnership(
             });
         }
 
-        // Non-strict fallback only if STRICT_PLAYER_AUTH=false
+        // Non-strict fallback for seamless player transition
         next();
     };
 }

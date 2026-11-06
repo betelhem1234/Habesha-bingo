@@ -463,13 +463,23 @@ if(!userId || userId==='0'){
 if(userId && userId!=='0'){
   try { sessionStorage.setItem('bingo_userId', userId); } catch(e){}
 }
+
+let token=params.get('token');
+if(!token){
+  try { token=sessionStorage.getItem('bingo_token')||''; } catch(e){}
+}
+if(token){
+  try { sessionStorage.setItem('bingo_token', token); } catch(e){}
+}
+
 const bet=params.get('bet')||'10';
 const room=params.get('room')||'1';
 
 // Setup nav links
-document.getElementById('nav-history').href=`/history.html?userId=${userId}`;
-document.getElementById('nav-wallet').href=`/wallet.html?userId=${userId}`;
-document.getElementById('nav-profile').href=`/profile.html?userId=${userId}`;
+const tokParam = token ? `&token=${encodeURIComponent(token)}` : '';
+document.getElementById('nav-history').href=`/history.html?userId=${userId}${tokParam}`;
+document.getElementById('nav-wallet').href=`/wallet.html?userId=${userId}${tokParam}`;
+document.getElementById('nav-profile').href=`/profile.html?userId=${userId}${tokParam}`;
 
 let selectedBoards=[]; // Array of 1 or 2 board numbers
 let isJoining=false;
@@ -690,7 +700,12 @@ async function syncBoardSelection(){
       const boardsToSync = pendingSelection;
       pendingSelection = null;
       const res = await fetch('/api/join',{
-        method:'POST',headers:{'Content-Type':'application/json'},
+        method:'POST',
+        headers:{
+          'Content-Type':'application/json',
+          'x-telegram-init-data': window.Telegram?.WebApp?.initData || '',
+          'x-player-token': token || ''
+        },
         body:JSON.stringify({userId,boards:boardsToSync,bet,room,autoPlay:autoEnabled})
       });
       const data = await res.json();
@@ -843,7 +858,12 @@ function startSmoothTimer(){
 async function loadBalance(){
   try{
     if(!userId || userId==='0') return;
-    const r=await fetch(`/api/profile/${userId}`);
+    const r=await fetch(`/api/profile/${userId}`, {
+      headers: {
+        'x-telegram-init-data': window.Telegram?.WebApp?.initData || '',
+        'x-player-token': token || ''
+      }
+    });
     if(!r.ok) return;
     const d=await r.json();
     const bal=d.balance!==undefined?Number(d.balance):(d.user&&d.user.balance!==undefined?Number(d.user.balance):0);

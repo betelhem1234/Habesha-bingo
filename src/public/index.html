@@ -314,24 +314,45 @@
 
   const params = new URLSearchParams(window.location.search);
   let userId = params.get('userId');
-  if (!userId && window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
-    userId = String(Telegram.WebApp.initDataUnsafe.user.id);
+  if (!userId || userId === '0') {
+    if (window.Telegram?.WebApp?.initDataUnsafe?.user?.id) {
+      userId = String(Telegram.WebApp.initDataUnsafe.user.id);
+    } else {
+      try { userId = sessionStorage.getItem('bingo_userId') || '0'; } catch(e){ userId = '0'; }
+    }
+  }
+  if (userId && userId !== '0') {
+    try { sessionStorage.setItem('bingo_userId', userId); } catch(e){}
+  }
+
+  let token = params.get('token');
+  if (!token) {
+    try { token = sessionStorage.getItem('bingo_token') || ''; } catch(e){}
+  }
+  if (token) {
+    try { sessionStorage.setItem('bingo_token', token); } catch(e){}
   }
 
   // Setup navigation links
   if (userId) {
-    document.getElementById('nav-history').href = `/history.html?userId=${userId}`;
-    document.getElementById('nav-wallet').href = `/wallet.html?userId=${userId}`;
-    document.getElementById('nav-profile').href = `/profile.html?userId=${userId}`;
+    const tokParam = token ? `&token=${encodeURIComponent(token)}` : '';
+    document.getElementById('nav-history').href = `/history.html?userId=${userId}${tokParam}`;
+    document.getElementById('nav-wallet').href = `/wallet.html?userId=${userId}${tokParam}`;
+    document.getElementById('nav-profile').href = `/profile.html?userId=${userId}${tokParam}`;
   }
 
   let realBalance = '0.00';
   let isBalanceShown = false;
 
   async function fetchBalance() {
-    if (!userId) return;
+    if (!userId || userId === '0') return;
     try {
-      const res = await fetch(`/api/profile/${userId}`);
+      const res = await fetch(`/api/profile/${userId}`, {
+        headers: {
+          'x-telegram-init-data': window.Telegram?.WebApp?.initData || '',
+          'x-player-token': token || ''
+        }
+      });
       if (!res.ok) return;
       const data = await res.json();
       const bal = data.balance !== undefined ? Number(data.balance) : (data.user && data.user.balance !== undefined ? Number(data.user.balance) : 0);
@@ -362,8 +383,9 @@
       alert("User ID missing. Please open from Telegram.");
       return;
     }
+    const tokParam = token ? `&token=${encodeURIComponent(token)}` : '';
     const cb = `&v=${Date.now()}`;
-    window.location.href = `/boards.html?userId=${userId}&bet=${bet}&room=${room}${cb}`;
+    window.location.href = `/boards.html?userId=${userId}&bet=${bet}&room=${room}${tokParam}${cb}`;
   }
 
   function closeApp() {
