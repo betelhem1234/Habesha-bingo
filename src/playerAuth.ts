@@ -2,6 +2,7 @@ import crypto from 'crypto';
 import type { Request, Response, NextFunction } from 'express';
 import { config } from './config';
 import { isValidAdminToken } from './auth';
+import { threatDetector } from './security/threatDetector';
 
 export interface TelegramUserData {
     id: bigint;
@@ -145,6 +146,7 @@ export function authenticateCaller(req: Request): {
 
 /**
  * Middleware ensuring the caller is either an authorized Admin or the owner of targetUserId.
+ * Defaults to strict mode: unauthenticated forge attempts are rejected with 401.
  */
 export function requirePlayerOwnership(
     targetUserIdExtractor: (req: Request) => bigint | string | null | undefined,
@@ -170,6 +172,15 @@ export function requirePlayerOwnership(
 
         // Active impersonation attack: authenticated as user A, but attempting action on user B
         if (auth.userId && auth.userId !== targetId) {
+            const ip = threatDetector.extractClientIp(req);
+            threatDetector.recordThreat({
+                ip,
+                type: 'AUTH_FORGERY',
+                points: 50,
+                details: `User ${auth.userId} attempted unauthorized action on user ${targetId}`,
+                path: req.originalUrl || req.path
+            });
+
             return res.status(403).json({
                 success: false,
                 error: 'Forbidden: You cannot access or perform actions on another player account.'
@@ -181,10 +192,11 @@ export function requirePlayerOwnership(
             return next();
         }
 
-        const isStrict = options.strict ?? (process.env.STRICT_PLAYER_AUTH === 'true');
+        // Default strict mode to true unless explicitly disabled in environment
+        const isStrict = options.strict ?? (process.env.STRICT_PLAYER_AUTH !== 'false');
 
-        // If strict mode is enforced or testing, check if authorization is required
         if (isStrict) {
+            // Allow mock requests in test mode if headers not supplied
             if (process.env.NODE_ENV === 'test' && !req.headers['x-telegram-init-data'] && !req.headers['x-player-token']) {
                 return next();
             }
@@ -194,7 +206,7 @@ export function requirePlayerOwnership(
             });
         }
 
-        // Non-strict fallback for seamless player transition
+        // Non-strict fallback only if STRICT_PLAYER_AUTH=false
         next();
     };
 }

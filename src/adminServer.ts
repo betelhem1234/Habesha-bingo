@@ -8,7 +8,18 @@ import { prisma, getBalancedActiveAdminId } from './db';
 import { UPLOADS_DIR, proofPath, proofUrl } from './uploads';
 import { GameRooms } from './game/GameRooms';
 import { config } from './config';
-import { isValidAdminToken, generateAdminToken, revokeAdminToken, verifyMasterPassword } from './auth';
+import {
+    isValidAdminToken,
+    generateAdminToken,
+    revokeAdminToken,
+    verifyMasterPassword,
+    createPendingLogin,
+    getPendingLogin,
+    approvePendingLogin,
+    rejectPendingLogin
+} from './auth';
+import { threatDetector } from './security/threatDetector';
+import { honeypotMiddleware } from './security/honeypot';
 import { adminLoginLimiter, financialLimiter, generalApiLimiter } from './rateLimiter';
 import { requirePlayerOwnership, authenticateCaller } from './playerAuth';
 import { monitorEventLoopDelay } from 'perf_hooks';
@@ -38,6 +49,16 @@ const upload = multer({
 
 export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     const app = express();
+
+    // 1. Connect bot to ThreatDetector for real-time Telegram alerts
+    if (bot) {
+        threatDetector.setBot(bot);
+    }
+
+    // 2. Security Fortress Middlewares (Top of pipeline)
+    app.use(threatDetector.ipJailMiddleware);
+    app.use(honeypotMiddleware);
+
     app.use(cors());
     app.use(express.json());
     app.get('/api/health', async (_req, res) => {
@@ -235,13 +256,83 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     }
 
     // Admin Auth Endpoints
-    app.post('/api/admin/login', adminLoginLimiter, (req, res) => {
-        const { password } = req.body || {};
+    app.post('/api/admin/login', adminLoginLimiter, async (req, res) => {
+        const ip = threatDetector.extractClientIp(req);
+        const userAgent = (req.headers['user-agent'] || 'Unknown').slice(0, 100);
+        const { password, require2fa } = req.body || {};
+
         if (!password || !verifyMasterPassword(password)) {
+            threatDetector.recordThreat({
+                ip,
+                type: 'ADMIN_BRUTE_FORCE',
+                points: 35, // 3 failed attempts = 105 points -> Auto-jail!
+                details: `Failed admin login attempt (UA: ${userAgent})`,
+                path: '/api/admin/login'
+            });
             return res.status(401).json({ success: false, msg: 'Invalid admin password.' });
         }
-        const token = generateAdminToken();
+
+        // If 2FA is required (via body flag or ADMIN_REQUIRE_2FA=true)
+        const is2FaEnforced = require2fa === true || process.env.ADMIN_REQUIRE_2FA === 'true';
+        if (is2FaEnforced && bot && config.ADMIN_USER_ID) {
+            const pending = createPendingLogin(ip, userAgent);
+            const promptText =
+                `🔐 *Admin Login Approval Requested*\n\n` +
+                `📍 *IP:* \`${ip}\`\n` +
+                `🖥 *Device:* ${userAgent}\n` +
+                `⏰ *Time:* ${new Date().toLocaleTimeString()}\n\n` +
+                `Did you attempt to log in to the admin dashboard?`;
+
+            const kb = new InlineKeyboard()
+                .text('✅ Approve Login', `2fa_approve_${pending.id}`)
+                .text('❌ Reject', `2fa_reject_${pending.id}`);
+
+            try {
+                await bot.api.sendMessage(Number(config.ADMIN_USER_ID), promptText, {
+                    parse_mode: 'Markdown',
+                    reply_markup: kb
+                });
+            } catch (err: any) {
+                console.error('[Admin] Failed to send 2FA prompt to Telegram:', err?.message);
+            }
+
+            return res.json({
+                success: true,
+                pending2fa: true,
+                loginId: pending.id,
+                msg: '2FA approval requested. Please tap Approve on your Telegram.'
+            });
+        }
+
+        // Direct login with sliding session
+        const token = generateAdminToken(ip, userAgent);
+
+        // Notify admin via Telegram of successful login
+        if (bot && config.ADMIN_USER_ID) {
+            try {
+                bot.api.sendMessage(Number(config.ADMIN_USER_ID),
+                    `ℹ️ *Admin Dashboard Unlocked*\n` +
+                    `📍 *IP:* \`${ip}\`\n` +
+                    `⏰ *Time:* ${new Date().toLocaleTimeString()}`,
+                    { parse_mode: 'Markdown' }
+                ).catch(() => {});
+            } catch {}
+        }
+
         res.json({ success: true, token, msg: 'Login successful.' });
+    });
+
+    app.get('/api/admin/login-status/:id', (req, res) => {
+        const { id } = req.params;
+        const pending = getPendingLogin(id);
+        if (!pending) {
+            return res.status(404).json({ success: false, msg: 'Login request expired or not found.' });
+        }
+        res.json({
+            success: true,
+            status: pending.status,
+            token: pending.token || null
+        });
     });
 
     app.get('/api/admin/verify', (req, res) => {
@@ -262,6 +353,32 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         const token = bearerToken || (req.headers['x-admin-token'] as string);
         if (token) revokeAdminToken(token);
         res.json({ success: true, msg: 'Logged out successfully.' });
+    });
+
+    // Security Management API
+    app.get('/api/admin/security/stats', adminAuthMiddleware, (_req, res) => {
+        res.json({
+            success: true,
+            stats: threatDetector.getStats()
+        });
+    });
+
+    app.post('/api/admin/security/unban', adminAuthMiddleware, (req, res) => {
+        const { ip } = req.body || {};
+        if (!ip || typeof ip !== 'string') {
+            return res.status(400).json({ success: false, msg: 'Valid IP is required' });
+        }
+        const removed = threatDetector.unbanIp(ip);
+        res.json({ success: true, unbanned: removed, ip });
+    });
+
+    app.post('/api/admin/security/ban', adminAuthMiddleware, (req, res) => {
+        const { ip, reason = 'Manual admin ban', durationMinutes = 120 } = req.body || {};
+        if (!ip || typeof ip !== 'string') {
+            return res.status(400).json({ success: false, msg: 'Valid IP is required' });
+        }
+        threatDetector.jailIp(ip, reason, durationMinutes * 60 * 1000);
+        res.json({ success: true, banned: true, ip, durationMinutes });
     });
 
     // Admin stats (Protected)

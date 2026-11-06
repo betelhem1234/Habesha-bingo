@@ -55,8 +55,52 @@ function switchAdminTab(tabId) {
 window.switchAdminTab = switchAdminTab;
 
 // ----------------------------------------------------
-// 0. Authentication & Security (Option 1 & Option 2)
+// 0. Authentication, Sliding Session & Inactivity Management
 // ----------------------------------------------------
+
+// 15-minute inactivity timeout (sliding window: never logs out while active)
+const INACTIVITY_TIMEOUT_MS = 15 * 60 * 1000;
+let inactivityTimer = null;
+let twoFaPollInterval = null;
+
+function resetInactivityTimer() {
+    if (inactivityTimer) clearTimeout(inactivityTimer);
+    const token = localStorage.getItem('adminToken');
+    if (!token) return;
+
+    inactivityTimer = setTimeout(() => {
+        handleInactivityTimeout();
+    }, INACTIVITY_TIMEOUT_MS);
+}
+
+function handleInactivityTimeout() {
+    console.warn('[Admin Auth] Session locked due to 15m inactivity.');
+    const token = localStorage.getItem('adminToken');
+    if (token) {
+        fetch('/api/admin/logout', {
+            method: 'POST',
+            headers: { 'Authorization': `Bearer ${token}` }
+        }).catch(() => {});
+    }
+    localStorage.removeItem('adminToken');
+    showLoginOverlay('⏱️ Session locked due to 15 minutes of inactivity. Please enter password to unlock.');
+}
+
+function initInactivityListeners() {
+    const events = ['mousemove', 'mousedown', 'keydown', 'touchstart', 'scroll', 'click'];
+    let throttled = false;
+    events.forEach(evName => {
+        window.addEventListener(evName, () => {
+            if (!throttled) {
+                throttled = true;
+                resetInactivityTimer();
+                setTimeout(() => { throttled = false; }, 3000);
+            }
+        }, { passive: true });
+    });
+    resetInactivityTimer();
+}
+
 function getAdminToken() {
     const urlParams = new URLSearchParams(window.location.search);
     const urlToken = urlParams.get('token');
@@ -66,6 +110,7 @@ function getAdminToken() {
         // Strip sensitive token from browser address bar
         const cleanUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
         window.history.replaceState({ path: cleanUrl }, '', cleanUrl);
+        resetInactivityTimer();
         return clean;
     }
     return localStorage.getItem('adminToken');
@@ -74,6 +119,8 @@ function getAdminToken() {
 function initAuth() {
     const loginForm = document.getElementById('admin-login-form');
     const logoutBtn = document.getElementById('btn-logout');
+
+    initInactivityListeners();
 
     if (loginForm) {
         loginForm.addEventListener('submit', async (e) => {
@@ -99,18 +146,51 @@ function initAuth() {
                 });
                 const data = await res.json();
 
-                if (res.ok && data.success && data.token) {
-                    localStorage.setItem('adminToken', data.token);
-                    hideLoginOverlay();
-                    if (passInput) passInput.value = '';
-                    await refreshAllData();
+                if (res.ok && data.success) {
+                    if (data.pending2fa && data.loginId) {
+                        // 2FA Flow: Wait for Telegram approval
+                        if (submitBtn) submitBtn.textContent = '⏳ Waiting for Telegram tap...';
+                        showLoginOverlay('🔐 2FA approval sent to your Telegram (@BetysNewGamebot)! Tap Approve to unlock.');
+                        
+                        if (twoFaPollInterval) clearInterval(twoFaPollInterval);
+                        twoFaPollInterval = setInterval(async () => {
+                            try {
+                                const pollRes = await fetch(`/api/admin/login-status/${data.loginId}`);
+                                const pollData = await pollRes.json();
+                                if (pollData.success && pollData.status === 'APPROVED' && pollData.token) {
+                                    clearInterval(twoFaPollInterval);
+                                    localStorage.setItem('adminToken', pollData.token);
+                                    hideLoginOverlay();
+                                    resetInactivityTimer();
+                                    if (passInput) passInput.value = '';
+                                    await refreshAllData();
+                                } else if (pollData.status === 'REJECTED') {
+                                    clearInterval(twoFaPollInterval);
+                                    showLoginOverlay('❌ Login request was rejected in Telegram.');
+                                    if (submitBtn) {
+                                        submitBtn.disabled = false;
+                                        submitBtn.textContent = '🚀 Unlock Dashboard';
+                                    }
+                                }
+                            } catch (e) {}
+                        }, 1500);
+                        return;
+                    }
+
+                    if (data.token) {
+                        localStorage.setItem('adminToken', data.token);
+                        hideLoginOverlay();
+                        resetInactivityTimer();
+                        if (passInput) passInput.value = '';
+                        await refreshAllData();
+                    }
                 } else {
                     showLoginOverlay(data.msg || 'Incorrect admin password.');
                 }
             } catch (err) {
                 showLoginOverlay('Network error verifying password.');
             } finally {
-                if (submitBtn) {
+                if (submitBtn && (!data || !data.pending2fa)) {
                     submitBtn.disabled = false;
                     submitBtn.textContent = '🚀 Unlock Dashboard';
                 }
@@ -129,6 +209,7 @@ function initAuth() {
                     });
                 } catch (e) {}
             }
+            if (inactivityTimer) clearTimeout(inactivityTimer);
             localStorage.removeItem('adminToken');
             showLoginOverlay();
         });
@@ -169,9 +250,13 @@ async function authFetch(url, options = {}) {
     const res = await fetch(url, { ...options, headers });
     if (res.status === 401) {
         localStorage.removeItem('adminToken');
-        showLoginOverlay('Session expired or unauthorized. Please log in again.');
+        if (inactivityTimer) clearTimeout(inactivityTimer);
+        showLoginOverlay('Session expired or server was restarted. Please log in again.');
         throw new Error('Unauthorized');
     }
+
+    // Refresh sliding session activity on every successful authenticated API call
+    resetInactivityTimer();
     return res;
 }
 

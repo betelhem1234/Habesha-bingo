@@ -1,4 +1,5 @@
 import type { Request, Response, NextFunction } from 'express';
+import { threatDetector } from './security/threatDetector';
 
 interface RateLimitRecord {
     count: number;
@@ -13,11 +14,7 @@ export interface RateLimiterOptions {
 }
 
 export function getClientIp(req: Request): string {
-    const forwarded = req.headers['x-forwarded-for'];
-    if (typeof forwarded === 'string' && forwarded.trim()) {
-        return forwarded.split(',')[0].trim();
-    }
-    return req.ip || req.socket.remoteAddress || 'unknown';
+    return threatDetector.extractClientIp(req);
 }
 
 export function createRateLimiter(options: RateLimiterOptions) {
@@ -49,6 +46,19 @@ export function createRateLimiter(options: RateLimiterOptions) {
         if (existing.count > maxRequests) {
             const retryAfterSec = Math.ceil((existing.resetTime - now) / 1000);
             res.setHeader('Retry-After', retryAfterSec.toString());
+
+            // If an IP repeatedly triggers the rate limit, report to threat detector
+            if (existing.count === maxRequests + 1 || existing.count === maxRequests * 3) {
+                const ip = getClientIp(req);
+                threatDetector.recordThreat({
+                    ip,
+                    type: 'RATE_LIMIT_SPIKE',
+                    points: existing.count > maxRequests * 2 ? 40 : 20,
+                    details: `Rate limit exceeded (${existing.count}/${maxRequests} reqs) on ${req.originalUrl || req.path}`,
+                    path: req.originalUrl || req.path
+                });
+            }
+
             return res.status(429).json({
                 success: false,
                 error: message,

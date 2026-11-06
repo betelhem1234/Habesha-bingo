@@ -7,8 +7,9 @@ import { prisma, initDbSchema, getBalancedActiveAdminId } from './db';
 import { proofUrl } from './uploads';
 import { NEW_USER_BONUS, REFERRAL_BONUS, getNewUserBonus, getReferralBonus, setBonusSettings } from './bonus';
 import { GameRooms } from './game/GameRooms';
-import { generateAdminToken } from './auth';
+import { generateAdminToken, approvePendingLogin, rejectPendingLogin } from './auth';
 import { signPlayerToken } from './playerAuth';
+import { threatDetector } from './security/threatDetector';
 
 // Simple in-memory language preference
 const userLangs = new Map<string, string>();
@@ -1185,11 +1186,14 @@ bot.command('admin', async (ctx) => {
         .text('▶️ Start Game', 'menu_admin_start')
         .text('⏹ Stop Game', 'menu_admin_stop').row()
         .text(`🎙️ Voice: ${vText}`, 'menu_admin_voice')
-        .text(`🎁 Bonus: ${curWelcome}/${curRef} Birr`, 'menu_admin_bonus');
+        .text(`🎁 Bonus: ${curWelcome}/${curRef} Birr`, 'menu_admin_bonus').row()
+        .text('🛡️ Security & Threats', 'menu_admin_security');
 
     await ctx.reply(
         "🔒 *Ethio Bingo Admin Portal*\n\n" +
         "• Click the buttons below for secure **1-Click Web Access**.\n" +
+        "• `/security` — view active threats, honeypot hits, and jailed IPs\n" +
+        "• `/banip <ip>` / `/unbanip <ip>` — ban or unban an attacker IP\n" +
         "• `/requests` — view & approve/reject deposits/withdrawals\n" +
         "• `/banks` — manage payout accounts\n" +
         "• `/voice [male|female]` — switch caller voice for all players\n" +
@@ -1202,6 +1206,135 @@ bot.command('admin', async (ctx) => {
         `🎁 *Active Promotional Bonuses:* Welcome: *${curWelcome} Birr* | Referral: *${curRef} Birr*`,
         { parse_mode: "Markdown", reply_markup: kb }
     );
+});
+
+// --- Security Commands & Callback Handlers ---
+
+async function renderSecurityDashboard(ctx: any, isEdit = false) {
+    const stats = threatDetector.getStats();
+    let text =
+        `🛡️ *Fortress Security & Bot Monitor*\n\n` +
+        `🚫 *Active Jailed IPs:* *${stats.totalJailedIps}*\n` +
+        `⚡ *Detection Mode:* *Active Defense (Honeypot + Rate Limit + Brute-Force Guard)*\n\n`;
+
+    if (stats.jailedList.length === 0) {
+        text += `🟢 *All systems quiet.* No active bans in place.\n`;
+    } else {
+        text += `*Currently Blocked Attackers:*\n`;
+        for (const j of stats.jailedList) {
+            text += `• \`${j.ip}\` — ${j.reason} (${j.expiresInMinutes}m left)\n`;
+        }
+    }
+
+    if (stats.recentEvents.length > 0) {
+        text += `\n*Recent Probes & Threats (Last ${Math.min(5, stats.recentEvents.length)}):*\n`;
+        for (const ev of stats.recentEvents.slice(0, 5)) {
+            const timeStr = new Date(ev.timestamp).toLocaleTimeString();
+            text += `• \`[${timeStr}]\` *${ev.type}* from \`${ev.ip}\`\n  _${escapeHtmlBot(ev.details)}_\n`;
+        }
+    }
+
+    const kb = new InlineKeyboard();
+    if (stats.jailedList.length > 0) {
+        for (const j of stats.jailedList.slice(0, 5)) {
+            kb.text(`🔓 Unban ${j.ip}`, `sec_unban_${j.ip}`).row();
+        }
+    }
+    kb.text('🔄 Refresh Status', 'sec_stats')
+      .text('🔙 Admin Menu', 'menu_admin_status');
+
+    if (isEdit) {
+        await ctx.editMessageText(text, { parse_mode: 'Markdown', reply_markup: kb }).catch(() => {});
+    } else {
+        await ctx.reply(text, { parse_mode: 'Markdown', reply_markup: kb });
+    }
+}
+
+bot.command('security', async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.reply("⛔ This command is admin-only.");
+    }
+    await renderSecurityDashboard(ctx, false);
+});
+
+bot.command('banip', async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.reply("⛔ This command is admin-only.");
+    }
+    const ip = (ctx.match || '').toString().trim();
+    if (!ip) {
+        return ctx.reply("⚠️ Usage: `/banip <ip_address>`", { parse_mode: 'Markdown' });
+    }
+    threatDetector.jailIp(ip, 'Manual ban by admin via Telegram');
+    await ctx.reply(`🚫 *IP \`${ip}\` has been banned for 2 hours.* All incoming requests will be rejected with HTTP 403.`, { parse_mode: 'Markdown' });
+});
+
+bot.command('unbanip', async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.reply("⛔ This command is admin-only.");
+    }
+    const ip = (ctx.match || '').toString().trim();
+    if (!ip) {
+        return ctx.reply("⚠️ Usage: `/unbanip <ip_address>`", { parse_mode: 'Markdown' });
+    }
+    const removed = threatDetector.unbanIp(ip);
+    if (removed) {
+        await ctx.reply(`✅ *IP \`${ip}\` has been unbanned.*`, { parse_mode: 'Markdown' });
+    } else {
+        await ctx.reply(`ℹ️ IP \`${ip}\` was not found in the active jail list.`, { parse_mode: 'Markdown' });
+    }
+});
+
+bot.callbackQuery(['menu_admin_security', 'sec_stats'], async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.answerCallbackQuery({ text: '⛔ Admin only.', show_alert: true });
+    }
+    await ctx.answerCallbackQuery();
+    await renderSecurityDashboard(ctx, true);
+});
+
+bot.callbackQuery(/^sec_unban_(.+)$/, async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.answerCallbackQuery({ text: '⛔ Admin only.', show_alert: true });
+    }
+    const ip = ctx.match[1];
+    threatDetector.unbanIp(ip);
+    await ctx.answerCallbackQuery({ text: `✅ IP ${ip} unbanned!` });
+    await renderSecurityDashboard(ctx, true);
+});
+
+bot.callbackQuery(/^sec_ban_(.+)$/, async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.answerCallbackQuery({ text: '⛔ Admin only.', show_alert: true });
+    }
+    const ip = ctx.match[1];
+    threatDetector.jailIp(ip, 'Manual ban by admin via alert');
+    await ctx.answerCallbackQuery({ text: `🚫 IP ${ip} banned!` });
+    await renderSecurityDashboard(ctx, true);
+});
+
+bot.callbackQuery(/^2fa_approve_([a-f0-9]+)$/, async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.answerCallbackQuery({ text: '⛔ Admin only.', show_alert: true });
+    }
+    const loginId = ctx.match[1];
+    const token = approvePendingLogin(loginId);
+    if (token) {
+        await ctx.answerCallbackQuery({ text: '✅ Login Approved!' });
+        await ctx.editMessageText(`✅ *Admin Login Approved!*\n\nDashboard is now unlocked.`, { parse_mode: 'Markdown' }).catch(() => {});
+    } else {
+        await ctx.answerCallbackQuery({ text: '⚠️ Request already processed or expired.' });
+    }
+});
+
+bot.callbackQuery(/^2fa_reject_([a-f0-9]+)$/, async (ctx) => {
+    if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
+        return ctx.answerCallbackQuery({ text: '⛔ Admin only.', show_alert: true });
+    }
+    const loginId = ctx.match[1];
+    rejectPendingLogin(loginId);
+    await ctx.answerCallbackQuery({ text: '❌ Login Rejected!' });
+    await ctx.editMessageText(`❌ *Admin Login Rejected!*\n\nAccess was denied.`, { parse_mode: 'Markdown' }).catch(() => {});
 });
 
 bot.command(['voice', 'caller'], async (ctx) => {
