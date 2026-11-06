@@ -10,6 +10,7 @@ import { GameRooms } from './game/GameRooms';
 import { generateAdminToken, approvePendingLogin, rejectPendingLogin } from './auth';
 import { signPlayerToken } from './playerAuth';
 import { threatDetector } from './security/threatDetector';
+import { generateQrPngBuffer } from './qrGenerator';
 
 // Simple in-memory language preference
 const userLangs = new Map<string, string>();
@@ -142,6 +143,14 @@ function getBannerPhoto(): InputFile | string {
     return `${config.BINGO_APP_URL}/images/ethio_bingo_banner.jpg`;
 }
 
+function getPersistentBottomKeyboard(playUrl: string) {
+    return new Keyboard()
+        .webApp('🎮 Play Now (ይጫወቱ)', playUrl)
+        .text('🔗 Invite & QR (ግብዣ)')
+        .resized()
+        .persistent();
+}
+
 // --- Commands ---
 
 async function sendMainMenu(ctx: Context, user: { id: bigint; phone?: string | null }) {
@@ -156,7 +165,8 @@ async function sendMainMenu(ctx: Context, user: { id: bigint; phone?: string | n
         .text('💸 Withdraw', 'menu_withdraw').row()
         .text('💼 Balance', 'menu_balance')
         .text('📖 Instructions', 'menu_instructions').row()
-        .text('✍️ Feedback', 'menu_feedback');
+        .text('✍️ Feedback', 'menu_feedback')
+        .text('🔗 Invite & QR', 'menu_invite');
 
     const isSuperAdmin = userId.toString() === config.ADMIN_USER_ID;
     let affiliateAdmin: any = null;
@@ -902,28 +912,86 @@ bot.on('message:contact', async (ctx) => {
         data: { phone }
     });
 
+    const token = signPlayerToken(updatedUser.id);
+    const playUrl = `${config.BINGO_APP_URL}/index.html?userId=${updatedUser.id}&token=${token}&v=${Date.now()}`;
+
     await ctx.reply(`✅ *Registration Complete!*\n\n🎁 Your *${getNewUserBonus()} Birr Welcome Bonus* is active! Welcome to Ethio Bingo! Get ready to play and win.`, {
         parse_mode: 'Markdown',
-        reply_markup: { remove_keyboard: true }
+        reply_markup: getPersistentBottomKeyboard(playUrl)
     });
 
     await sendMainMenu(ctx, updatedUser);
 });
 
-bot.callbackQuery('menu_invite', async (ctx) => {
-    await ctx.answerCallbackQuery();
+async function sendInviteAndQr(ctx: Context) {
     if (!ctx.from) return;
+    const userId = ctx.from.id;
+
+    // Check if user is an affiliate admin with a custom code
+    let referralCode = userId.toString();
+    try {
+        const admin = await prisma.adminProfile.findUnique({
+            where: { userId: BigInt(userId) },
+            select: { code: true }
+        });
+        if (admin && admin.code) {
+            referralCode = admin.code;
+        }
+    } catch (e) {}
 
     const botInfo = await bot.api.getMe();
-    const link = `https://t.me/${botInfo.username}?start=${ctx.from.id}`;
+    const link = `https://t.me/${botInfo.username}?start=${referralCode}`;
+    const token = signPlayerToken(userId);
+    const playUrl = `${config.BINGO_APP_URL}/index.html?userId=${userId}&token=${token}&v=${Date.now()}`;
 
-    await ctx.reply(
-        `🔗 *Invite Friends & Earn!*\n\n` +
-        `Share this referral link with your friends. When they join using your link, they receive a *${getNewUserBonus()} Birr Welcome Bonus* and you earn a *${getReferralBonus()} Birr Bonus*! 🎁🎉\n\n` +
+    const shareText = `🎮 Join me on Ethio Bingo! Play multiplayer Bingo and win Birr! 💰\n${link}`;
+    const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(shareText)}`;
+
+    const qrKb = new InlineKeyboard()
+        .url('📤 ለጓደኛ አጋራ (Share on Telegram)', shareUrl).row()
+        .webApp('🎮 አሁኑኑ ይጫወቱ (Play Now)', playUrl);
+
+    const caption =
+        `🔗 *የእርስዎ የግብዣ ሊንክ እና QR ኮድ*\n` +
+        `*(Your Referral Link & QR Code)*\n\n` +
+        `ጓደኞችዎ በእርስዎ ሊንክ ወይም QR ኮድ ሲገቡ:\n` +
+        `🎁 እነሱ *${getNewUserBonus()} Birr Welcome Bonus* ያገኛሉ\n` +
+        `💰 እርስዎ *${getReferralBonus()} Birr Bonus* ያገኛሉ!\n\n` +
+        `👉 *ሊንክዎን ይቅዱ (Tap to copy):*\n` +
         `\`${link}\`\n\n` +
-        `👉 Share it now and grow your team!`,
-        { parse_mode: "Markdown" }
-    );
+        `ከታች ያለውን *Share* በመጫን በቀጥታ ለጓደኞችዎ ወይም ለግሩፖች ይላኩ!`;
+
+    const qrBuffer = await generateQrPngBuffer(link);
+    if (qrBuffer) {
+        try {
+            await ctx.replyWithPhoto(new InputFile(qrBuffer, 'invite-qr.png'), {
+                caption,
+                parse_mode: 'Markdown',
+                reply_markup: qrKb
+            });
+            return;
+        } catch (err) {
+            console.error('[BOT] Error sending QR photo, falling back to text:', err);
+        }
+    }
+
+    await ctx.reply(caption, {
+        parse_mode: 'Markdown',
+        reply_markup: qrKb
+    });
+}
+
+bot.callbackQuery('menu_invite', async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => {});
+    await sendInviteAndQr(ctx);
+});
+
+bot.command(['invite', 'qr', 'link', 'gibzha'], async (ctx) => {
+    await sendInviteAndQr(ctx);
+});
+
+bot.hears([/Invite/i, /ግብዣ/i, /QR/i, /የግብዣ/i], async (ctx) => {
+    await sendInviteAndQr(ctx);
 });
 
 bot.callbackQuery('menu_playbingo', async (ctx) => {
@@ -2307,8 +2375,20 @@ async function startPollingLoop() {
         try {
             console.log('[Bot] Starting Telegram polling...');
             await bot.start({
-                onStart: (botInfo) => {
+                onStart: async (botInfo) => {
                     console.log(`Bot @${botInfo.username} started successfully!`);
+                    try {
+                        await bot.api.setChatMenuButton({
+                            menu_button: {
+                                type: 'web_app',
+                                text: '🎮 Play',
+                                web_app: { url: `${config.BINGO_APP_URL}/index.html` }
+                            }
+                        });
+                        console.log('[Bot] Default chat menu button configured.');
+                    } catch (e: any) {
+                        console.warn('[Bot] Could not set chat menu button:', e?.message || e);
+                    }
                 }
             });
             console.warn('[Bot] Polling stopped. Reconnecting in 3 seconds...');

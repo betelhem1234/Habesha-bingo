@@ -5,6 +5,7 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
     <title>Profile - Ethio Bingo</title>
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
+    <script src="/qrcode.min.js"></script>
     <script src="/translations.js"></script>
     <style>
         * { margin: 0; padding: 0; box-sizing: border-box; -webkit-tap-highlight-color: transparent; }
@@ -280,9 +281,18 @@
         </div>
 
         <div class="referral-panel">
-            <div class="title" data-i18n="ref_link_title">🔗 YOUR REFERRAL LINK</div>
+            <div class="title" data-i18n="ref_link_title">🔗 YOUR REFERRAL LINK & QR CODE</div>
+            
+            <div class="qr-box" style="background:#fff; border:1.5px solid #d4b8ee; border-radius:16px; padding:12px; margin:12px auto; display:flex; flex-direction:column; align-items:center; width:fit-content; box-shadow:0 3px 10px rgba(106,13,173,0.1);">
+                <div id="qrcode" style="width:140px; height:140px; display:flex; align-items:center; justify-content:center; background:#fff; border-radius:8px;"></div>
+                <div style="font-size:0.75rem; color:#6a0dad; font-weight:800; margin-top:8px; letter-spacing:0.3px;">📱 Scan to join your team</div>
+            </div>
+
             <div class="ref-link" id="ref-link">Loading...</div>
-            <button class="copy-btn" onclick="copyLink()" data-i18n="copy_link">📋 Copy Link</button>
+            <div style="display:flex; gap:8px;">
+                <button class="copy-btn" onclick="copyLink()" style="flex:1;" data-i18n="copy_link">📋 Copy Link</button>
+                <button class="copy-btn" onclick="shareTelegram()" style="flex:1; background:linear-gradient(135deg, #0088cc, #00aaee);" data-i18n="share_tg">📤 Share</button>
+            </div>
         </div>
     </div>
 
@@ -354,10 +364,45 @@
                 document.getElementById('preferred').textContent = p.referredBy ? `User ${p.referredBy}` : '—';
 
                 const link = p.referralLink || `https://t.me/PlayMyBingoBot?start=${p.id}`;
-                document.getElementById('ref-link').textContent = link;
+                const linkEl = document.getElementById('ref-link');
+                if (linkEl.textContent !== link) {
+                    linkEl.textContent = link;
+                    renderQrCode(link);
+                }
             } catch (e) {
                 document.getElementById('pname').textContent = 'Player Profile';
                 console.error(e);
+            }
+        }
+
+        let renderedLink = null;
+        function renderQrCode(url) {
+            if (renderedLink === url) return;
+            renderedLink = url;
+            const container = document.getElementById('qrcode');
+            if (!container) return;
+            container.innerHTML = '';
+            if (typeof QRCode !== 'undefined') {
+                new QRCode(container, {
+                    text: url,
+                    width: 140,
+                    height: 140,
+                    colorDark: "#2d1436",
+                    colorLight: "#ffffff",
+                    correctLevel: QRCode.CorrectLevel.M
+                });
+            }
+        }
+
+        function shareTelegram() {
+            const link = document.getElementById('ref-link').textContent;
+            if (!link || link === 'Loading...') return;
+            const shareText = '🎮 Join me on Ethio Bingo! Get a welcome bonus and play multiplayer Bingo to win Birr! 💰';
+            const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(shareText)}`;
+            if (window.Telegram?.WebApp?.openTelegramLink) {
+                Telegram.WebApp.openTelegramLink(shareUrl);
+            } else {
+                window.open(shareUrl, '_blank');
             }
         }
 

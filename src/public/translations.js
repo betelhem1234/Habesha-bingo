@@ -68,8 +68,9 @@
             phone:        '📱 Phone',
             joined:       '📅 Joined',
             referred_by:  '🤝 Referred by',
-            ref_link_title:'🔗 YOUR REFERRAL LINK',
+            ref_link_title:'🔗 YOUR REFERRAL LINK & QR CODE',
             copy_link:    '📋 Copy Link',
+            share_tg:     '📤 Share',
             not_registered:'Not registered',
 
             // ── Wallet ──
@@ -162,8 +163,9 @@
             phone:        '📱 ስልክ',
             joined:       '📅 ተቀላቅሏል',
             referred_by:  '🤝 የተጋበዘው',
-            ref_link_title:'🔗 የሪፈራል ሊንክዎ',
+            ref_link_title:'🔗 የሪፈራል ሊንክ እና QR ኮድ',
             copy_link:    '📋 ሊንክ ቅዳ',
+            share_tg:     '📤 አጋራ',
             not_registered:'አልተመዘገበም',
 
             // ── Wallet ──
@@ -256,8 +258,9 @@
             phone:        '📱 Bilbila',
             joined:       '📅 Galee',
             referred_by:  '🤝 Kan Waame',
-            ref_link_title:'🔗 LINK REFERRAL KEETII',
+            ref_link_title:'🔗 LINK REFERRAL & QR KEETII',
             copy_link:    '📋 Link Kopi Godhi',
+            share_tg:     '📤 Qoodi',
             not_registered:'Hin galmoofne',
 
             // ── Wallet ──
