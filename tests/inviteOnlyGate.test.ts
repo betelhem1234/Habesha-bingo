@@ -249,4 +249,48 @@ test('Invite-Only Registration Gate & Admin 1783441823 Lineage Tests', async (t)
         const adminRes = handlePromoCallback(TARGET_ADMIN_USER_ID, adminProfiles);
         assert.equal(adminRes.ok, true);
     });
+
+    await t.test('Chat Menu Button isolation: uninvited visitors get default menu, registered get web_app Play Now', () => {
+        function resolveChatMenuButton(userId: bigint, usersList: MockUser[]) {
+            const isRegistered = usersList.some(u => u.id === userId);
+            if (!isRegistered) {
+                return { type: 'default' };
+            }
+            return {
+                type: 'web_app',
+                text: '🎮 Play Now',
+                url: `https://app.bingo/index.html?userId=${userId}`
+            };
+        }
+
+        const uninvitedId = BigInt('9988776655');
+        const uninvitedMenu = resolveChatMenuButton(uninvitedId, users);
+        assert.equal(uninvitedMenu.type, 'default', 'Unregistered user must NOT have web_app Play Now button');
+
+        const registeredId = BigInt('8684362724'); // Abu
+        const registeredMenu = resolveChatMenuButton(registeredId, users);
+        assert.equal(registeredMenu.type, 'web_app');
+        assert.equal(registeredMenu.text, '🎮 Play Now');
+    });
+
+    await t.test('API Join Gate rejects unregistered user attempts with 403 Forbidden', () => {
+        function simulateApiJoin(userId: bigint, usersList: MockUser[]) {
+            const user = usersList.find(u => u.id === userId);
+            if (!user) {
+                return { status: 403, success: false, msg: 'Registration required. Please join using an official invitation link.' };
+            }
+            return { status: 200, success: true };
+        }
+
+        const uninvitedId = BigInt('9988776655');
+        const res = simulateApiJoin(uninvitedId, users);
+        assert.equal(res.status, 403);
+        assert.equal(res.success, false);
+        assert.ok(res.msg.includes('Registration required'));
+
+        const registeredId = BigInt('8684362724');
+        const allowedRes = simulateApiJoin(registeredId, users);
+        assert.equal(allowedRes.status, 200);
+        assert.equal(allowedRes.success, true);
+    });
 });

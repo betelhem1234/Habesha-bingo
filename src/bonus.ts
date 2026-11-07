@@ -75,10 +75,10 @@ export function setBonusSettings(newUserBonus: number, referralBonus: number): {
 // New users get a welcome bonus which is consumed on their first paid game,
 // after which normal balance is used. Demo (fee <= 0) is always free.
 export async function deductFee(userId: bigint, fee: number): Promise<DeductResult> {
-    if (fee <= 0) return { success: true, bonusUsed: 0, withdrawableUsed: 0 };
-
     const user = await prisma.user.findUnique({ where: { id: userId } });
     if (!user) return { success: false, bonusUsed: 0, withdrawableUsed: 0 };
+
+    if (fee <= 0) return { success: true, bonusUsed: 0, withdrawableUsed: 0 };
 
     const bonus = user.bonus.toNumber();
     const balance = user.balance.toNumber();

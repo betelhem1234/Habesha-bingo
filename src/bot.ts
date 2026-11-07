@@ -313,6 +313,12 @@ bot.command('start', async (ctx: Context) => {
         // If NOT Super Admin, NOT an Admin account, and NO valid invite link was used:
         // RESTRICT REGISTRATION & REDIRECT TO OFFICIAL CHANNEL!
         if (!isSuperAdmin && !isAdminAccount && !hasValidInvite) {
+            // Defensively remove any WebApp Play Now menu button from uninvited visitor
+            await bot.api.setChatMenuButton({
+                chat_id: ctx.chat.id,
+                menu_button: { type: 'default' }
+            }).catch(() => {});
+
             const channelUrl = config.CHANNEL_URL || 'https://t.me/ethioBingoOne';
             const channelKb = new InlineKeyboard()
                 .url('📣 ወደ ቴሌግራም ቻናል (Join Official Channel)', channelUrl);
@@ -384,6 +390,17 @@ bot.command('start', async (ctx: Context) => {
     }
 
     // 2. If user is registered, ensure bottom persistent keyboard is docked and show Main Menu
+    const userToken = signPlayerToken(user.id);
+    const playNowUrl = `${config.BINGO_APP_URL}/index.html?userId=${user.id}&token=${userToken}`;
+    await bot.api.setChatMenuButton({
+        chat_id: ctx.chat.id,
+        menu_button: {
+            type: 'web_app',
+            text: '🎮 Play Now',
+            web_app: { url: playNowUrl }
+        }
+    }).catch(() => {});
+
     await ctx.reply('👋 *Welcome to Ethio Bingo!*', {
         parse_mode: 'Markdown',
         reply_markup: getPersistentBottomKeyboard()
@@ -960,6 +977,16 @@ bot.on('message:contact', async (ctx) => {
 
     const token = signPlayerToken(updatedUser.id);
     const playUrl = `${config.BINGO_APP_URL}/index.html?userId=${updatedUser.id}&token=${token}&v=${Date.now()}`;
+
+    // Enable Play Now chat menu button for the newly verified player
+    await bot.api.setChatMenuButton({
+        chat_id: ctx.chat.id,
+        menu_button: {
+            type: 'web_app',
+            text: '🎮 Play Now',
+            web_app: { url: playUrl }
+        }
+    }).catch(() => {});
 
     await ctx.reply(`✅ *Registration Complete!*\n\n🎁 Your *${getNewUserBonus()} Birr Welcome Bonus* is active! Welcome to Ethio Bingo! Get ready to play and win.`, {
         parse_mode: 'Markdown',
@@ -2546,12 +2573,10 @@ async function startPollingLoop() {
                     try {
                         await bot.api.setChatMenuButton({
                             menu_button: {
-                                type: 'web_app',
-                                text: '🎮 Play Now',
-                                web_app: { url: `${config.BINGO_APP_URL}/index.html` }
+                                type: 'default'
                             }
                         });
-                        console.log('[Bot] Default chat menu button configured as Play Now.');
+                        console.log('[Bot] Default chat menu button configured as standard commands menu (invite-only enforced).');
                     } catch (e: any) {
                         console.warn('[Bot] Could not set chat menu button:', e?.message || e);
                     }

@@ -815,6 +815,21 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             return res.status(400).json({ success: false, msg: 'boardNumber or boards is required.' });
         }
 
+        // Strict invite-only: player must exist in DB and cannot be banned
+        const registeredUser = await prisma.user.findUnique({
+            where: { id: BigInt(userId) },
+            select: { id: true, banned: true }
+        });
+        if (!registeredUser) {
+            return res.status(403).json({
+                success: false,
+                msg: 'Registration required. Please join using an official invitation link.'
+            });
+        }
+        if (registeredUser.banned) {
+            return res.status(403).json({ success: false, msg: 'Account is banned.' });
+        }
+
         const fee = parseInt(bet, 10) > 0 ? parseInt(bet, 10) : 10;
         const rNum = parseInt(room, 10) > 0 ? parseInt(room, 10) : 1;
         const gameManager = gameRooms.getRoom(fee, rNum);

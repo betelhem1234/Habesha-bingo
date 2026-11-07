@@ -859,15 +859,26 @@ function startSmoothTimer(){
 
 async function loadBalance(){
   try{
-    if(!userId || userId==='0') return;
+    if(!userId || userId==='0') {
+      window.location.href = `/index.html?userId=${userId || '0'}`;
+      return;
+    }
     const r=await fetch(`/api/profile/${userId}`, {
       headers: {
         'x-telegram-init-data': window.Telegram?.WebApp?.initData || '',
         'x-player-token': token || ''
       }
     });
+    if(r.status === 404 || r.status === 401 || r.status === 403){
+      window.location.href = `/index.html?userId=${userId}`;
+      return;
+    }
     if(!r.ok) return;
     const d=await r.json();
+    if(d.error){
+      window.location.href = `/index.html?userId=${userId}`;
+      return;
+    }
     const bal=d.balance!==undefined?Number(d.balance):(d.user&&d.user.balance!==undefined?Number(d.user.balance):0);
     const bon=d.bonus!==undefined?Number(d.bonus):(d.user&&d.user.bonus!==undefined?Number(d.user.bonus):0);
     const total=bal+bon;
