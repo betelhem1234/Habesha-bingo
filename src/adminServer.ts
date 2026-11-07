@@ -682,7 +682,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Lobby data with real stats (balance, bonus, tiers, winners, status)
-    app.get('/api/lobby/:userId', async (req, res) => {
+    app.get('/api/lobby/:userId', requirePlayerOwnership(req => req.params.userId), async (req, res) => {
         let balance = 0;
         let bonus = 0;
         let withdrawableBalance = 0;
@@ -721,7 +721,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     });
 
     // Player game history (polled by history.html)
-    app.get('/api/history/:userId', async (req, res) => {
+    app.get('/api/history/:userId', requirePlayerOwnership(req => req.params.userId), async (req, res) => {
         try {
             const history = await prisma.gameHistory.findMany({
                 where: { userId: BigInt(req.params.userId) },
@@ -894,84 +894,87 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     : (err as any).message || 'Invalid proof file.';
                 return res.status(400).json({ success: false, msg });
             }
-            try {
-                const { userId, amount, accountId } = req.body;
-                if (!userId || !amount || isNaN(Number(amount)) || Number(amount) <= 0) {
-                    return res.status(400).json({ success: false, msg: 'A valid amount is required.' });
-                }
-                const numeric = Number(amount);
-                if (numeric < 10) {
-                    return res.status(400).json({ success: false, msg: 'Minimum deposit is 10 Birr.' });
-                }
-                const proofFile = req.file;
-                if (!proofFile) {
-                    return res.status(400).json({ success: false, msg: 'Please attach a screenshot or receipt of your deposit as proof.' });
-                }
-                // Resolve the admin payout account the user chose (bank selection)
-                let account: { id: number; bankName: string; accountNumber: string; isActive: boolean } | null = null;
-                if (accountId) {
-                    account = await prisma.paymentAccount.findUnique({
-                        where: { id: parseInt(String(accountId), 10) }
-                    });
-                    if (!account || !account.isActive) {
-                        return res.status(400).json({ success: false, msg: 'The selected account is no longer available. Please pick a valid bank.' });
+            const ownershipCheck = requirePlayerOwnership(r => r.body?.userId);
+            ownershipCheck(req, res, async () => {
+                try {
+                    const { userId, amount, accountId } = req.body;
+                    if (!userId || !amount || isNaN(Number(amount)) || Number(amount) <= 0) {
+                        return res.status(400).json({ success: false, msg: 'A valid amount is required.' });
                     }
-                }
-                const existing = await prisma.transactionRequest.findFirst({
-                    where: { userId: BigInt(userId), type: 'deposit', status: 'PENDING' }
-                });
-                if (existing) {
-                    return res.status(400).json({ success: false, msg: `You already have a pending deposit request #${existing.id}. Please wait for the admin to approve or reject it before submitting a new deposit.` });
-                }
-                // Resolve assigned admin for deposit
-                let assignedAdminId: number | null = null;
-                if (account?.adminId) {
-                    const adm = await prisma.adminProfile.findUnique({ where: { id: account.adminId } });
-                    if (adm?.isActive) {
-                        assignedAdminId = adm.id;
+                    const numeric = Number(amount);
+                    if (numeric < 10) {
+                        return res.status(400).json({ success: false, msg: 'Minimum deposit is 10 Birr.' });
                     }
-                }
-                if (!assignedAdminId) {
-                    const reqUser = await prisma.user.findUnique({
-                        where: { id: BigInt(userId) },
-                        select: { assignedAdminId: true }
+                    const proofFile = req.file;
+                    if (!proofFile) {
+                        return res.status(400).json({ success: false, msg: 'Please attach a screenshot or receipt of your deposit as proof.' });
+                    }
+                    // Resolve the admin payout account the user chose (bank selection)
+                    let account: { id: number; bankName: string; accountNumber: string; isActive: boolean } | null = null;
+                    if (accountId) {
+                        account = await prisma.paymentAccount.findUnique({
+                            where: { id: parseInt(String(accountId), 10) }
+                        });
+                        if (!account || !account.isActive) {
+                            return res.status(400).json({ success: false, msg: 'The selected account is no longer available. Please pick a valid bank.' });
+                        }
+                    }
+                    const existing = await prisma.transactionRequest.findFirst({
+                        where: { userId: BigInt(userId), type: 'deposit', status: 'PENDING' }
                     });
-                    if (reqUser?.assignedAdminId) {
-                        const adm = await prisma.adminProfile.findUnique({ where: { id: reqUser.assignedAdminId } });
+                    if (existing) {
+                        return res.status(400).json({ success: false, msg: `You already have a pending deposit request #${existing.id}. Please wait for the admin to approve or reject it before submitting a new deposit.` });
+                    }
+                    // Resolve assigned admin for deposit
+                    let assignedAdminId: number | null = null;
+                    if (account?.adminId) {
+                        const adm = await prisma.adminProfile.findUnique({ where: { id: account.adminId } });
                         if (adm?.isActive) {
                             assignedAdminId = adm.id;
                         }
                     }
-                }
-                if (!assignedAdminId) {
-                    assignedAdminId = await getBalancedActiveAdminId();
-                    if (assignedAdminId) {
-                        await prisma.user.update({
+                    if (!assignedAdminId) {
+                        const reqUser = await prisma.user.findUnique({
                             where: { id: BigInt(userId) },
-                            data: { assignedAdminId }
-                        }).catch(() => {});
+                            select: { assignedAdminId: true }
+                        });
+                        if (reqUser?.assignedAdminId) {
+                            const adm = await prisma.adminProfile.findUnique({ where: { id: reqUser.assignedAdminId } });
+                            if (adm?.isActive) {
+                                assignedAdminId = adm.id;
+                            }
+                        }
                     }
-                }
+                    if (!assignedAdminId) {
+                        assignedAdminId = await getBalancedActiveAdminId();
+                        if (assignedAdminId) {
+                            await prisma.user.update({
+                                where: { id: BigInt(userId) },
+                                data: { assignedAdminId }
+                            }).catch(() => {});
+                        }
+                    }
 
-                const request = await prisma.transactionRequest.create({
-                    data: {
-                        userId: BigInt(userId),
-                        type: 'deposit',
-                        amount: numeric,
-                        proof: proofFile.filename,
-                        status: 'PENDING',
-                        accountId: account?.id ?? null,
-                        bankName: account ? account.bankName : null,
-                        assignedAdminId
-                    }
-                });
-                const accountText = account ? `${account.bankName} (${account.accountNumber})` : undefined;
-                notifyAdminNewRequest(request.id, 'deposit', numeric, BigInt(userId), proofFile.filename, accountText, account?.id);
-                res.json({ success: true, msg: `Deposit request of ${numeric} Birr submitted with proof. Please wait for admin approval.`, requestId: request.id });
-            } catch (e) {
-                console.error('Create deposit request error:', e);
-                res.status(500).json({ success: false, msg: 'Failed to create request.' });
-            }
+                    const request = await prisma.transactionRequest.create({
+                        data: {
+                            userId: BigInt(userId),
+                            type: 'deposit',
+                            amount: numeric,
+                            proof: proofFile.filename,
+                            status: 'PENDING',
+                            accountId: account?.id ?? null,
+                            bankName: account ? account.bankName : null,
+                            assignedAdminId
+                        }
+                    });
+                    const accountText = account ? `${account.bankName} (${account.accountNumber})` : undefined;
+                    notifyAdminNewRequest(request.id, 'deposit', numeric, BigInt(userId), proofFile.filename, accountText, account?.id);
+                    res.json({ success: true, msg: `Deposit request of ${numeric} Birr submitted with proof. Please wait for admin approval.`, requestId: request.id });
+                } catch (e) {
+                    console.error('Create deposit request error:', e);
+                    res.status(500).json({ success: false, msg: 'Failed to create request.' });
+                }
+            });
         });
     });
 

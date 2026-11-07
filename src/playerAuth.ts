@@ -192,12 +192,12 @@ export function requirePlayerOwnership(
             return next();
         }
 
-        // Strict mode is opt-in via STRICT_PLAYER_AUTH=true
-        const isStrict = options.strict ?? (process.env.STRICT_PLAYER_AUTH === 'true');
+        // Strict mode defaults to ON unless explicitly disabled via STRICT_PLAYER_AUTH=false
+        const isStrict = options.strict ?? (process.env.STRICT_PLAYER_AUTH !== 'false');
 
         if (isStrict) {
-            // Allow mock requests in test mode if headers not supplied
-            if (process.env.NODE_ENV === 'test' && !req.headers['x-telegram-init-data'] && !req.headers['x-player-token']) {
+            // In unit tests where strict wasn't explicitly requested, allow bypass for legacy unit test mocks
+            if (options.strict === undefined && process.env.NODE_ENV === 'test' && !req.headers['x-telegram-init-data'] && !req.headers['x-player-token'] && !req.query.token && !req.query.initData) {
                 return next();
             }
             return res.status(401).json({

@@ -81,4 +81,70 @@ test('Player Auth & Cryptographic Signature Tests', async (t) => {
         assert.equal(jsonSent?.success, false);
         assert.match(jsonSent?.error, /cannot access or perform actions on another player/i);
     });
+
+    await t.test('requirePlayerOwnership in strict mode rejects unauthenticated request without token/initData with 401', () => {
+        const victimId = BigInt('22222222');
+        const mockReq = {
+            headers: {},
+            query: {},
+            body: { userId: victimId.toString() }
+        } as unknown as Request;
+
+        let statusSent = 0;
+        let jsonSent: any = null;
+        let nextCalled = false;
+
+        const mockRes = {
+            status: (code: number) => {
+                statusSent = code;
+                return {
+                    json: (data: any) => { jsonSent = data; }
+                };
+            }
+        } as unknown as Response;
+
+        const middleware = requirePlayerOwnership((req) => (req as any).body?.userId, { strict: true });
+        middleware(mockReq, mockRes, () => { nextCalled = true; });
+
+        assert.equal(nextCalled, false);
+        assert.equal(statusSent, 401);
+        assert.equal(jsonSent?.success, false);
+        assert.match(jsonSent?.error, /Telegram verification signature or valid player token required/i);
+    });
+
+    await t.test('requirePlayerOwnership in strict mode permits legitimate user with valid player token', () => {
+        const userId = BigInt('33333333');
+        const token = signPlayerToken(userId);
+        const mockReq = {
+            headers: { 'x-player-token': token },
+            query: {},
+            body: { userId: userId.toString() }
+        } as unknown as Request;
+
+        let nextCalled = false;
+        const mockRes = {} as unknown as Response;
+
+        const middleware = requirePlayerOwnership((req) => (req as any).body?.userId, { strict: true });
+        middleware(mockReq, mockRes, () => { nextCalled = true; });
+
+        assert.equal(nextCalled, true);
+    });
+
+    await t.test('requirePlayerOwnership in strict mode permits query token (sendBeacon unload)', () => {
+        const userId = BigInt('44444444');
+        const token = signPlayerToken(userId);
+        const mockReq = {
+            headers: {},
+            query: { token },
+            body: { userId: userId.toString() }
+        } as unknown as Request;
+
+        let nextCalled = false;
+        const mockRes = {} as unknown as Response;
+
+        const middleware = requirePlayerOwnership((req) => (req as any).body?.userId, { strict: true });
+        middleware(mockReq, mockRes, () => { nextCalled = true; });
+
+        assert.equal(nextCalled, true);
+    });
 });

@@ -5,6 +5,7 @@
 <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
 <title>Ethio Bingo — Choose Boards</title>
 <script src="https://telegram.org/js/telegram-web-app.js"></script>
+<script src="/auth-client.js"></script>
 <style>
 * {
   margin: 0;
@@ -789,7 +790,8 @@ window.addEventListener('pagehide', () => {
   if (selectedBoards.length > 0 && !redirected && userId && userId !== '0') {
     const payload = JSON.stringify({ userId, bet, room });
     if (navigator.sendBeacon) {
-      navigator.sendBeacon('/api/leave', new Blob([payload], { type: 'application/json' }));
+      const leaveUrl = window.getAuthUrl ? window.getAuthUrl('/api/leave') : '/api/leave';
+      navigator.sendBeacon(leaveUrl, new Blob([payload], { type: 'application/json' }));
     }
   }
 });
