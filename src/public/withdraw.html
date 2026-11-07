@@ -186,22 +186,21 @@
         async function loadBanks() {
             const wrap = document.getElementById('bank-wrap');
             try {
-                const url = userId ? `${API_BASE}/banks?userId=${encodeURIComponent(userId)}` : `${API_BASE}/banks`;
-                const res = await fetch(url);
+                const res = await fetch(`${API_BASE}/withdrawal-banks`);
                 accounts = await res.json();
             } catch (e) { accounts = []; }
             if (!accounts.length) {
-                wrap.innerHTML = '<div class="field-lbl" style="opacity:0.6; color: var(--red);">No payout methods available right now.</div>';
+                wrap.innerHTML = '<div class="field-lbl" style="opacity:0.6; color: var(--red);">No payout methods available right now. Please check back soon.</div>';
                 return;
             }
             wrap.innerHTML = '<div class="bank-grid">' + accounts.map(a => {
-                const isFast = a.bankName.toLowerCase().includes('telebirr');
+                const isFast = a.isFast || (a.name && a.name.toLowerCase().includes('telebirr'));
                 const badge = isFast ? '<div class="b-badge">FAST</div>' : '';
                 return `
                 <div class="b-card" data-id="${a.id}" onclick="pickAccount(${a.id})">
                     ${badge}
-                    <div class="b-top"><span>${a.bankName}</span></div>
-                    <div class="b-bot">${a.bankName}</div>
+                    <div class="b-top"><span>${a.name}</span></div>
+                    <div class="b-bot">${a.name}</div>
                 </div>`;
             }).join('') + '</div>';
         }
@@ -216,9 +215,15 @@
             }
             form.style.display = 'block';
             
-            const isTelebirr = selectedAccount.bankName.toLowerCase().includes('telebirr');
-            document.getElementById('lbl-account').textContent = isTelebirr ? '3️⃣ TELEBIRR NUMBER' : '3️⃣ ACCOUNT NUMBER';
-            document.getElementById('phone').placeholder = isTelebirr ? '09XXXXXXXX' : '1000123456789';
+            const bankNameLower = (selectedAccount.name || '').toLowerCase();
+            const isTelebirr = bankNameLower.includes('telebirr') || bankNameLower.includes('cbebirr');
+            const isCbe = bankNameLower.includes('cbe') || bankNameLower.includes('commercial');
+            document.getElementById('lbl-account').textContent = isTelebirr 
+                ? '3️⃣ TELEBIRR / WALLET NUMBER' 
+                : (isCbe ? '3️⃣ CBE ACCOUNT NUMBER' : '3️⃣ ACCOUNT NUMBER');
+            document.getElementById('phone').placeholder = isTelebirr 
+                ? '09XXXXXXXX' 
+                : (isCbe ? '1000XXXXXXXXX' : 'e.g. 1000123456789 or Account Number');
         }
 
         async function load() {
@@ -245,7 +250,7 @@
                     card.style.display = 'block';
                     list.innerHTML = pending.map(r => `
                         <div class="p-row">
-                            <span>${r.amount} Birr <small style="opacity:0.5;">• ${r.phone || ''}</small></span>
+                            <span>${r.amount} Birr <small style="opacity:0.6;">• ${r.bankName ? r.bankName + ' • ' : ''}${r.phone || ''}</small></span>
                             <span class="status-${r.status.toLowerCase()}">${r.status}</span>
                         </div>`).join('');
                 } else {
@@ -289,6 +294,7 @@
                         userId, 
                         amount, 
                         phone,
+                        bankName: selectedAccount.name,
                         accountId: selectedAccount.id,
                         accountName
                     })

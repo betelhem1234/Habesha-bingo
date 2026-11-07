@@ -117,7 +117,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 `🔔 New **${icon}** request **#${id}**\n\n` +
                 `👤 ${u?.firstName || 'Player'} (@\`${u?.username || id}\`)\n` +
                 `💰 Amount: *${amount} Birr*\n` +
-                (accountText ? `🏦 Paid to: *${accountText}*\n` : '') +
+                (accountText ? `🏦 ${type === 'withdraw' ? 'Send to' : 'Paid to'}: *${accountText}*\n` : '') +
                 `\nTap below to approve or reject:`;
 
             const replyMarkup = new InlineKeyboard()
@@ -977,7 +977,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
 
     // Create a withdraw request (agent will approve manually)
     app.post('/api/request/withdraw', financialLimiter, requirePlayerOwnership(req => req.body?.userId), async (req, res) => {
-        const { userId, amount, phone, accountId, accountName } = req.body;
+        const { userId, amount, phone, accountId, accountName, bankName } = req.body;
         if (!userId || !amount || isNaN(Number(amount)) || Number(amount) <= 0) {
             return res.status(400).json({ success: false, msg: 'A valid amount is required.' });
         }
@@ -990,10 +990,21 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             return res.status(400).json({ success: false, msg: 'A valid account/phone number is required.' });
         }
         
-        let targetBankName: string | null = null;
+        let targetBankName: string | null = bankName ? String(bankName).trim() : null;
+        let validAccountId: number | null = null;
         if (accountId) {
-            const acc = await prisma.paymentAccount.findUnique({ where: { id: parseInt(String(accountId), 10) } });
-            if (acc) targetBankName = acc.bankName;
+            const parsedId = parseInt(String(accountId), 10);
+            if (!isNaN(parsedId)) {
+                // Check if accountId corresponds to a PaymentAccount
+                const acc = await prisma.paymentAccount.findUnique({ where: { id: parsedId } }).catch(() => null);
+                if (acc) {
+                    validAccountId = acc.id;
+                    if (!targetBankName) targetBankName = acc.bankName;
+                } else if (!targetBankName) {
+                    const wb = await prisma.withdrawalBank.findUnique({ where: { id: parsedId } }).catch(() => null);
+                    if (wb) targetBankName = wb.name;
+                }
+            }
         }
         
         const finalPhone = accountName ? `${acctStr} (${String(accountName).trim()})` : acctStr;
@@ -1031,12 +1042,12 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                     amount: numeric,
                     phone: finalPhone,
                     status: 'PENDING',
-                    accountId: accountId ? parseInt(String(accountId), 10) : null,
+                    accountId: validAccountId,
                     bankName: targetBankName,
                     assignedAdminId
                 }
             });
-            notifyAdminNewRequest(request.id, 'withdraw', numeric, BigInt(userId), null, targetBankName ? `${targetBankName} - ${finalPhone}` : finalPhone, accountId ? parseInt(String(accountId), 10) : null);
+            notifyAdminNewRequest(request.id, 'withdraw', numeric, BigInt(userId), null, targetBankName ? `${targetBankName} - ${finalPhone}` : finalPhone, validAccountId);
             res.json({ success: true, msg: `Withdrawal request of ${numeric} Birr submitted. Admin will review and send the money to ${acctStr}.`, requestId: request.id });
         } catch (e) {
             console.error('Create withdraw request error:', e);
@@ -1222,6 +1233,98 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             res.json({ success: true, msg: `Account #${id} ${account.isActive ? 'deactivated' : 'activated'}.` });
         } catch (e) {
             res.status(500).json({ success: false, msg: 'Failed to update account.' });
+        }
+    });
+
+    // -------------------- WITHDRAWAL PAYOUT BANKS (independent from deposit accounts) --------------------
+
+    // Public: active withdrawal payout methods for players on withdraw.html
+    app.get('/api/withdrawal-banks', async (_req, res) => {
+        try {
+            const banks = await prisma.withdrawalBank.findMany({
+                where: { isActive: true },
+                orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }]
+            });
+            res.json(banks.map(b => ({
+                id: b.id,
+                name: b.name,
+                isFast: b.isFast
+            })));
+        } catch (e) {
+            console.error('Fetch withdrawal banks error:', e);
+            res.json([]);
+        }
+    });
+
+    // Admin: list all withdrawal payout banks
+    app.get('/api/admin/withdrawal-banks', adminAuthMiddleware, async (_req, res) => {
+        try {
+            const banks = await prisma.withdrawalBank.findMany({
+                orderBy: [{ sortOrder: 'asc' }, { id: 'asc' }]
+            });
+            res.json(banks);
+        } catch (e) {
+            console.error('Fetch admin withdrawal banks error:', e);
+            res.status(500).json({ error: 'Failed to load withdrawal banks' });
+        }
+    });
+
+    // Admin: add a new withdrawal payout bank (no admin account number or holder name required!)
+    app.post('/api/admin/withdrawal-banks', adminAuthMiddleware, async (req, res) => {
+        try {
+            const name = (req.body?.name || '').trim();
+            const isFast = Boolean(req.body?.isFast);
+            if (!name) {
+                return res.status(400).json({ success: false, msg: 'Bank name is required.' });
+            }
+            const existing = await prisma.withdrawalBank.findUnique({ where: { name } });
+            if (existing) {
+                return res.status(400).json({ success: false, msg: `"${name}" is already in the withdrawal banks list.` });
+            }
+            const count = await prisma.withdrawalBank.count();
+            const bank = await prisma.withdrawalBank.create({
+                data: {
+                    name,
+                    isFast,
+                    isActive: true,
+                    sortOrder: count + 1
+                }
+            });
+            res.json({ success: true, bank, msg: `Withdrawal bank "${name}" added successfully!` });
+        } catch (e) {
+            console.error('Create withdrawal bank error:', e);
+            res.status(500).json({ success: false, msg: 'Failed to add withdrawal bank.' });
+        }
+    });
+
+    // Admin: toggle active status of a withdrawal payout bank
+    app.post('/api/admin/withdrawal-banks/:id/toggle', adminAuthMiddleware, async (req, res) => {
+        try {
+            const id = parseInt(req.params.id, 10);
+            if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid bank ID' });
+            const bank = await prisma.withdrawalBank.findUnique({ where: { id } });
+            if (!bank) return res.status(404).json({ success: false, msg: 'Withdrawal bank not found' });
+            const updated = await prisma.withdrawalBank.update({
+                where: { id },
+                data: { isActive: !bank.isActive }
+            });
+            res.json({ success: true, bank: updated, msg: `Bank is now ${updated.isActive ? 'Active' : 'Disabled'} for withdrawals.` });
+        } catch (e) {
+            console.error('Toggle withdrawal bank error:', e);
+            res.status(500).json({ success: false, msg: 'Failed to update withdrawal bank.' });
+        }
+    });
+
+    // Admin: delete a withdrawal payout bank
+    app.delete('/api/admin/withdrawal-banks/:id', adminAuthMiddleware, async (req, res) => {
+        try {
+            const id = parseInt(req.params.id, 10);
+            if (isNaN(id)) return res.status(400).json({ success: false, msg: 'Invalid bank ID' });
+            await prisma.withdrawalBank.delete({ where: { id } });
+            res.json({ success: true, msg: 'Withdrawal bank deleted.' });
+        } catch (e) {
+            console.error('Delete withdrawal bank error:', e);
+            res.status(500).json({ success: false, msg: 'Failed to delete withdrawal bank.' });
         }
     });
 

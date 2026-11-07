@@ -89,6 +89,17 @@ model PaymentAccount {
   @@index([isActive])
 }
 
+model WithdrawalBank {
+  id        Int      @id @default(autoincrement())
+  name      String   @unique
+  isFast    Boolean  @default(false)
+  isActive  Boolean  @default(true)
+  sortOrder Int      @default(0)
+  createdAt DateTime @default(now())
+
+  @@index([isActive])
+}
+
 model AdminProfile {
   id              Int              @id @default(autoincrement())
   userId          BigInt           @unique

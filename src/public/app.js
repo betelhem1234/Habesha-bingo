@@ -48,6 +48,7 @@ function switchAdminTab(tabId) {
         fetchAdmins();
         fetchAdminBanks();
         fetchDutyWithdrawalAdmin();
+        fetchWithdrawalBanks();
     } else if (tabId === 'tab-admin-audit') {
         fetchAdminAuditStats();
     } else if (tabId === 'tab-controls') {
@@ -279,6 +280,7 @@ async function refreshAllData() {
         fetchBotSettings(),
         fetchAdmins(),
         fetchAdminBanks(),
+        fetchWithdrawalBanks(),
         fetchAdminAuditStats(),
         loadSecurityStats()
     ]);
@@ -2725,6 +2727,130 @@ async function toggleBankActive(bankId) {
         alert('Network error while toggling bank state.');
     }
 }
+
+// -------------------- WITHDRAWAL PAYOUT BANKS MANAGEMENT --------------------
+let allWithdrawalBanks = [];
+
+async function fetchWithdrawalBanks() {
+    try {
+        const res = await authFetch('/api/admin/withdrawal-banks');
+        if (!res.ok) throw new Error('Withdrawal banks fetch failed');
+        allWithdrawalBanks = await res.json();
+        if (!Array.isArray(allWithdrawalBanks)) allWithdrawalBanks = [];
+
+        const tbody = document.querySelector('#withdrawal-banks-table tbody');
+        if (!tbody) return;
+
+        if (allWithdrawalBanks.length === 0) {
+            tbody.innerHTML = `<tr><td colspan="5" style="text-align:center; color:#94a3b8; padding:20px;">No withdrawal banks configured yet. Click <strong>➕ Add Payout Bank</strong> above to add banks (Telebirr, CBE, Awash, etc.) for players to withdraw to.</td></tr>`;
+            return;
+        }
+
+        tbody.innerHTML = allWithdrawalBanks.map(b => {
+            const badgeHtml = b.isFast
+                ? `<span class="badge" style="background:rgba(234,179,8,0.2); color:#facc15; border:1px solid rgba(234,179,8,0.4); font-size:11px; padding:2px 8px; border-radius:6px; font-weight:700;">⚡ FAST</span>`
+                : `<span style="color:#94a3b8; font-size:12px;">Standard Bank</span>`;
+
+            const statusHtml = b.isActive
+                ? `<span class="badge-active" style="background:rgba(34,197,94,0.2); color:#4ade80; border:1px solid rgba(34,197,94,0.4); padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700;">Active</span>`
+                : `<span class="badge-banned" style="background:rgba(148,163,184,0.2); color:#94a3b8; border:1px solid rgba(148,163,184,0.4); padding:2px 8px; border-radius:6px; font-size:11px; font-weight:700;">Disabled</span>`;
+
+            return `
+                <tr>
+                    <td style="color:#94a3b8; font-family:monospace; font-size:13px;">#${b.id}</td>
+                    <td><strong style="color:#f8fafc; font-size:14px;">${escapeHtml(b.name)}</strong></td>
+                    <td>${badgeHtml}</td>
+                    <td>${statusHtml}</td>
+                    <td>
+                        <div style="display:flex; gap:6px;">
+                            <button onclick="toggleWithdrawalBank(${b.id})" class="action-btn-sm" style="background:${b.isActive ? '#eab308' : '#22c55e'}; color:#fff; font-weight:700;">${b.isActive ? 'Deactivate' : 'Activate'}</button>
+                            <button onclick="deleteWithdrawalBank(${b.id}, '${escapeHtml(b.name).replace(/'/g, "\\'")}')" class="action-btn-sm" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4);" title="Delete Bank">🗑</button>
+                        </div>
+                    </td>
+                </tr>
+            `;
+        }).join('');
+    } catch (err) {
+        console.error('Error fetching withdrawal banks:', err);
+    }
+}
+
+function openAddWithdrawalBankModal() {
+    const modal = document.getElementById('withdrawal-bank-modal');
+    if (!modal) return;
+    document.getElementById('wdr-bank-name').value = '';
+    document.getElementById('wdr-is-fast').checked = false;
+    modal.style.display = 'flex';
+}
+
+function closeWithdrawalBankModal() {
+    const modal = document.getElementById('withdrawal-bank-modal');
+    if (modal) modal.style.display = 'none';
+}
+
+async function saveWithdrawalBank(event) {
+    event.preventDefault();
+    const name = document.getElementById('wdr-bank-name').value.trim();
+    const isFast = document.getElementById('wdr-is-fast').checked;
+
+    if (!name) {
+        alert('Please enter or select a bank name.');
+        return;
+    }
+
+    try {
+        const res = await authFetch('/api/admin/withdrawal-banks', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ name, isFast })
+        });
+        const data = await res.json();
+        if (data.success) {
+            closeWithdrawalBankModal();
+            await fetchWithdrawalBanks();
+        } else {
+            alert(data.msg || 'Failed to add withdrawal bank.');
+        }
+    } catch (err) {
+        alert('Network error while adding withdrawal bank.');
+    }
+}
+
+async function toggleWithdrawalBank(id) {
+    try {
+        const res = await authFetch(`/api/admin/withdrawal-banks/${id}/toggle`, { method: 'POST' });
+        const data = await res.json();
+        if (data.success) {
+            await fetchWithdrawalBanks();
+        } else {
+            alert(data.msg || 'Failed to toggle bank.');
+        }
+    } catch (err) {
+        alert('Network error while toggling bank.');
+    }
+}
+
+async function deleteWithdrawalBank(id, name) {
+    if (!confirm(`Are you sure you want to remove "${name}" from the withdrawal payout banks?`)) return;
+    try {
+        const res = await authFetch(`/api/admin/withdrawal-banks/${id}`, { method: 'DELETE' });
+        const data = await res.json();
+        if (data.success) {
+            await fetchWithdrawalBanks();
+        } else {
+            alert(data.msg || 'Failed to delete bank.');
+        }
+    } catch (err) {
+        alert('Network error while deleting bank.');
+    }
+}
+
+window.fetchWithdrawalBanks = fetchWithdrawalBanks;
+window.openAddWithdrawalBankModal = openAddWithdrawalBankModal;
+window.closeWithdrawalBankModal = closeWithdrawalBankModal;
+window.saveWithdrawalBank = saveWithdrawalBank;
+window.toggleWithdrawalBank = toggleWithdrawalBank;
+window.deleteWithdrawalBank = deleteWithdrawalBank;
 
 // Global exports for inline HTML event attributes
 window.openEditUserModal = openEditUserModal;

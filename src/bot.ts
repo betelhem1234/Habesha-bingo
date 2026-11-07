@@ -1633,7 +1633,7 @@ function renderRow(r: any) {
     const time = formatEthioTime(r.createdAt);
     const phone = r.phone ? ` · 📱 ${r.phone}` : '';
     const proof = r.proof && isDep ? `<a href="${proofUrl(r.proof)}"> · 📎 Screenshot</a>` : '';
-    const account = isDep && r.bankName ? ` · 🏦 ${r.bankName}` : '';
+    const account = r.bankName ? ` · 🏦 ${r.bankName}` : '';
     const text =
         `${icon} <b>#${r.id}</b> ${isDep ? 'Deposit' : 'Withdraw'} · <b>${r.amount.toNumber()} Birr</b>\n` +
         `👤 ${user?.firstName || 'Player'} (${uname}) · 🕒 ${time}${phone}${proof}${account}`;

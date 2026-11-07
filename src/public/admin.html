@@ -306,8 +306,8 @@
                     <!-- Configured Bank Accounts Overview -->
                     <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; margin-top: 10px;">
                         <div>
-                            <h3 style="color: #38bdf8; font-size: 1.15rem; margin: 0;">🏦 Configured Bank Accounts (Telebirr, CBE, Awash, etc.)</h3>
-                            <p style="font-size: 12px; color: #94a3b8; margin-top: 2px;">Bank accounts available for player deposits. Assigned accounts will only appear for that administrator's players.</p>
+                            <h3 style="color: #38bdf8; font-size: 1.15rem; margin: 0;">📥 Deposit Receiving Accounts (Referral / Affiliate Admin Accounts)</h3>
+                            <p style="font-size: 12px; color: #94a3b8; margin-top: 2px;">Bank accounts available for player deposits. Players will only see their assigned affiliate administrator's accounts with account number & holder name.</p>
                         </div>
                     </div>
                     <div class="table-container">
@@ -327,6 +327,39 @@
                                 <!-- Populated dynamically by JS -->
                             </tbody>
                         </table>
+                    </div>
+
+                    <!-- Dedicated Withdrawal Payout Banks Section -->
+                    <div style="background: rgba(15, 23, 42, 0.6); border: 1px solid rgba(168, 85, 247, 0.35); border-radius: 16px; padding: 20px; margin-top: 24px;">
+                        <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 12px; flex-wrap: wrap; gap: 10px;">
+                            <div>
+                                <h3 style="color: #c084fc; font-size: 1.15rem; margin: 0; display: flex; align-items: center; gap: 8px;">
+                                    📤 Withdrawal Payout Banks (Selected Banks for Payouts)
+                                </h3>
+                                <p style="font-size: 12px; color: #94a3b8; margin-top: 2px;">
+                                    Selected banks available for players on the withdrawal page. No admin account number is needed here—players enter their own account number when submitting withdrawals.
+                                </p>
+                            </div>
+                            <button type="button" onclick="openAddWithdrawalBankModal()" class="action-btn-sm" style="background: #9333ea; color: #fff; padding: 8px 16px; border-radius: 8px; font-weight: 700; font-size: 13px; display: flex; align-items: center; gap: 6px; box-shadow: 0 4px 12px rgba(147, 51, 234, 0.3);">
+                                ➕ Add Payout Bank
+                            </button>
+                        </div>
+                        <div class="table-container">
+                            <table id="withdrawal-banks-table">
+                                <thead>
+                                    <tr>
+                                        <th>#</th>
+                                        <th>Bank / Wallet Name</th>
+                                        <th>Badge</th>
+                                        <th>Status</th>
+                                        <th>Actions</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    <!-- Populated dynamically by JS -->
+                                </tbody>
+                            </table>
+                        </div>
                     </div>
                 </div>
             </section>
@@ -869,6 +902,57 @@
                 <div style="display:flex; justify-content:flex-end; gap:10px;">
                     <button type="button" onclick="closeBankModal()" class="btn-primary" style="margin:0; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">Cancel</button>
                     <button type="submit" class="btn-primary" style="margin:0; background:#0ea5e9; font-weight:700;">💾 Save Account</button>
+                </div>
+            </form>
+        </div>
+    </div>
+
+    <!-- Add Withdrawal Payout Bank Modal -->
+    <div id="withdrawal-bank-modal" style="display:none; position:fixed; inset:0; background:rgba(0,0,0,0.78); backdrop-filter:blur(8px); -webkit-backdrop-filter:blur(8px); z-index:9999; align-items:center; justify-content:center;">
+        <div style="background:#1e293b; border:1px solid rgba(168,85,247,0.4); border-radius:18px; padding:24px; width:90%; max-width:440px; box-shadow:0 25px 50px rgba(0,0,0,0.7);">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:16px;">
+                <h3 style="font-size:1.2rem; color:#f8fafc; font-weight:700; margin:0;">📤 Add Withdrawal Payout Bank</h3>
+                <button type="button" onclick="closeWithdrawalBankModal()" style="background:none; border:none; color:#94a3b8; font-size:24px; cursor:pointer; line-height:1;">&times;</button>
+            </div>
+            <p style="font-size:12px; color:#cbd5e1; margin-bottom:14px; line-height:1.4;">
+                Select or type the bank name you want to allow players to withdraw to. No account number is needed because players enter their own account details on withdrawal.
+            </p>
+            <form id="withdrawal-bank-form" onsubmit="saveWithdrawalBank(event)">
+                <div style="margin-bottom:14px;">
+                    <label style="display:block; font-size:12px; color:#cbd5e1; margin-bottom:6px; font-weight:600;">BANK / WALLET NAME</label>
+                    <input type="text" id="wdr-bank-name" list="ethiopian-banks-list" required placeholder="e.g. Telebirr, Commercial Bank of Ethiopia (CBE), Awash Bank" style="width:100%; padding:10px 12px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.4); color:#fff; font-size:14px; box-sizing:border-box;">
+                    <datalist id="ethiopian-banks-list">
+                        <option value="Telebirr">
+                        <option value="Commercial Bank of Ethiopia (CBE)">
+                        <option value="Awash Bank">
+                        <option value="Bank of Abyssinia (BOA)">
+                        <option value="Dashen Bank">
+                        <option value="CBEBirr">
+                        <option value="Cooperative Bank of Oromia (Coop)">
+                        <option value="Hibret Bank">
+                        <option value="Nib International Bank">
+                        <option value="Zemen Bank">
+                        <option value="Wegagen Bank">
+                        <option value="Oromia Bank">
+                        <option value="Berhan Bank">
+                        <option value="Amhara Bank">
+                        <option value="Sinqe Bank">
+                        <option value="Global Bank Ethiopia">
+                        <option value="Tsedey Bank">
+                        <option value="Enat Bank">
+                        <option value="Abay Bank">
+                        <option value="Lion International Bank">
+                    </datalist>
+                </div>
+                <div style="margin-bottom:18px;">
+                    <label style="display:flex; align-items:center; gap:8px; color:#e2e8f0; font-size:13px; font-weight:600; cursor:pointer;">
+                        <input type="checkbox" id="wdr-is-fast" style="width:18px; height:18px; accent-color:#9333ea; cursor:pointer;">
+                        ⚡ Fast Mobile Wallet (Display "FAST" badge on card)
+                    </label>
+                </div>
+                <div style="display:flex; justify-content:flex-end; gap:10px;">
+                    <button type="button" onclick="closeWithdrawalBankModal()" class="btn-primary" style="margin:0; background:rgba(255,255,255,0.1); border:1px solid rgba(255,255,255,0.2);">Cancel</button>
+                    <button type="submit" class="btn-primary" style="margin:0; background:#9333ea; font-weight:700;">💾 Add Payout Bank</button>
                 </div>
             </form>
         </div>
