@@ -353,26 +353,7 @@ bot.command('start', async (ctx: Context) => {
             }
         });
 
-        // Reward the referrer with bonus when their invite joins
-        if (refId && refId !== user.id) {
-            try {
-                const referrer = await prisma.user.findUnique({ where: { id: refId } });
-                if (referrer) {
-                    const refBonus = getReferralBonus();
-                    await prisma.user.update({
-                        where: { id: refId },
-                        data: { bonus: { increment: refBonus } }
-                    });
-                    try {
-                        await bot.api.sendMessage(Number(refId),
-                            `🎉 *Referral Bonus Earned!*\n\n${ctx.from.first_name || 'Your friend'} joined through your invite link. You earned *${refBonus} Birr Bonus*! 🎁`,
-                            { parse_mode: "Markdown" });
-                    } catch (e) {}
-                }
-            } catch (e) {
-                console.error('Referral reward error:', e);
-            }
-        }
+        // Note: Referral bonus is securely awarded only AFTER the new user verifies their phone number in message:contact.
     } else if (!user.assignedAdminId && assignedAdminId) {
         // If an existing user was unassigned and clicks an admin invite or starts bot
         try {
@@ -947,10 +928,35 @@ bot.on('message:contact', async (ctx) => {
         });
     }
 
+    const currentUser = await prisma.user.findUnique({ where: { id: userId } });
+    const wasUnregistered = !currentUser?.phone;
+
     const updatedUser = await prisma.user.update({
         where: { id: userId },
         data: { phone }
     });
+
+    // Reward the referrer ONLY AFTER genuine phone verification (anti-farming protection!)
+    if (wasUnregistered && updatedUser.referredById && updatedUser.referredById !== updatedUser.id) {
+        try {
+            const refId = updatedUser.referredById;
+            const referrer = await prisma.user.findUnique({ where: { id: refId } });
+            if (referrer) {
+                const refBonus = getReferralBonus();
+                await prisma.user.update({
+                    where: { id: refId },
+                    data: { bonus: { increment: refBonus } }
+                });
+                try {
+                    await bot.api.sendMessage(Number(refId),
+                        `🎉 *Referral Bonus Earned!*\n\n${updatedUser.firstName || 'Your friend'} verified their phone number using your invite link. You earned *${refBonus} Birr Bonus*! 🎁`,
+                        { parse_mode: "Markdown" });
+                } catch (e) {}
+            }
+        } catch (e) {
+            console.error('Referral reward on phone verification error:', e);
+        }
+    }
 
     const token = signPlayerToken(updatedUser.id);
     const playUrl = `${config.BINGO_APP_URL}/index.html?userId=${updatedUser.id}&token=${token}&v=${Date.now()}`;

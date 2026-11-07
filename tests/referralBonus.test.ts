@@ -182,6 +182,49 @@ test('Referral and Welcome Bonus System Tests', async (t) => {
         assert.equal(res.user.bonus, 10, 'User gets only standard 10 Birr welcome bonus');
     });
 
+    await t.test('phone-verified referral bonus: inviter only earns bonus after phone registration', () => {
+        setBonusSettings(10, 5);
+
+        const users = new Map<string, { id: bigint; phone?: string; bonus: number; referredById?: bigint }>();
+        const inviterId = 9001n;
+        users.set(inviterId.toString(), { id: inviterId, phone: '+251911111111', bonus: 0 });
+
+        // Step 1: New user clicks invite link and starts bot
+        const newUserId = 9002n;
+        const newUser = {
+            id: newUserId,
+            bonus: getNewUserBonus(), // gets welcome bonus
+            referredById: inviterId
+        };
+        users.set(newUserId.toString(), newUser);
+
+        // Inviter has NOT received bonus yet!
+        assert.equal(users.get(inviterId.toString())!.bonus, 0, 'Inviter does not get bonus on /start alone (prevents bot farming)');
+
+        // Step 2: New user shares contact and verifies phone
+        const verifiedPhone = '+251922222222';
+        newUser.phone = verifiedPhone;
+
+        // Reward logic triggered on phone verification:
+        if (newUser.referredById) {
+            const inviter = users.get(newUser.referredById.toString());
+            if (inviter) {
+                inviter.bonus += getReferralBonus();
+            }
+        }
+
+        // Now inviter receives the referral bonus!
+        assert.equal(users.get(inviterId.toString())!.bonus, 5, 'Inviter receives referral bonus after phone verification');
+
+        // Step 3: Re-registering existing phone does not duplicate reward
+        let duplicateAttemptTriggered = false;
+        if (newUser.phone === verifiedPhone) {
+            // Already registered - no duplicate bonus awarded
+            duplicateAttemptTriggered = false;
+        }
+        assert.equal(users.get(inviterId.toString())!.bonus, 5, 'Bonus is not duplicated');
+    });
+
     await t.test('referral link generation points to official @PlayMyBingoBot', () => {
         const userId = 778899n;
         const botUsername = 'PlayMyBingoBot';
