@@ -9,7 +9,7 @@ import { NEW_USER_BONUS, REFERRAL_BONUS, getNewUserBonus, getReferralBonus, setB
 import { GameRooms } from './game/GameRooms';
 import { generateAdminToken, approvePendingLogin, rejectPendingLogin } from './auth';
 import { signPlayerToken } from './playerAuth';
-import { threatDetector } from './security/threatDetector';
+import { threatDetector, normalizeIp, isValidIp } from './security/threatDetector';
 import { generateQrPngBuffer } from './qrGenerator';
 
 // Simple in-memory language preference
@@ -1344,22 +1344,27 @@ bot.command('banip', async (ctx) => {
     if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
         return ctx.reply("⛔ This command is admin-only.");
     }
-    const ip = (ctx.match || '').toString().trim();
-    if (!ip) {
-        return ctx.reply("⚠️ Usage: `/banip <ip_address>`", { parse_mode: 'Markdown' });
+    const rawInput = (ctx.match || '').toString().trim();
+    if (!rawInput) {
+        return ctx.reply("⚠️ Usage: `/banip <ip_address>`\nExample: `/banip 196.190.156.57`", { parse_mode: 'Markdown' });
+    }
+    const ip = normalizeIp(rawInput);
+    if (!isValidIp(ip)) {
+        return ctx.reply(`⚠️ *Invalid IP address:* \`${rawInput}\`\nPlease provide a valid IPv4 or IPv6 address (e.g. \`/banip 196.190.156.57\`). Do not include brackets.`, { parse_mode: 'Markdown' });
     }
     threatDetector.jailIp(ip, 'Manual ban by admin via Telegram');
-    await ctx.reply(`🚫 *IP \`${ip}\` has been banned for 2 hours.* All incoming requests will be rejected with HTTP 403.`, { parse_mode: 'Markdown' });
+    await ctx.reply(`🚫 *IP \`${ip}\` has been banned for 2 hours.* All incoming requests and existing active sessions have been terminated.`, { parse_mode: 'Markdown' });
 });
 
 bot.command('unbanip', async (ctx) => {
     if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
         return ctx.reply("⛔ This command is admin-only.");
     }
-    const ip = (ctx.match || '').toString().trim();
-    if (!ip) {
-        return ctx.reply("⚠️ Usage: `/unbanip <ip_address>`", { parse_mode: 'Markdown' });
+    const rawInput = (ctx.match || '').toString().trim();
+    if (!rawInput) {
+        return ctx.reply("⚠️ Usage: `/unbanip <ip_address>`\nExample: `/unbanip 196.190.156.57`", { parse_mode: 'Markdown' });
     }
+    const ip = normalizeIp(rawInput);
     const removed = threatDetector.unbanIp(ip);
     if (removed) {
         await ctx.reply(`✅ *IP \`${ip}\` has been unbanned.*`, { parse_mode: 'Markdown' });
@@ -1380,7 +1385,7 @@ bot.callbackQuery(/^sec_unban_(.+)$/, async (ctx) => {
     if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
         return ctx.answerCallbackQuery({ text: '⛔ Admin only.', show_alert: true });
     }
-    const ip = ctx.match[1];
+    const ip = normalizeIp(ctx.match[1]);
     threatDetector.unbanIp(ip);
     await ctx.answerCallbackQuery({ text: `✅ IP ${ip} unbanned!` });
     await renderSecurityDashboard(ctx, true);
@@ -1390,7 +1395,7 @@ bot.callbackQuery(/^sec_ban_(.+)$/, async (ctx) => {
     if (!ctx.from || ctx.from.id.toString() !== config.ADMIN_USER_ID) {
         return ctx.answerCallbackQuery({ text: '⛔ Admin only.', show_alert: true });
     }
-    const ip = ctx.match[1];
+    const ip = normalizeIp(ctx.match[1]);
     threatDetector.jailIp(ip, 'Manual ban by admin via alert');
     await ctx.answerCallbackQuery({ text: `🚫 IP ${ip} banned!` });
     await renderSecurityDashboard(ctx, true);

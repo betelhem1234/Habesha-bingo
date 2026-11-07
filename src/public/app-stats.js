@@ -223,6 +223,19 @@ async function authFetch(url, options = {}) {
         showLoginOverlay('Session expired or server was restarted. Please log in again.');
         throw new Error('Unauthorized');
     }
+    if (res.status === 403) {
+        localStorage.removeItem('adminToken');
+        if (inactivityTimer) clearTimeout(inactivityTimer);
+        let errorMsg = '🚫 Access Denied: Your IP address has been temporarily banned by the administrator.';
+        try {
+            const data = await res.clone().json();
+            if (data.error || data.reason) {
+                errorMsg = `🚫 ${data.error || 'Access Denied'}: ${data.reason || 'IP restricted'}`;
+            }
+        } catch (e) {}
+        showLoginOverlay(errorMsg);
+        throw new Error('Forbidden');
+    }
 
     resetInactivityTimer();
     return res;

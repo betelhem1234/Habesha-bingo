@@ -1,5 +1,6 @@
 import crypto from 'crypto';
 import { config } from './config';
+import { normalizeIp } from './security/ipUtils';
 
 export interface AdminSession {
     token: string;
@@ -119,6 +120,39 @@ export function isValidAdminToken(token: string | null | undefined): boolean {
  */
 export function revokeAdminToken(token: string): boolean {
     return adminSessions.delete(token.trim());
+}
+
+/**
+ * Revoke all active admin sessions and pending logins tied to a given IP address.
+ * Used immediately when an IP address is banned.
+ */
+export function revokeSessionsForIp(rawIp: string): number {
+    const clean = normalizeIp(rawIp);
+    if (!clean) return 0;
+
+    let revokedCount = 0;
+
+    // Purge active admin sessions
+    for (const [token, session] of adminSessions.entries()) {
+        if (session.ip && normalizeIp(session.ip) === clean) {
+            adminSessions.delete(token);
+            revokedCount++;
+        }
+    }
+
+    // Purge pending 2FA login requests
+    for (const [id, pending] of pendingLogins.entries()) {
+        if (pending.ip && normalizeIp(pending.ip) === clean) {
+            pendingLogins.delete(id);
+            revokedCount++;
+        }
+    }
+
+    if (revokedCount > 0) {
+        console.warn(`[Security] 🔒 Revoked ${revokedCount} active session(s)/pending login(s) for banned IP: ${clean}`);
+    }
+
+    return revokedCount;
 }
 
 /**

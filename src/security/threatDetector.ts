@@ -1,6 +1,10 @@
 import type { Request, Response, NextFunction } from 'express';
 import { Bot, InlineKeyboard } from 'grammy';
 import { config, formatEthioTime } from '../config';
+import { normalizeIp, isValidIp } from './ipUtils';
+import { revokeSessionsForIp } from '../auth';
+
+export { normalizeIp, isValidIp };
 
 export type ThreatType =
     | 'HONEYPOT_HIT'
@@ -78,25 +82,28 @@ export class ThreatDetector {
     }
 
     /**
-     * Accurately extracts the real client IP, prioritizing Cloudflare & proxy headers.
+     * Accurately extracts the real client IP, prioritizing Cloudflare & proxy headers,
+     * and normalizes out brackets, ports, and ::ffff: prefixes.
      */
     public extractClientIp(req: Request): string {
+        let ip = '';
         const cfIp = req.headers['cf-connecting-ip'];
         if (typeof cfIp === 'string' && cfIp.trim()) {
-            return cfIp.trim();
+            ip = cfIp.trim();
+        } else {
+            const forwarded = req.headers['x-forwarded-for'];
+            if (typeof forwarded === 'string' && forwarded.trim()) {
+                ip = forwarded.split(',')[0].trim();
+            } else {
+                const realIp = req.headers['x-real-ip'];
+                if (typeof realIp === 'string' && realIp.trim()) {
+                    ip = realIp.trim();
+                } else {
+                    ip = req.ip || req.socket?.remoteAddress || '127.0.0.1';
+                }
+            }
         }
-
-        const forwarded = req.headers['x-forwarded-for'];
-        if (typeof forwarded === 'string' && forwarded.trim()) {
-            return forwarded.split(',')[0].trim();
-        }
-
-        const realIp = req.headers['x-real-ip'];
-        if (typeof realIp === 'string' && realIp.trim()) {
-            return realIp.trim();
-        }
-
-        return req.ip || req.socket?.remoteAddress || '127.0.0.1';
+        return normalizeIp(ip) || '127.0.0.1';
     }
 
     /**
@@ -104,7 +111,8 @@ export class ThreatDetector {
      */
     public isIpJailed(ip: string): boolean {
         if (!ip) return false;
-        const normalized = ip.trim();
+        const normalized = normalizeIp(ip);
+        if (!normalized) return false;
         const info = this.jailedIps.get(normalized);
         if (!info) return false;
 
@@ -118,9 +126,15 @@ export class ThreatDetector {
 
     /**
      * Manually or automatically jail an IP address.
+     * Automatically purges active admin sessions and pending logins for that IP.
      */
     public jailIp(ip: string, reason: string, durationMs = this.defaultJailDurationMs, details?: string) {
-        const normalized = ip.trim();
+        const normalized = normalizeIp(ip);
+        if (!normalized) return;
+
+        // Immediately revoke any active admin sessions or pending logins for this IP!
+        revokeSessionsForIp(normalized);
+
         const now = Date.now();
         const info: JailedIpInfo = {
             ip: normalized,
@@ -142,7 +156,8 @@ export class ThreatDetector {
      * Unban an IP address.
      */
     public unbanIp(ip: string): boolean {
-        const normalized = ip.trim();
+        const normalized = normalizeIp(ip);
+        if (!normalized) return false;
         const removed = this.jailedIps.delete(normalized);
         this.ipThreats.delete(normalized);
         if (removed) {
@@ -161,7 +176,8 @@ export class ThreatDetector {
         details: string;
         path?: string;
     }) {
-        const normalized = event.ip.trim();
+        const normalized = normalizeIp(event.ip);
+        if (!normalized) return;
         const now = Date.now();
 
         // 1. Audit log
