@@ -53,14 +53,25 @@ export async function initDbSchema() {
             )))
             WHERE "withdrawableBalance" = 0 AND "balance" > 0;
 
-            -- Backfill assignedAdminId for unassigned players when an active affiliate admin exists
+            -- Ensure user 1783441823 exists in User table
+            INSERT INTO "User" ("id", "firstName", "balance", "bonus", "updatedAt")
+            VALUES (1783441823, 'Admin Abrham', 0.0, 0.0, CURRENT_TIMESTAMP)
+            ON CONFLICT ("id") DO NOTHING;
+
+            -- Ensure AdminProfile for adm_1783441823 exists
+            INSERT INTO "AdminProfile" ("userId", "code", "customName", "isActive")
+            VALUES (1783441823, 'adm_1783441823', 'Admin Abrham', true)
+            ON CONFLICT ("userId") DO UPDATE SET "code" = 'adm_1783441823', "isActive" = true;
+
+            -- Backfill all unassigned / unreferred players to adm_1783441823 (excluding himself & Super Admin)
             UPDATE "User"
-            SET "assignedAdminId" = (SELECT id FROM "AdminProfile" WHERE "isActive" = true ORDER BY id ASC LIMIT 1)
-            WHERE "assignedAdminId" IS NULL
-              AND id NOT IN (SELECT "userId" FROM "AdminProfile")
-              AND EXISTS (SELECT 1 FROM "AdminProfile" WHERE "isActive" = true);
+            SET "referredById" = 1783441823,
+                "assignedAdminId" = (SELECT id FROM "AdminProfile" WHERE "userId" = 1783441823 LIMIT 1)
+            WHERE ("referredById" IS NULL OR "assignedAdminId" IS NULL)
+              AND "id" != 1783441823
+              AND "id" != 5630606223;
         `);
-        console.log('[DB] AdminProfile, lineage, and withdrawable balance schema verified successfully.');
+        console.log('[DB] AdminProfile, lineage (backfilled to adm_1783441823), and withdrawable balance schema verified successfully.');
     } catch (e: any) {
         console.warn('[DB] Schema init check (non-fatal):', e?.message || e);
     }

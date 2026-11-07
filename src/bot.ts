@@ -226,14 +226,18 @@ bot.command('resetme', async (ctx: Context) => {
 bot.command('start', async (ctx: Context) => {
     if (!ctx.from) return;
 
+    const callerId = BigInt(ctx.from.id);
     const rawMatch = String(ctx.match ?? '').trim();
     const cleanMatch = rawMatch.toLowerCase();
     const cleanNoPrefix = cleanMatch.replace(/^adm_/, '');
 
+    // Check if user already exists
+    let user = await prisma.user.findUnique({ where: { id: callerId } });
+
     let assignedAdminId: number | null = null;
     let refId: bigint | null = null;
 
-    // 1. Check if start parameter is an Admin Affiliate code (e.g. adm_abebe or adm_1)
+    // 1. Check if start parameter is an Admin Affiliate code (e.g. adm_1783441823 or adm_1)
     if (rawMatch) {
         try {
             const matchedAdmin = await prisma.adminProfile.findFirst({
@@ -248,6 +252,7 @@ bot.command('start', async (ctx: Context) => {
             });
             if (matchedAdmin) {
                 assignedAdminId = matchedAdmin.id;
+                refId = matchedAdmin.userId;
             } else {
                 // If code matched an inactive/departed admin, smoothly route to an active balanced admin
                 const inactiveAdmin = await prisma.adminProfile.findFirst({
@@ -265,48 +270,79 @@ bot.command('start', async (ctx: Context) => {
                 }
             }
         } catch (e) {}
-    }
 
-    // 2. Check if start parameter is a player referral (e.g. 12345 or ref_12345)
-    const refParam = rawMatch.replace(/^ref_?/, '');
-    if (/^\d+$/.test(refParam)) {
-        refId = BigInt(refParam);
-        if (!assignedAdminId) {
+        // 2. Check if start parameter is a player referral (e.g. 12345 or ref_12345)
+        const refParam = rawMatch.replace(/^ref_?/, '');
+        if (/^\d+$/.test(refParam)) {
+            const potentialRefId = BigInt(refParam);
             try {
-                // Check if the inviter is an affiliate administrator (e.g. admin shared start=USER_ID from profile)
-                const adminByUserId = await prisma.adminProfile.findUnique({
-                    where: { userId: refId }
+                const referrerExists = await prisma.user.findUnique({
+                    where: { id: potentialRefId },
+                    select: { id: true, assignedAdminId: true }
                 });
-                if (adminByUserId && adminByUserId.isActive) {
-                    assignedAdminId = adminByUserId.id;
-                } else {
-                    // Inherit the inviter's assigned administrator
-                    const inviter = await prisma.user.findUnique({
-                        where: { id: refId },
-                        select: { assignedAdminId: true }
-                    });
-                    if (inviter && inviter.assignedAdminId) {
-                        assignedAdminId = inviter.assignedAdminId;
+                if (referrerExists) {
+                    refId = potentialRefId;
+                    if (!assignedAdminId) {
+                        const adminByUserId = await prisma.adminProfile.findUnique({
+                            where: { userId: potentialRefId }
+                        });
+                        if (adminByUserId && adminByUserId.isActive) {
+                            assignedAdminId = adminByUserId.id;
+                        } else if (referrerExists.assignedAdminId) {
+                            assignedAdminId = referrerExists.assignedAdminId;
+                        }
                     }
                 }
             } catch (e) {}
         }
     }
 
-    // 3. Fallback: If player joined with no parameter (direct @PlayMyBingoBot) or inviter was unassigned,
-    // auto-assign fairly using round-robin so traffic is balanced across active admins!
-    if (!assignedAdminId) {
-        try {
-            assignedAdminId = await getBalancedActiveAdminId();
-        } catch (e) {}
-    }
-
-    // Check if user exists
-    let user = await prisma.user.findUnique({ where: { id: BigInt(ctx.from.id) } });
+    // 3. Invite-Only Gate for brand new users
     if (!user) {
+        const isSuperAdmin = ctx.from.id.toString() === config.ADMIN_USER_ID;
+        let isAdminAccount = false;
+        if (!isSuperAdmin) {
+            try {
+                const adminProf = await prisma.adminProfile.findUnique({ where: { userId: callerId } });
+                if (adminProf) isAdminAccount = true;
+            } catch (e) {}
+        }
+
+        const hasValidInvite = Boolean(refId || assignedAdminId);
+
+        // If NOT Super Admin, NOT an Admin account, and NO valid invite link was used:
+        // RESTRICT REGISTRATION & REDIRECT TO OFFICIAL CHANNEL!
+        if (!isSuperAdmin && !isAdminAccount && !hasValidInvite) {
+            const channelUrl = config.CHANNEL_URL || 'https://t.me/ethioBingoOne';
+            const channelKb = new InlineKeyboard()
+                .url('📣 ወደ ቴሌግራም ቻናል (Join Official Channel)', channelUrl);
+
+            const inviteOnlyNotice =
+                `🚫 *የግብዣ ሊንክ ያስፈልጋል (Invitation Required)* 🚫\n\n` +
+                `👋 ሰላም! ወደ **Ethio Bingo** ለመግባት በነባር ተጫዋች ወይም በአድሚን የተሰጠ **የግብዣ ሊንክ (Invitation Link)** ያስፈልግዎታል::\n\n` +
+                `📌 በቀጥታ ቦቱን በመፈለግ መመዝገብ አይቻልም:: የግብዣ ሊንክ ለማግኘት ወይም ስለ ጨዋታው መረጃ ለመከታተል የቴሌግራም ቻናላችንን ይቀላቀሉ! 👇\n\n` +
+                `──────────────\n` +
+                `👋 Welcome to **Ethio Bingo**!\n` +
+                `To play, you must join using an **Invitation Link** from an existing player or admin.\n\n` +
+                `📌 Direct registration without an invitation link is not permitted. Please join our official Telegram channel to get an invite link! 👇`;
+
+            await ctx.reply(inviteOnlyNotice, {
+                parse_mode: 'Markdown',
+                reply_markup: channelKb
+            });
+            return;
+        }
+
+        // Fallback assigned admin if needed
+        if (!assignedAdminId) {
+            try {
+                assignedAdminId = await getBalancedActiveAdminId();
+            } catch (e) {}
+        }
+
         user = await prisma.user.create({
             data: {
-                id: BigInt(ctx.from.id),
+                id: callerId,
                 username: ctx.from.username ?? null,
                 firstName: ctx.from.first_name,
                 lastName: ctx.from.last_name ?? null,
@@ -953,6 +989,8 @@ async function sendInviteAndQr(ctx: Context) {
 
     const qrKb = new InlineKeyboard()
         .url('📤 ለጓደኛ አጋራ (Share on Telegram)', shareUrl).row()
+        .text('📋 Copy Post (አማርኛ) 🇪🇹', `promo_am_${referralCode}`)
+        .text('📋 Copy Post (English) 🇬🇧', `promo_en_${referralCode}`).row()
         .webApp('🎮 አሁኑኑ ይጫወቱ (Play Now)', playUrl);
 
     const caption =
@@ -963,7 +1001,7 @@ async function sendInviteAndQr(ctx: Context) {
         `💰 እርስዎ *${getReferralBonus()} Birr Bonus* ያገኛሉ!\n\n` +
         `👉 *ሊንክዎን ይቅዱ (Tap to copy):*\n` +
         `\`${link}\`\n\n` +
-        `ከታች ያለውን *Share* በመጫን በቀጥታ ለጓደኞችዎ ወይም ለግሩፖች ይላኩ!`;
+        `ከታች ያለውን *Share* በመጫን በቀጥታ ለጓደኞችዎ ይላኩ፣ ወይም የማስተዋወቂያ ፅሁፉን ኮፒ አድርገው ማህበራዊ ሚዲያ ላይ ይለጥፉ!`;
 
     const qrBuffer = await generateQrPngBuffer(link);
     if (qrBuffer) {
@@ -984,6 +1022,52 @@ async function sendInviteAndQr(ctx: Context) {
         reply_markup: qrKb
     });
 }
+
+bot.callbackQuery(/^promo_am_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const referralCode = ctx.match[1];
+    const botInfo = await bot.api.getMe();
+    const link = `https://t.me/${botInfo.username}?start=${referralCode}`;
+
+    const promoText =
+        `🔥 ተወዳጁ የኢትዮ ቢንጎ ጨዋታ! (Ethio Bingo) 🔥\n\n` +
+        `💰 አሁኑኑ ተመዝግበው የ 10 ብር የነፃ ቦነስ ያግኙ!\n` +
+        `🎮 በ 10 ብር እና በ 20 ብር ይጫወቱ፣ ትልቅ አሸናፊ ይሁኑ!\n` +
+        `⚡ ፈጣን የቴሌብር እና የባንክ ክፍያ!\n\n` +
+        `👉 ጨዋታውን ለመጀመር ይህንን ሊንክ ይጫኑ:\n` +
+        `${link}\n\n` +
+        `⚠️ ማሳሰቢያ: ጨዋታው በግብዣ ሊንክ ብቻ ነው የሚሰራው! አሁኑኑ ይቀላቀሉ! 🚀`;
+
+    await ctx.reply(
+        `📋 *የማስተዋወቂያ ፅሁፍ (ለማህበራዊ ሚዲያ)*\n` +
+        `_(ከታች ያለውን ሳጥን በመንካት ሙሉውን በቀላሉ ኮፒ ማድረግ ይችላሉ)_ 👇\n\n` +
+        `\`\`\`\n${promoText}\n\`\`\``,
+        { parse_mode: 'Markdown' }
+    );
+});
+
+bot.callbackQuery(/^promo_en_(.+)$/, async (ctx) => {
+    await ctx.answerCallbackQuery().catch(() => {});
+    const referralCode = ctx.match[1];
+    const botInfo = await bot.api.getMe();
+    const link = `https://t.me/${botInfo.username}?start=${referralCode}`;
+
+    const promoText =
+        `🔥 Welcome to Ethio Bingo — The #1 Telegram Bingo Game! 🔥\n\n` +
+        `💰 Join now and get a 10 Birr FREE Welcome Bonus!\n` +
+        `🎮 Play in 10 Birr & 20 Birr lobbies and win big jackpots!\n` +
+        `⚡ Instant withdrawals via Telebirr & Banks!\n\n` +
+        `👉 Tap here to join:\n` +
+        `${link}\n\n` +
+        `⚠️ Note: Invite-only game! You must use this link to enter! 🚀`;
+
+    await ctx.reply(
+        `📋 *Social Media Promotional Post*\n` +
+        `_(Tap the text block below to copy instantly)_ 👇\n\n` +
+        `\`\`\`\n${promoText}\n\`\`\``,
+        { parse_mode: 'Markdown' }
+    );
+});
 
 bot.callbackQuery('menu_invite', async (ctx) => {
     await ctx.answerCallbackQuery().catch(() => {});
