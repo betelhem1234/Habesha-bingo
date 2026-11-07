@@ -456,6 +456,14 @@ describe('Virtual Players (Bot System) Test Suite', () => {
         assert.ok(p2, 'Should resolve profile for 9000000002');
         assert.equal(p2?.firstName, ETHIOPIAN_BOT_PROFILES[1].firstName);
 
+        const negP1 = botService.getBotProfileById(-1n);
+        assert.ok(negP1, 'Should resolve profile for negative bot ID -1');
+        assert.equal(negP1?.firstName, ETHIOPIAN_BOT_PROFILES[0].firstName);
+
+        const negP2 = botService.getBotProfileById(-2n);
+        assert.ok(negP2, 'Should resolve profile for negative bot ID -2');
+        assert.equal(negP2?.firstName, ETHIOPIAN_BOT_PROFILES[1].firstName);
+
         const human = botService.getBotProfileById(12345678n);
         assert.equal(human, null, 'Human ID should return null');
     });
@@ -589,5 +597,70 @@ describe('Virtual Players (Bot System) Test Suite', () => {
         assert.ok(record, 'Match with organic player must log a record with bot winnerId');
         assert.equal(Number(record?.winnerPayout), 0);
         assert.equal(Number(record?.houseProfit), 10, 'House profit must be 100% of human fee (10 Birr) when bot wins');
+    });
+
+    test('Human player with Telegram ID >= 9,000,000,000 winning against bots is never misidentified as a bot', async () => {
+        const testStartTime = new Date();
+
+        // 8 bots + 1 human with 9-billion+ Telegram ID
+        await botService.injectBots(gameManager, 8, 10);
+        const humanUserId = 9123456789n;
+
+        // Upsert mock user in prisma.user
+        await prisma.user.upsert({
+            where: { id: humanUserId },
+            update: { firstName: 'RealWinnerNineBillion', balance: 100 },
+            create: { id: humanUserId, firstName: 'RealWinnerNineBillion', balance: 100 }
+        });
+
+        gameManager.players.push({
+            userId: humanUserId,
+            cards: [{
+                boardNumber: 500,
+                ticket: Array(5).fill(0).map(() => Array(5).fill(1)),
+                daubed: new Set([1, 2, 3, 4, 5])
+            }],
+            ticket: Array(5).fill(0).map(() => Array(5).fill(1)),
+            daubed: new Set([1, 2, 3, 4, 5]),
+            fee: 20, // 2 boards
+            lastSeen: Date.now(),
+            isBot: false,
+            firstName: 'RealWinnerNineBillion'
+        });
+
+        gameManager.state = 'PLAYING';
+        gameManager.drawnNumbers = new Set([1, 2, 3, 4, 5]);
+
+        const humanPlayer = gameManager.players.find(p => p.userId === humanUserId)!;
+
+        // Human wins!
+        await (gameManager as any).endGame([{
+            player: humanPlayer,
+            boardNumber: 500,
+            ticket: humanPlayer.cards![0].ticket,
+            daubed: new Set([1, 2, 3, 4, 5]),
+            winningCells: [],
+            winningNumber: 5
+        }]);
+
+        // Total pot: 8 bots x 10 + human x 20 = 100 Birr
+        // Winner payout (80%): 80 Birr
+        // Real money collected: 20 Birr
+        // House profit: 20 - 80 = -60 Birr
+        const record = await prisma.houseIncome.findFirst({
+            where: {
+                winnerId: humanUserId,
+                createdAt: { gte: testStartTime }
+            },
+            orderBy: { createdAt: 'desc' }
+        });
+
+        assert.ok(record, 'Must record HouseIncome for human winner');
+        assert.equal(record.winnerId, humanUserId);
+        assert.equal(Number(record.winnerPayout), 80);
+        assert.equal(Number(record.houseProfit), -60, 'House absorbs the negative profit as intended for bot-inflated pot');
+
+        // Clean up test user
+        await prisma.user.delete({ where: { id: humanUserId } }).catch(() => {});
     });
 });

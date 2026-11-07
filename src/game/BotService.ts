@@ -375,8 +375,16 @@ export class BotService {
     public getBotProfileById(id: bigint | string | number): BotProfile | null {
         try {
             const idBig = typeof id === 'bigint' ? id : BigInt(id);
-            if (idBig < 9000000000n) return null;
-            const index = Number(idBig - 9000000001n);
+            let index: number;
+            if (idBig < 0n) {
+                // Negative virtual IDs: -1, -2, -3...
+                index = Number((-idBig) - 1n);
+            } else if (idBig >= 9000000000n) {
+                // Legacy positive virtual IDs: 9000000001, 9000000002...
+                index = Number(idBig - 9000000001n);
+            } else {
+                return null;
+            }
             if (isNaN(index)) return null;
             const safeIdx = ((index % ETHIOPIAN_BOT_PROFILES.length) + ETHIOPIAN_BOT_PROFILES.length) % ETHIOPIAN_BOT_PROFILES.length;
             return ETHIOPIAN_BOT_PROFILES[safeIdx] || null;
@@ -430,8 +438,8 @@ export class BotService {
         const profile = ETHIOPIAN_BOT_PROFILES[this.nextBotIndex % ETHIOPIAN_BOT_PROFILES.length];
         this.nextBotIndex++;
 
-        // Virtual IDs are large numbers prefixed with 9000000000
-        const virtualId = BigInt(9000000000) + BigInt(this.nextBotIndex);
+        // Virtual IDs are negative numbers so they NEVER collide with Telegram user IDs
+        const virtualId = -BigInt(this.nextBotIndex || 1);
 
         const cards = boards.map(bn => ({
             boardNumber: bn,

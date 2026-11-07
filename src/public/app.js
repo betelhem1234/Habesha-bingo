@@ -521,7 +521,7 @@ async function fetchHouseIncome() {
                     : '—';
 
                 function formatUserBadge(name, username, id, isBot) {
-                    if (isBot || (id && String(id).startsWith('900000')) || id === 'bot') {
+                    if (isBot || id === 'bot' || (id && Number(id) < 0)) {
                         return `<span style="background:rgba(139,92,246,0.22); border:1px solid rgba(139,92,246,0.45); color:#c4b5fd; padding:3px 8px; border-radius:6px; font-size:12px; font-weight:700; display:inline-flex; align-items:center; gap:4px;">🤖 ${escapeHtml(name || 'Bot Player')} <span style="font-size:10px; opacity:0.85;">(Bot)</span></span>`;
                     }
                     if (username) {
@@ -564,7 +564,7 @@ async function fetchHouseIncome() {
 
                 const isAllBots = Boolean(
                     !isAllBlocked && (
-                        (!hasTwoWinners && (i.isBot || (i.winnerId && String(i.winnerId).startsWith('900000')) || i.winnerId === 'bot')) ||
+                        (!hasTwoWinners && (i.isBot || i.winnerId === 'bot' || (i.winnerId && Number(i.winnerId) < 0))) ||
                         (hasTwoWinners && i.isBot && i.isBot2)
                     )
                 );

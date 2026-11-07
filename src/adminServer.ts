@@ -2613,24 +2613,30 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 const totalJackpot = Math.floor(pot * 0.8);
                 const splitPayout = wCount > 0 ? Math.floor(totalJackpot / wCount) : 0;
 
-                let winner = i.winnerId ? winnerMap.get(i.winnerId.toString()) : null;
+                const isDbUser1 = i.winnerId ? winnerMap.has(i.winnerId.toString()) : false;
+                let winner = isDbUser1 ? winnerMap.get(i.winnerId!.toString()) : null;
                 let isBot = false;
-                if (i.winnerId && i.winnerId >= 9000000000n) {
-                    const prof = gameRooms.botService?.getBotProfileById(i.winnerId);
-                    winner = { id: i.winnerId.toString(), firstName: prof?.firstName || 'Bot Player', username: prof?.username || null };
-                    isBot = true;
-                } else if (!i.winnerId && wCount > 0) {
-                    // Legacy bot win where winnerId was recorded as null
-                    winner = { id: 'bot', firstName: 'Bot Player', username: null };
-                    isBot = true;
+                if (!isDbUser1) {
+                    if (i.winnerId && (i.winnerId < 0n || i.winnerId >= 9000000000n)) {
+                        const prof = gameRooms.botService?.getBotProfileById(i.winnerId);
+                        winner = { id: i.winnerId.toString(), firstName: prof?.firstName || 'Bot Player', username: prof?.username || null };
+                        isBot = true;
+                    } else if (!i.winnerId && wCount > 0) {
+                        // Legacy bot win where winnerId was recorded as null
+                        winner = { id: 'bot', firstName: 'Bot Player', username: null };
+                        isBot = true;
+                    }
                 }
 
-                let winner2 = w2Id ? winnerMap.get(w2Id.toString()) : null;
+                const isDbUser2 = w2Id ? winnerMap.has(w2Id.toString()) : false;
+                let winner2 = isDbUser2 ? winnerMap.get(w2Id.toString()) : null;
                 let isBot2 = false;
-                if (w2Id && w2Id >= 9000000000n) {
-                    const prof2 = gameRooms.botService?.getBotProfileById(w2Id);
-                    winner2 = { id: w2Id.toString(), firstName: prof2?.firstName || 'Bot Player', username: prof2?.username || null };
-                    isBot2 = true;
+                if (!isDbUser2) {
+                    if (w2Id && (w2Id < 0n || w2Id >= 9000000000n)) {
+                        const prof2 = gameRooms.botService?.getBotProfileById(w2Id);
+                        winner2 = { id: w2Id.toString(), firstName: prof2?.firstName || 'Bot Player', username: prof2?.username || null };
+                        isBot2 = true;
+                    }
                 }
 
                 return {
