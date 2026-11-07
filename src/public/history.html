@@ -67,26 +67,25 @@
         /* ─── Stats Row ─── */
         .stats-row {
             display: grid;
-            grid-template-columns: repeat(3, 1fr);
-            gap: 8px;
+            grid-template-columns: repeat(2, 1fr);
+            gap: 12px;
             margin-bottom: 14px;
         }
         .stat-card {
             background: #fff;
             border-radius: 16px;
-            padding: 12px 6px;
+            padding: 14px 10px;
             text-align: center;
             box-shadow: 0 2px 10px rgba(106,13,173,0.06);
         }
         .stat-card .val {
-            font-size: 1.25rem;
+            font-size: 1.35rem;
             font-weight: 900;
         }
         .stat-card.c-games .val { color: #6a0dad; }
         .stat-card.c-wins .val { color: #27ae60; }
-        .stat-card.c-net .val { color: #27ae60; }
         .stat-card .lbl {
-            font-size: 0.65rem;
+            font-size: 0.72rem;
             color: #777;
             font-weight: 800;
             margin-top: 3px;
@@ -232,10 +231,6 @@
                 <div class="val" id="stat-wins">0</div>
                 <div class="lbl" data-i18n="stat_wins">WINS</div>
             </div>
-            <div class="stat-card c-net">
-                <div class="val" id="stat-net">0.00</div>
-                <div class="lbl" data-i18n="stat_net">NET BIRR</div>
-            </div>
         </div>
 
         <div class="panel">
@@ -302,12 +297,8 @@
                 }
 
                 const wins = history.filter(h => h.result === 'WON').length;
-                const net = history.reduce((s, h) => s + ((h.payout || 0) - (h.bet || 0)), 0);
                 document.getElementById('stat-games').textContent = history.length;
                 document.getElementById('stat-wins').textContent = wins;
-                const netEl = document.getElementById('stat-net');
-                netEl.textContent = (net > 0 ? '+' : '') + net.toFixed(2);
-                netEl.style.color = net >= 0 ? '#27ae60' : '#e74c3c';
 
                 el.innerHTML = history.map(h => {
                     const cls = h.result === 'WON' ? 'won' : (h.result === 'LOST' ? 'lost' : 'nowin');

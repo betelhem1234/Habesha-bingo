@@ -2411,18 +2411,30 @@ bot.callbackQuery('deposit', async (ctx) => {
     await ctx.reply(`Open the deposit page to submit a request:\n${BINGO_APP_URL}/deposit.html?userId=${ctx.from.id}&token=${userToken}`);
 });
 
-bot.callbackQuery('withdraw', async (ctx) => {
+bot.callbackQuery(['menu_withdraw', 'withdraw'], async (ctx) => {
     if (!ctx.from) return;
+    await ctx.answerCallbackQuery().catch(() => {});
     const userId = BigInt(ctx.from.id);
 
     const user = await prisma.user.findUnique({ where: { id: userId } });
-    if (!user || user.balance.toNumber() < 10) {
-        return ctx.answerCallbackQuery({ text: "You need at least 10 Birr to withdraw.", show_alert: true });
-    }
-
-    await ctx.answerCallbackQuery();
+    const withdrawable = user?.withdrawableBalance ? user.withdrawableBalance.toNumber() : 0;
+    const balance = user?.balance ? user.balance.toNumber() : 0;
     const userToken = signPlayerToken(ctx.from.id);
-    await ctx.reply(`Open the withdrawal page to submit a request:\n${BINGO_APP_URL}/withdraw.html?userId=${ctx.from.id}&token=${userToken}`);
+    const withdrawUrl = `${config.BINGO_APP_URL}/withdraw.html?userId=${ctx.from.id}&token=${userToken}&v=${Date.now()}`;
+
+    const kb = new InlineKeyboard()
+        .webApp('💸 Open Withdrawal Page (ገንዘብ ማውጫ)', withdrawUrl);
+
+    await ctx.reply(
+        `💸 <b>Withdrawal Request (ገንዘብ ማውጣት)</b>\n\n` +
+        `👤 <b>Player:</b> ${escapeHtmlBot(user?.firstName || 'Player')}\n` +
+        `💰 <b>Total Balance:</b> <code>${balance} Birr</code>\n` +
+        `🏆 <b>Withdrawable Winnings:</b> <code>${withdrawable.toFixed(2)} Birr</code>\n\n` +
+        `• Minimum withdrawal is <b>10 Birr</b>\n` +
+        `• Payouts processed to Telebirr, CBE, Awash, etc.\n\n` +
+        `⬇️ Tap the button below to submit your payout request:`,
+        { parse_mode: 'HTML', reply_markup: kb }
+    );
 });
 
 bot.callbackQuery('referral_link', async (ctx) => {
