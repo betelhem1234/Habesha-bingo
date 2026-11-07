@@ -663,4 +663,69 @@ describe('Virtual Players (Bot System) Test Suite', () => {
         // Clean up test user
         await prisma.user.delete({ where: { id: humanUserId } }).catch(() => {});
     });
+
+    test('Independent Stake 1 and Stake 2 bot controls and target limits', async () => {
+        // Configure Stake 1: ON with target 15; Stake 2: OFF with target 0
+        botService.updateSettings({
+            enabled: true,
+            stake10Enabled: true,
+            stake10Target: 15,
+            stake20Enabled: false,
+            stake20Target: 0
+        });
+
+        assert.strictEqual(botService.isStakeEnabled(10), true);
+        assert.strictEqual(botService.getStakeTarget(10), 15);
+        assert.strictEqual(botService.isStakeEnabled(20), false);
+        assert.strictEqual(botService.getStakeTarget(20), 0);
+
+        // Test fee 20 manager (Stake 2)
+        const gm20 = new GameManager(mockBot, botService, 20, 1);
+        try {
+            // onLobbyOpened on disabled Stake 2 should inject 0 bots
+            await botService.onLobbyOpened(gm20, 20, 1);
+            assert.strictEqual(gm20.players.filter(p => p.isBot).length, 0, 'Disabled Stake 2 must have 0 bots on lobby opened');
+
+            // onRoomUpdated on disabled Stake 2 should inject 0 bots
+            botService.onRoomUpdated(gm20, 20, 1);
+            assert.strictEqual(gm20.players.filter(p => p.isBot).length, 0, 'Disabled Stake 2 must not schedule any bots');
+
+            // Even if bots were manually injected, clearing them cancels timeouts and prevents recovery
+            await botService.injectBots(gm20, 3, 20);
+            assert.strictEqual(gm20.players.filter(p => p.isBot).length, 3);
+            const cleared = botService.clearBots(gm20);
+            assert.strictEqual(cleared, 3);
+            assert.strictEqual(gm20.players.filter(p => p.isBot).length, 0);
+
+            // Re-triggering onLobbyOpened on Stake 2 still adds 0 bots
+            await botService.onLobbyOpened(gm20, 20, 1);
+            assert.strictEqual(gm20.players.filter(p => p.isBot).length, 0, 'Cleared Stake 2 must never recover bots while OFF');
+        } finally {
+            await gm20.forceReset();
+        }
+
+        // Test fee 10 manager (Stake 1)
+        const gm10 = new GameManager(mockBot, botService, 10, 1);
+        try {
+            await botService.onLobbyOpened(gm10, 10, 1);
+            const botsCount10 = gm10.players.filter(p => p.isBot).length;
+            assert.ok(botsCount10 >= 3, 'Stake 1 should seed baseline bots when enabled');
+            assert.ok(botsCount10 <= 15, 'Stake 1 should not exceed stake10Target');
+        } finally {
+            await gm10.forceReset();
+        }
+    });
+
+    test('Master switch disabled disables bots regardless of stake settings', () => {
+        botService.updateSettings({
+            enabled: false,
+            stake10Enabled: true,
+            stake10Target: 20,
+            stake20Enabled: true,
+            stake20Target: 20
+        });
+
+        assert.strictEqual(botService.isStakeEnabled(10), false);
+        assert.strictEqual(botService.isStakeEnabled(20), false);
+    });
 });

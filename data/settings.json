@@ -5,9 +5,13 @@
   "referralBonus": 5,
   "botSettings": {
     "enabled": true,
-    "targetPlayers": 40,
-    "botReactionMinMs": 50,
-    "botReactionMaxMs": 100,
+    "stake10Enabled": true,
+    "stake10Target": 20,
+    "stake20Enabled": false,
+    "stake20Target": 0,
+    "targetPlayers": 20,
+    "botReactionMinMs": 1800,
+    "botReactionMaxMs": 3200,
     "joinPacing": "dynamic",
     "enabledRooms": [
       10,

@@ -5,6 +5,10 @@ import { checkWinFreshness, generateTicket } from './bingo';
 
 export interface BotSettings {
     enabled: boolean;
+    stake10Enabled: boolean;
+    stake10Target: number;
+    stake20Enabled: boolean;
+    stake20Target: number;
     targetPlayers: number;
     botReactionMinMs: number;
     botReactionMaxMs: number;
@@ -286,6 +290,10 @@ export const ETHIOPIAN_BOT_PROFILES: BotProfile[] = [
 export class BotService {
     private settings: BotSettings = {
         enabled: true,
+        stake10Enabled: true,
+        stake10Target: 20,
+        stake20Enabled: false,
+        stake20Target: 0,
         targetPlayers: 20,
         botReactionMinMs: 1800,
         botReactionMaxMs: 3200,
@@ -309,6 +317,10 @@ export class BotService {
                 if (data.botSettings) {
                     this.settings = {
                         enabled: data.botSettings.enabled !== undefined ? !!data.botSettings.enabled : true,
+                        stake10Enabled: data.botSettings.stake10Enabled !== undefined ? !!data.botSettings.stake10Enabled : true,
+                        stake10Target: data.botSettings.stake10Target !== undefined ? Math.max(0, Number(data.botSettings.stake10Target)) : (Number(data.botSettings.targetPlayers) || 20),
+                        stake20Enabled: data.botSettings.stake20Enabled !== undefined ? !!data.botSettings.stake20Enabled : false,
+                        stake20Target: data.botSettings.stake20Target !== undefined ? Math.max(0, Number(data.botSettings.stake20Target)) : 0,
                         targetPlayers: Number(data.botSettings.targetPlayers) || 20,
                         botReactionMinMs: Number(data.botSettings.botReactionMinMs) || 1800,
                         botReactionMaxMs: Number(data.botSettings.botReactionMaxMs) || 3200,
@@ -343,6 +355,28 @@ export class BotService {
         return { ...this.settings };
     }
 
+    public isStakeEnabled(fee: number): boolean {
+        if (!this.settings.enabled) return false;
+        if (fee === 10) return !!this.settings.stake10Enabled;
+        if (fee === 20) return !!this.settings.stake20Enabled;
+        return this.settings.enabledRooms.includes(fee);
+    }
+
+    public getStakeTarget(fee: number): number {
+        if (fee === 10) return typeof this.settings.stake10Target === 'number' ? this.settings.stake10Target : this.settings.targetPlayers;
+        if (fee === 20) return typeof this.settings.stake20Target === 'number' ? this.settings.stake20Target : this.settings.targetPlayers;
+        return this.settings.targetPlayers;
+    }
+
+    public cancelFillTimeoutsForFee(fee: number) {
+        for (const [key, t] of this.fillTimeouts.entries()) {
+            if (key.startsWith(`${fee}_`)) {
+                clearTimeout(t);
+                this.fillTimeouts.delete(key);
+            }
+        }
+    }
+
     public updateSettings(partial: Partial<BotSettings>): BotSettings {
         if (partial.enabled !== undefined) {
             this.settings.enabled = !!partial.enabled;
@@ -353,7 +387,25 @@ export class BotService {
                 this.fillTimeouts.clear();
             }
         }
-        if (partial.targetPlayers !== undefined && partial.targetPlayers >= 2 && partial.targetPlayers <= 300) {
+        if (partial.stake10Enabled !== undefined) {
+            this.settings.stake10Enabled = !!partial.stake10Enabled;
+            if (!this.settings.stake10Enabled) {
+                this.cancelFillTimeoutsForFee(10);
+            }
+        }
+        if (partial.stake10Target !== undefined) {
+            this.settings.stake10Target = Math.max(0, Math.min(300, Number(partial.stake10Target) || 0));
+        }
+        if (partial.stake20Enabled !== undefined) {
+            this.settings.stake20Enabled = !!partial.stake20Enabled;
+            if (!this.settings.stake20Enabled) {
+                this.cancelFillTimeoutsForFee(20);
+            }
+        }
+        if (partial.stake20Target !== undefined) {
+            this.settings.stake20Target = Math.max(0, Math.min(300, Number(partial.stake20Target) || 0));
+        }
+        if (partial.targetPlayers !== undefined && partial.targetPlayers >= 0 && partial.targetPlayers <= 300) {
             this.settings.targetPlayers = Number(partial.targetPlayers);
         }
         if (partial.botReactionMinMs !== undefined && partial.botReactionMinMs >= 50) {
@@ -511,8 +563,9 @@ export class BotService {
      * Pre-seeds 3 to 4 baseline bots immediately and schedules remaining bots across the countdown.
      */
     public async onLobbyOpened(gm: GameManager, fee: number, room: number) {
-        if (!this.settings.enabled) return;
-        if (!this.settings.enabledRooms.includes(fee)) return;
+        if (!this.isStakeEnabled(fee)) return;
+        const target = this.getStakeTarget(fee);
+        if (target <= 0) return;
         if (gm.state !== 'WAITING') return;
 
         const key = this.getRoomKey(fee, room);
@@ -521,8 +574,8 @@ export class BotService {
             this.fillTimeouts.delete(key);
         }
 
-        // Pre-seed baseline bots (3–4 bots, or up to targetPlayers)
-        const seedTarget = Math.min(this.settings.targetPlayers, Math.floor(Math.random() * 2) + 3);
+        // Pre-seed baseline bots (3–4 bots, or up to stake target)
+        const seedTarget = Math.min(target, Math.floor(Math.random() * 2) + 3);
         const currentBots = gm.players.filter(p => p.isBot).length;
         const botsNeeded = Math.max(0, seedTarget - currentBots);
 
@@ -547,16 +600,17 @@ export class BotService {
             this.fillTimeouts.delete(key);
         }
 
-        if (!this.settings.enabled) return;
-        if (!this.settings.enabledRooms.includes(fee)) return;
+        if (!this.isStakeEnabled(fee)) return;
+        const target = this.getStakeTarget(fee);
+        if (target <= 0) return;
         if (gm.state !== 'WAITING') return;
 
         const botCount = gm.players.filter(p => p.isBot).length;
-        if (botCount >= this.settings.targetPlayers) {
+        if (botCount >= target) {
             return; // Target number of bots reached
         }
 
-        const remainingBots = this.settings.targetPlayers - botCount;
+        const remainingBots = target - botCount;
         const countdown = Math.max(1, gm.lobbyCountdown || 30);
 
         let baseDelay: number;
@@ -582,7 +636,7 @@ export class BotService {
         const timer = setTimeout(async () => {
             this.fillTimeouts.delete(key);
             const currentBots = gm.players.filter(p => p.isBot).length;
-            if (gm.state === 'WAITING' && currentBots < this.settings.targetPlayers) {
+            if (gm.state === 'WAITING' && this.isStakeEnabled(fee) && currentBots < this.getStakeTarget(fee)) {
                 const added = await this.addSingleBot(gm, fee);
                 if (added) {
                     this.onRoomUpdated(gm, fee, room);
@@ -611,6 +665,7 @@ export class BotService {
      */
     public clearBots(gm: GameManager): number {
         const key = this.getRoomKey(gm.fee, gm.room);
+        this.cancelFillTimeoutsForFee(gm.fee);
         if (this.fillTimeouts.has(key)) {
             clearTimeout(this.fillTimeouts.get(key)!);
             this.fillTimeouts.delete(key);

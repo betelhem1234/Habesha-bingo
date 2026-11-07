@@ -1719,6 +1719,26 @@ async function saveWinCallThreshold() {
 // ----------------------------------------------------
 // 8.1 Virtual Players (Bot Control) Handlers
 // ----------------------------------------------------
+function updateStakeBadges() {
+    const s10EnabledSelect = document.getElementById('bot-stake10-enabled');
+    const s10Badge = document.getElementById('bot-stake10-badge');
+    if (s10EnabledSelect && s10Badge) {
+        const on = s10EnabledSelect.value === 'true';
+        s10Badge.textContent = on ? '🟢 ON' : '🔴 OFF';
+        s10Badge.style.background = on ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)';
+        s10Badge.style.color = on ? '#4ade80' : '#f87171';
+    }
+
+    const s20EnabledSelect = document.getElementById('bot-stake20-enabled');
+    const s20Badge = document.getElementById('bot-stake20-badge');
+    if (s20EnabledSelect && s20Badge) {
+        const on = s20EnabledSelect.value === 'true';
+        s20Badge.textContent = on ? '🟢 ON' : '🔴 OFF';
+        s20Badge.style.background = on ? 'rgba(34,197,94,0.2)' : 'rgba(239,68,68,0.2)';
+        s20Badge.style.color = on ? '#4ade80' : '#f87171';
+    }
+}
+
 async function fetchBotSettings() {
     try {
         const res = await authFetch('/api/admin/bots');
@@ -1727,12 +1747,19 @@ async function fetchBotSettings() {
         const s = data.settings || {};
 
         const enabledSelect = document.getElementById('bot-input-enabled');
-        const targetInput = document.getElementById('bot-input-target');
         const speedSelect = document.getElementById('bot-input-speed');
         const statusBadge = document.getElementById('bot-status-badge');
 
+        const s10EnabledSelect = document.getElementById('bot-stake10-enabled');
+        const s10TargetInput = document.getElementById('bot-stake10-target');
+        const s20EnabledSelect = document.getElementById('bot-stake20-enabled');
+        const s20TargetInput = document.getElementById('bot-stake20-target');
+
         if (enabledSelect) enabledSelect.value = s.enabled ? 'true' : 'false';
-        if (targetInput) targetInput.value = s.targetPlayers || 20;
+        if (s10EnabledSelect) s10EnabledSelect.value = s.stake10Enabled !== false ? 'true' : 'false';
+        if (s10TargetInput) s10TargetInput.value = s.stake10Target !== undefined ? s.stake10Target : (s.targetPlayers || 20);
+        if (s20EnabledSelect) s20EnabledSelect.value = s.stake20Enabled ? 'true' : 'false';
+        if (s20TargetInput) s20TargetInput.value = s.stake20Target !== undefined ? s.stake20Target : 0;
 
         const joinPacingSelect = document.getElementById('bot-input-join-pacing');
         if (joinPacingSelect) {
@@ -1757,6 +1784,8 @@ async function fetchBotSettings() {
             }
         }
 
+        updateStakeBadges();
+
         const byFee = data.byFee || {};
         setText('bot-count-10', (byFee['10'] || 0).toLocaleString());
         setText('bot-count-20', (byFee['20'] || 0).toLocaleString());
@@ -1767,7 +1796,16 @@ async function fetchBotSettings() {
 
 async function saveBotSettings() {
     const enabled = document.getElementById('bot-input-enabled').value === 'true';
-    const targetPlayers = parseInt(document.getElementById('bot-input-target').value, 10) || 20;
+    const s10El = document.getElementById('bot-stake10-enabled');
+    const s10TgtEl = document.getElementById('bot-stake10-target');
+    const s20El = document.getElementById('bot-stake20-enabled');
+    const s20TgtEl = document.getElementById('bot-stake20-target');
+
+    const stake10Enabled = s10El ? s10El.value === 'true' : true;
+    const stake10Target = s10TgtEl ? Math.max(0, parseInt(s10TgtEl.value, 10) || 0) : 20;
+    const stake20Enabled = s20El ? s20El.value === 'true' : false;
+    const stake20Target = s20TgtEl ? Math.max(0, parseInt(s20TgtEl.value, 10) || 0) : 0;
+
     const joinPacing = document.getElementById('bot-input-join-pacing') ? document.getElementById('bot-input-join-pacing').value : 'dynamic';
     const speed = document.getElementById('bot-input-speed').value;
 
@@ -1791,7 +1829,17 @@ async function saveBotSettings() {
         const res = await authFetch('/api/admin/bots/settings', {
             method: 'POST',
             headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ enabled, targetPlayers, botReactionMinMs, botReactionMaxMs, joinPacing })
+            body: JSON.stringify({
+                enabled,
+                stake10Enabled,
+                stake10Target,
+                stake20Enabled,
+                stake20Target,
+                targetPlayers: stake10Target,
+                botReactionMinMs,
+                botReactionMaxMs,
+                joinPacing
+            })
         });
         const data = await res.json();
         if (data.success) {
@@ -2887,6 +2935,7 @@ window.applyWinCallPreset = applyWinCallPreset;
 window.updateWinCallPreview = updateWinCallPreview;
 window.fetchBotSettings = fetchBotSettings;
 window.saveBotSettings = saveBotSettings;
+window.updateStakeBadges = updateStakeBadges;
 window.injectBots = injectBots;
 window.clearBots = clearBots;
 window.setIncomeLobbyFilter = setIncomeLobbyFilter;
