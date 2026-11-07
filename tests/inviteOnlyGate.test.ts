@@ -193,4 +193,60 @@ test('Invite-Only Registration Gate & Admin 1783441823 Lineage Tests', async (t)
         assert.ok(amharicPromo.includes('በግብዣ ሊንክ ብቻ'));
         assert.ok(englishPromo.includes('Invite-only game'));
     });
+
+    function buildInviteKeyboard(userId: bigint, adminsList: MockAdminProfile[]) {
+        const isSuperAdmin = userId === SUPER_ADMIN_ID;
+        const isAdmin = isSuperAdmin || adminsList.some(a => a.userId === userId && a.isActive);
+
+        const buttons: string[] = ['📤 ለጓደኛ አጋራ (Share on Telegram)'];
+        if (isAdmin) {
+            buttons.push('📋 Copy Post (አማርኛ) 🇪🇹');
+            buttons.push('📋 Copy Post (English) 🇬🇧');
+        }
+        buttons.push('🎮 አሁኑኑ ይጫወቱ (Play Now)');
+        return buttons;
+    }
+
+    function handlePromoCallback(userId: bigint, adminsList: MockAdminProfile[]) {
+        const isSuperAdmin = userId === SUPER_ADMIN_ID;
+        const isAdmin = isSuperAdmin || adminsList.some(a => a.userId === userId && a.isActive);
+        if (!isAdmin) {
+            return { ok: false, error: '⛔ ይህ አማራጭ ለአስተዳዳሪዎች ብቻ የተፈቀደ ነው። (Admins only)' };
+        }
+        return { ok: true };
+    }
+
+    await t.test('Admins see Copy Post options in Invite & QR menu', () => {
+        const superAdminButtons = buildInviteKeyboard(SUPER_ADMIN_ID, adminProfiles);
+        assert.equal(superAdminButtons.length, 4);
+        assert.ok(superAdminButtons.includes('📋 Copy Post (አማርኛ) 🇪🇹'));
+        assert.ok(superAdminButtons.includes('📋 Copy Post (English) 🇬🇧'));
+
+        const affiliateAdminButtons = buildInviteKeyboard(TARGET_ADMIN_USER_ID, adminProfiles);
+        assert.equal(affiliateAdminButtons.length, 4);
+        assert.ok(affiliateAdminButtons.includes('📋 Copy Post (አማርኛ) 🇪🇹'));
+        assert.ok(affiliateAdminButtons.includes('📋 Copy Post (English) 🇬🇧'));
+    });
+
+    await t.test('Normal players only see Share on Telegram and Play Now (No Copy Post)', () => {
+        const normalPlayerId = BigInt('8684362724'); // Abu
+        const playerButtons = buildInviteKeyboard(normalPlayerId, adminProfiles);
+        assert.equal(playerButtons.length, 2);
+        assert.deepEqual(playerButtons, [
+            '📤 ለጓደኛ አጋራ (Share on Telegram)',
+            '🎮 አሁኑኑ ይጫወቱ (Play Now)'
+        ]);
+        assert.equal(playerButtons.includes('📋 Copy Post (አማርኛ) 🇪🇹'), false);
+        assert.equal(playerButtons.includes('📋 Copy Post (English) 🇬🇧'), false);
+    });
+
+    await t.test('Non-admins are unauthorized to invoke promo callback query', () => {
+        const normalPlayerId = BigInt('8684362724');
+        const res = handlePromoCallback(normalPlayerId, adminProfiles);
+        assert.equal(res.ok, false);
+        assert.ok(res.error.includes('Admins only'));
+
+        const adminRes = handlePromoCallback(TARGET_ADMIN_USER_ID, adminProfiles);
+        assert.equal(adminRes.ok, true);
+    });
 });

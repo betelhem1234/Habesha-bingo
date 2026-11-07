@@ -967,15 +967,20 @@ async function sendInviteAndQr(ctx: Context) {
     if (!ctx.from) return;
     const userId = ctx.from.id;
 
-    // Check if user is an affiliate admin with a custom code
+    // Check if user is Super Admin or an active affiliate admin
+    const isSuperAdmin = userId.toString() === config.ADMIN_USER_ID;
+    let isAdmin = isSuperAdmin;
     let referralCode = userId.toString();
     try {
         const admin = await prisma.adminProfile.findUnique({
             where: { userId: BigInt(userId) },
-            select: { code: true }
+            select: { code: true, isActive: true }
         });
-        if (admin && admin.code) {
-            referralCode = admin.code;
+        if (admin && admin.isActive) {
+            isAdmin = true;
+            if (admin.code) {
+                referralCode = admin.code;
+            }
         }
     } catch (e) {}
 
@@ -988,10 +993,16 @@ async function sendInviteAndQr(ctx: Context) {
     const shareUrl = `https://t.me/share/url?url=${encodeURIComponent(link)}&text=${encodeURIComponent(shareText)}`;
 
     const qrKb = new InlineKeyboard()
-        .url('📤 ለጓደኛ አጋራ (Share on Telegram)', shareUrl).row()
-        .text('📋 Copy Post (አማርኛ) 🇪🇹', `promo_am_${referralCode}`)
-        .text('📋 Copy Post (English) 🇬🇧', `promo_en_${referralCode}`).row()
-        .webApp('🎮 አሁኑኑ ይጫወቱ (Play Now)', playUrl);
+        .url('📤 ለጓደኛ አጋራ (Share on Telegram)', shareUrl).row();
+
+    // Promo kit buttons are exclusively available for administrators
+    if (isAdmin) {
+        qrKb
+            .text('📋 Copy Post (አማርኛ) 🇪🇹', `promo_am_${referralCode}`)
+            .text('📋 Copy Post (English) 🇬🇧', `promo_en_${referralCode}`).row();
+    }
+
+    qrKb.webApp('🎮 አሁኑኑ ይጫወቱ (Play Now)', playUrl);
 
     const caption =
         `🔗 *የእርስዎ የግብዣ ሊንክ እና QR ኮድ*\n` +
@@ -1001,7 +1012,9 @@ async function sendInviteAndQr(ctx: Context) {
         `💰 እርስዎ *${getReferralBonus()} Birr Bonus* ያገኛሉ!\n\n` +
         `👉 *ሊንክዎን ይቅዱ (Tap to copy):*\n` +
         `\`${link}\`\n\n` +
-        `ከታች ያለውን *Share* በመጫን በቀጥታ ለጓደኞችዎ ይላኩ፣ ወይም የማስተዋወቂያ ፅሁፉን ኮፒ አድርገው ማህበራዊ ሚዲያ ላይ ይለጥፉ!`;
+        (isAdmin
+            ? `ከታች ያለውን *Share* በመጫን በቀጥታ ለጓደኞችዎ ይላኩ፣ ወይም የማስተዋወቂያ ፅሁፉን ኮፒ አድርገው ማህበራዊ ሚዲያ ላይ ይለጥፉ!`
+            : `ከታች ያለውን *Share* በመጫን በቀጥታ ለጓደኞችዎ ይላኩ!`);
 
     const qrBuffer = await generateQrPngBuffer(link);
     if (qrBuffer) {
@@ -1024,6 +1037,27 @@ async function sendInviteAndQr(ctx: Context) {
 }
 
 bot.callbackQuery(/^promo_am_(.+)$/, async (ctx) => {
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
+    const isSuperAdmin = userId.toString() === config.ADMIN_USER_ID;
+    let isAdmin = isSuperAdmin;
+    if (!isAdmin) {
+        try {
+            const admin = await prisma.adminProfile.findUnique({
+                where: { userId: BigInt(userId) },
+                select: { isActive: true }
+            });
+            if (admin && admin.isActive) isAdmin = true;
+        } catch (e) {}
+    }
+
+    if (!isAdmin) {
+        return ctx.answerCallbackQuery({
+            text: '⛔ ይህ አማራጭ ለአስተዳዳሪዎች ብቻ የተፈቀደ ነው። (Admins only)',
+            show_alert: true
+        });
+    }
+
     await ctx.answerCallbackQuery().catch(() => {});
     const referralCode = ctx.match[1];
     const botInfo = await bot.api.getMe();
@@ -1047,6 +1081,27 @@ bot.callbackQuery(/^promo_am_(.+)$/, async (ctx) => {
 });
 
 bot.callbackQuery(/^promo_en_(.+)$/, async (ctx) => {
+    if (!ctx.from) return;
+    const userId = ctx.from.id;
+    const isSuperAdmin = userId.toString() === config.ADMIN_USER_ID;
+    let isAdmin = isSuperAdmin;
+    if (!isAdmin) {
+        try {
+            const admin = await prisma.adminProfile.findUnique({
+                where: { userId: BigInt(userId) },
+                select: { isActive: true }
+            });
+            if (admin && admin.isActive) isAdmin = true;
+        } catch (e) {}
+    }
+
+    if (!isAdmin) {
+        return ctx.answerCallbackQuery({
+            text: '⛔ ይህ አማራጭ ለአስተዳዳሪዎች ብቻ የተፈቀደ ነው። (Admins only)',
+            show_alert: true
+        });
+    }
+
     await ctx.answerCallbackQuery().catch(() => {});
     const referralCode = ctx.match[1];
     const botInfo = await bot.api.getMe();
