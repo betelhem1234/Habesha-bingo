@@ -35,16 +35,17 @@ body{
   font-size:1.05rem;font-weight:800;letter-spacing:0.3px;color:#ffffff;
 }
 
-/* ─── Top Stats Bar (6 Pills - Preserved with Upgraded Styling) ─── */
+/* ─── Top Stats Bar (5 Pills - Upgraded Flexible Spacing) ─── */
 .stats-bar{
   width:100%;
-  display:grid;grid-template-columns:repeat(6,minmax(0,1fr));
-  gap:3px;padding:4px 5px 3px;
+  display:grid;grid-template-columns:repeat(5,minmax(0,1fr));
+  gap:4px;padding:4px 6px 4px;
   box-sizing:border-box;flex-shrink:0;
 }
 .stat-pill{
+  min-width:0;
   background:#ffffff;border:1px solid #c9b3e8;border-radius:8px;
-  padding:3px 1px;text-align:center;
+  padding:4px 2px;text-align:center;
   box-shadow:0 1px 3px rgba(74,21,75,0.08);
 }
 .stat-pill .slabel{
@@ -622,12 +623,11 @@ body{
   <span class="app-header-title">Ethio Bingo</span>
 </div>
 
-<!-- ─── Top Stats Bar (6 Pills - Image 1) ─── -->
+<!-- ─── Top Stats Bar (5 Pills) ─── -->
 <div class="stats-bar">
   <div class="stat-pill"><div class="slabel">Game ID</div><div class="svalue" id="game-id">—</div></div>
   <div class="stat-pill"><div class="slabel">Derash</div><div class="svalue" id="derash">—</div></div>
   <div class="stat-pill"><div class="slabel">Players</div><div class="svalue" id="player-count">—</div></div>
-  <div class="stat-pill"><div class="slabel">Boards</div><div class="svalue" id="board-count">—</div></div>
   <div class="stat-pill"><div class="slabel">Stake</div><div class="svalue" id="stake-disp">—</div></div>
   <div class="stat-pill"><div class="slabel">Called</div><div class="svalue" id="called-count">0</div></div>
 </div>
@@ -1709,7 +1709,8 @@ function applyGameState(data) {
   }
 
   document.getElementById('player-count').textContent = data.playerCount || 0;
-  document.getElementById('board-count').textContent = data.boardCount || data.playerCount || 0;
+  const boardCountEl = document.getElementById('board-count');
+  if (boardCountEl) boardCountEl.textContent = data.boardCount || data.playerCount || 0;
   const pot = Math.floor(parseFloat(data.pot || 0) * 0.8);
   document.getElementById('derash').textContent = `${pot}`;
   document.getElementById('called-count').textContent = (data.drawnNumbers || []).length;
@@ -1840,7 +1841,8 @@ function applyBallEvent(data) {
     document.getElementById('player-count').textContent = data.playerCount;
   }
   if (data.boardCount !== undefined) {
-    document.getElementById('board-count').textContent = data.boardCount;
+    const boardCountEl = document.getElementById('board-count');
+    if (boardCountEl) boardCountEl.textContent = data.boardCount;
   }
 
   startTimerCountdown(data.nextDrawAt || (Date.now() + 4000));
@@ -1862,7 +1864,8 @@ function applyLobbyEvent(data) {
     document.getElementById('player-count').textContent = data.playerCount;
   }
   if (data.boardCount !== undefined) {
-    document.getElementById('board-count').textContent = data.boardCount;
+    const boardCountEl = document.getElementById('board-count');
+    if (boardCountEl) boardCountEl.textContent = data.boardCount;
   }
   if (data.pot) {
     document.getElementById('derash').textContent = `${Math.floor(parseFloat(data.pot) * 0.8)}`;
@@ -1898,7 +1901,8 @@ function applyStartEvent(data) {
     document.getElementById('player-count').textContent = data.playerCount;
   }
   if (data.boardCount !== undefined) {
-    document.getElementById('board-count').textContent = data.boardCount;
+    const boardCountEl = document.getElementById('board-count');
+    if (boardCountEl) boardCountEl.textContent = data.boardCount;
   }
   if (data.nextDrawAt) {
     startTimerCountdown(data.nextDrawAt);
