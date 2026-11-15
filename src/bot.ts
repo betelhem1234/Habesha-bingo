@@ -4,6 +4,7 @@ import path from 'path';
 import { Bot, Context, InlineKeyboard, Keyboard, InputFile } from 'grammy';
 import { config, formatEthioTime } from './config';
 import { prisma, initDbSchema, getBalancedActiveAdminId } from './db';
+import { initSettingsFromDb } from './settings';
 import { proofUrl } from './uploads';
 import { NEW_USER_BONUS, REFERRAL_BONUS, getNewUserBonus, getReferralBonus, setBonusSettings } from './bonus';
 import { GameRooms } from './game/GameRooms';
@@ -2594,6 +2595,7 @@ async function startPollingLoop() {
 async function startApp() {
     try {
         await initDbSchema();
+        await initSettingsFromDb();
     } catch (err: any) {
         console.error('[Bot] Database schema initialization error:', err?.message || err);
     }

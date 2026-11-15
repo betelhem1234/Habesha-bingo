@@ -1,6 +1,9 @@
-import fs from 'fs';
-import path from 'path';
 import { prisma } from './db';
+import {
+    getNewUserBonus as getNewUserBonusSetting,
+    getReferralBonus as getReferralBonusSetting,
+    setBonusSettings as setBonusSettingsHelper
+} from './settings';
 
 export interface DeductResult {
     success: boolean;
@@ -8,67 +11,22 @@ export interface DeductResult {
     withdrawableUsed: number;
 }
 
-const SETTINGS_PATH = path.join(process.cwd(), 'data', 'settings.json');
-
 export let NEW_USER_BONUS = 10;
 export let REFERRAL_BONUS = 5;
 
-function loadBonusSettings() {
-    try {
-        if (fs.existsSync(SETTINGS_PATH)) {
-            const raw = fs.readFileSync(SETTINGS_PATH, 'utf8');
-            const data = JSON.parse(raw);
-            if (typeof data.newUserBonus === 'number' && data.newUserBonus >= 0) {
-                NEW_USER_BONUS = Math.floor(data.newUserBonus);
-            }
-            if (typeof data.referralBonus === 'number' && data.referralBonus >= 0) {
-                REFERRAL_BONUS = Math.floor(data.referralBonus);
-            }
-        }
-    } catch (e) {
-        console.error('[Bonus] Error reading settings file:', e);
-    }
-}
-
-// Initial load from persistent storage
-loadBonusSettings();
-
 export function getNewUserBonus(): number {
-    return NEW_USER_BONUS;
+    return getNewUserBonusSetting();
 }
 
 export function getReferralBonus(): number {
-    return REFERRAL_BONUS;
+    return getReferralBonusSetting();
 }
 
 export function setBonusSettings(newUserBonus: number, referralBonus: number): { newUserBonus: number; referralBonus: number } {
-    if (typeof newUserBonus !== 'number' || isNaN(newUserBonus) || newUserBonus < 0) {
-        throw new Error('Invalid newUserBonus: must be a non-negative number');
-    }
-    if (typeof referralBonus !== 'number' || isNaN(referralBonus) || referralBonus < 0) {
-        throw new Error('Invalid referralBonus: must be a non-negative number');
-    }
-
-    NEW_USER_BONUS = Math.floor(newUserBonus);
-    REFERRAL_BONUS = Math.floor(referralBonus);
-
-    try {
-        const dir = path.dirname(SETTINGS_PATH);
-        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-        let currentData: any = {};
-        if (fs.existsSync(SETTINGS_PATH)) {
-            try {
-                currentData = JSON.parse(fs.readFileSync(SETTINGS_PATH, 'utf8'));
-            } catch {}
-        }
-        currentData.newUserBonus = NEW_USER_BONUS;
-        currentData.referralBonus = REFERRAL_BONUS;
-        fs.writeFileSync(SETTINGS_PATH, JSON.stringify(currentData, null, 2), 'utf8');
-    } catch (e) {
-        console.error('[Bonus] Error saving settings file:', e);
-    }
-
-    return { newUserBonus: NEW_USER_BONUS, referralBonus: REFERRAL_BONUS };
+    const res = setBonusSettingsHelper(newUserBonus, referralBonus);
+    NEW_USER_BONUS = res.newUserBonus;
+    REFERRAL_BONUS = res.referralBonus;
+    return res;
 }
 
 // Deducts an entry fee preferring the user's bonus first, then their balance.

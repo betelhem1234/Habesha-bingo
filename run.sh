@@ -31,7 +31,7 @@ sep()  { printf -- '----------------------------------------\n'; }
 MODE="${1:-auto}"
 
 latest_tunnel_url() {
-    grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$TUNNEL_LOG" 2>/dev/null | tail -1
+    tail -n 500 "$TUNNEL_LOG" 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1
 }
 
 # DNS-resilient HTTP probe
@@ -68,7 +68,13 @@ restart_unit() {
 }
 
 local_bot_name() {
-    echo "@PlayMyBingoBot (Habesha Bingo)"
+    local tok
+    tok="$(grep -E '^BOT_TOKEN=' "$DIR/.env" 2>/dev/null | cut -d'"' -f2 || true)"
+    case "$tok" in
+        8781503008:*) echo "@HabeshaBingoTestBot (Local Test Bot)" ;;
+        8942533525:*) echo "@PlayMyBingoBot (Habesha Bingo)" ;;
+        *) echo "Configured Bot in .env" ;;
+    esac
 }
 
 if [[ "$MODE" == "--dev" ]]; then

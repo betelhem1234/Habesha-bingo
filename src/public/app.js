@@ -1486,6 +1486,8 @@ function escapeHtml(str) {
 // ----------------------------------------------------
 // Promotional Bonus Settings Controller
 // ----------------------------------------------------
+let bonusInputsDirty = false;
+
 async function fetchBonusSettings() {
     try {
         const res = await authFetch('/api/admin/bonus');
@@ -1494,11 +1496,21 @@ async function fetchBonusSettings() {
         if (data && data.success) {
             const inputNewUser = document.getElementById('input-new-user-bonus');
             const inputReferral = document.getElementById('input-referral-bonus');
-            if (inputNewUser && document.activeElement !== inputNewUser && data.newUserBonus !== undefined) {
-                inputNewUser.value = data.newUserBonus;
+            if (inputNewUser && !inputNewUser.dataset.listenerAttached) {
+                inputNewUser.dataset.listenerAttached = '1';
+                inputNewUser.addEventListener('input', () => { bonusInputsDirty = true; });
             }
-            if (inputReferral && document.activeElement !== inputReferral && data.referralBonus !== undefined) {
-                inputReferral.value = data.referralBonus;
+            if (inputReferral && !inputReferral.dataset.listenerAttached) {
+                inputReferral.dataset.listenerAttached = '1';
+                inputReferral.addEventListener('input', () => { bonusInputsDirty = true; });
+            }
+            if (!bonusInputsDirty) {
+                if (inputNewUser && data.newUserBonus !== undefined) {
+                    inputNewUser.value = data.newUserBonus;
+                }
+                if (inputReferral && data.referralBonus !== undefined) {
+                    inputReferral.value = data.referralBonus;
+                }
             }
         }
     } catch (err) {
@@ -1537,6 +1549,7 @@ async function saveBonusSettings() {
         });
         const data = await res.json();
         if (data.success) {
+            bonusInputsDirty = false;
             if (statusEl) {
                 statusEl.textContent = `✅ Saved! Welcome: ${data.newUserBonus} Birr | Referral: ${data.referralBonus} Birr`;
                 statusEl.style.color = '#10b981';

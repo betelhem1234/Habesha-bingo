@@ -3,6 +3,12 @@ import path from 'path';
 import { Bot } from 'grammy';
 import { GameManager } from './GameManager';
 import { BotService } from './BotService';
+import {
+    getCallerVoice as getCallerVoiceSetting,
+    setCallerVoice as setCallerVoiceSetting,
+    getMinCallToWin as getMinCallToWinSetting,
+    setMinCallToWin as setMinCallToWinSetting
+} from '../settings';
 
 const FEES = [10, 20, 50, 100, 0];
 
@@ -15,7 +21,8 @@ export class GameRooms {
 
     constructor(private bot: Bot) {
         this.botService = new BotService();
-        this.loadSettings();
+        this.callerVoice = getCallerVoiceSetting();
+        this.minCallToWin = getMinCallToWinSetting();
         // Periodically release boards/fees left by players who abandoned the lobby.
         setInterval(() => this.sweepStalePlayers(), 5000).unref();
         // Auto-seed active rooms for continuous rolling loop on startup (production only)
@@ -25,56 +32,32 @@ export class GameRooms {
     }
 
     private loadSettings() {
-        try {
-            if (fs.existsSync(this.settingsFilePath)) {
-                const data = JSON.parse(fs.readFileSync(this.settingsFilePath, 'utf8'));
-                if (data.callerVoice === 'female' || data.callerVoice === 'male') {
-                    this.callerVoice = data.callerVoice;
-                }
-                if (typeof data.minCallToWin === 'number' && data.minCallToWin >= 4 && data.minCallToWin <= 50) {
-                    this.minCallToWin = Math.floor(data.minCallToWin);
-                }
-            }
-        } catch (e) {
-            console.error('[GameRooms] Error reading settings file:', e);
-        }
+        this.callerVoice = getCallerVoiceSetting();
+        this.minCallToWin = getMinCallToWinSetting();
     }
 
     private saveSettings() {
-        try {
-            const dir = path.dirname(this.settingsFilePath);
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            let currentData: any = {};
-            if (fs.existsSync(this.settingsFilePath)) {
-                try {
-                    currentData = JSON.parse(fs.readFileSync(this.settingsFilePath, 'utf8'));
-                } catch {}
-            }
-            currentData.callerVoice = this.callerVoice;
-            currentData.minCallToWin = this.minCallToWin;
-            fs.writeFileSync(this.settingsFilePath, JSON.stringify(currentData, null, 2), 'utf8');
-        } catch (e) {
-            console.error('[GameRooms] Error saving settings file:', e);
-        }
+        setCallerVoiceSetting(this.callerVoice);
+        setMinCallToWinSetting(this.minCallToWin);
     }
 
     getCallerVoice(): 'male' | 'female' {
-        return this.callerVoice;
+        return getCallerVoiceSetting();
     }
 
     setCallerVoice(voice: 'male' | 'female') {
         this.callerVoice = voice;
-        this.saveSettings();
+        setCallerVoiceSetting(voice);
     }
 
     getMinCallToWin(): number {
-        return this.minCallToWin;
+        return getMinCallToWinSetting();
     }
 
     setMinCallToWin(calls: number) {
         const val = Math.max(4, Math.min(50, Math.floor(calls)));
         this.minCallToWin = val;
-        this.saveSettings();
+        setMinCallToWinSetting(val);
         for (const gm of this.rooms.values()) {
             gm.minCallToWin = val;
         }

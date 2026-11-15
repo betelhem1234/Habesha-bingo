@@ -678,17 +678,28 @@ function renderPreviews(){
   }).join('');
 }
 
-function renderBoards(boards){
-  cachedBoards=boards;
+function renderBoards(boardsOrTaken){
+  cachedBoards=boardsOrTaken;
+  let takenSet;
+  if(Array.isArray(boardsOrTaken) && (boardsOrTaken.length === 0 || typeof boardsOrTaken[0] === 'number')){
+    takenSet = new Set(boardsOrTaken);
+  } else if(Array.isArray(boardsOrTaken) && boardsOrTaken[0] && typeof boardsOrTaken[0] === 'object'){
+    takenSet = new Set(boardsOrTaken.filter(b => b.taken).map(b => b.number));
+  } else {
+    takenSet = new Set();
+  }
   const grid=document.getElementById('board-grid');
-  grid.innerHTML=boards.map(b=>{
+  let html='';
+  for(let i=1; i<=500; i++){
+    const isMine=selectedBoards.includes(i);
+    const taken=takenSet.has(i);
     let cls='board-cell';
-    const isMine=selectedBoards.includes(b.number);
     if(isMine) cls+=' selected';
-    else if(b.taken) cls+=' taken';
-    const disabled=b.taken&&!isMine;
-    return `<button class="${cls}" onclick="pickBoard(${b.number})" ${disabled?'disabled':''}>${b.number}</button>`;
-  }).join('');
+    else if(taken) cls+=' taken';
+    const disabled=taken&&!isMine;
+    html += `<button class="${cls}" onclick="pickBoard(${i})" ${disabled?'disabled':''}>${i}</button>`;
+  }
+  grid.innerHTML=html;
 }
 
 let pendingSelection=null;
@@ -922,7 +933,7 @@ async function poll(){
       if(rdEl) rdEl.textContent = Math.floor(parseFloat(boardData.pot || 0) * 0.8);
     }
 
-    renderBoards(boardData.boards||[]);
+    renderBoards(boardData.taken || boardData.boards || []);
 
     if(boardData.gameState==='PLAYING' && !redirected){
       redirected = true;
@@ -937,9 +948,28 @@ async function poll(){
   }catch(e){console.error('poll error',e);}
 }
 
+let pollTimer = null;
+function startLobbyPolling() {
+  if (pollTimer) clearInterval(pollTimer);
+  poll();
+  pollTimer = setInterval(poll, 3500);
+}
+function stopLobbyPolling() {
+  if (pollTimer) {
+    clearInterval(pollTimer);
+    pollTimer = null;
+  }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.hidden) {
+    stopLobbyPolling();
+  } else {
+    startLobbyPolling();
+  }
+});
+
 loadBalance();
-poll();
-setInterval(poll,2500);
+startLobbyPolling();
 </script>
 <div class="validation-toast" id="validation-toast"></div>
 </body>

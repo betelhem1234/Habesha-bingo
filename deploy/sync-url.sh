@@ -8,6 +8,15 @@ ENV_FILE="$BINGO_DIR/.env"
 export XDG_RUNTIME_DIR="${XDG_RUNTIME_DIR:-/run/user/$(id -u)}"
 export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUNTIME_DIR}/bus}"
 
+PORT="$(grep -E '^PORT=' "$ENV_FILE" 2>/dev/null | cut -d'"' -f2 || echo "3001")"
+[ -z "$PORT" ] && PORT="3001"
+
+# Do not churn the tunnel if the local backend on $PORT is not serving 200 yet.
+LOCAL_CODE="$(timeout 4 curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/index.html" 2>/dev/null || echo 000)"
+if [ "$LOCAL_CODE" != "200" ]; then
+    exit 0
+fi
+
 tc_code() {
     local host ip path="${2:-index.html}"
     host="${1#https://}"; host="${host%%/*}"
@@ -18,7 +27,7 @@ tc_code() {
         -A 'Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X)' "https://$host/$path" 2>/dev/null || echo 000
 }
 
-LIVE_URL="$(for u in $(grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$LOG" 2>/dev/null | tail -3); do
+LIVE_URL="$(for u in $(tail -n 500 "$LOG" 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -3); do
     code="$(tc_code "$u" index.html)"
     [ "$code" = "200" ] && printf '%s\n' "$u"
 done | tail -1)"

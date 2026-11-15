@@ -1,5 +1,6 @@
 import fs from 'fs';
 import path from 'path';
+import { getBotSettings, setBotSettings } from '../settings';
 import { GameManager, Player } from './GameManager';
 import { checkWinFreshness, generateTicket } from './bingo';
 
@@ -312,22 +313,22 @@ export class BotService {
 
     private loadSettings() {
         try {
-            if (fs.existsSync(this.settingsFilePath)) {
-                const data = JSON.parse(fs.readFileSync(this.settingsFilePath, 'utf8'));
-                if (data.botSettings) {
-                    this.settings = {
-                        enabled: data.botSettings.enabled !== undefined ? !!data.botSettings.enabled : true,
-                        stake10Enabled: data.botSettings.stake10Enabled !== undefined ? !!data.botSettings.stake10Enabled : true,
-                        stake10Target: data.botSettings.stake10Target !== undefined ? Math.max(0, Number(data.botSettings.stake10Target)) : (Number(data.botSettings.targetPlayers) || 20),
-                        stake20Enabled: data.botSettings.stake20Enabled !== undefined ? !!data.botSettings.stake20Enabled : false,
-                        stake20Target: data.botSettings.stake20Target !== undefined ? Math.max(0, Number(data.botSettings.stake20Target)) : 0,
-                        targetPlayers: Number(data.botSettings.targetPlayers) || 20,
-                        botReactionMinMs: Number(data.botSettings.botReactionMinMs) || 1800,
-                        botReactionMaxMs: Number(data.botSettings.botReactionMaxMs) || 3200,
-                        joinPacing: ['dynamic', 'rapid', 'relaxed'].includes(data.botSettings.joinPacing) ? data.botSettings.joinPacing : 'dynamic',
-                        enabledRooms: Array.isArray(data.botSettings.enabledRooms) ? data.botSettings.enabledRooms : [10, 20]
-                    };
-                }
+            const stored = getBotSettings();
+            if (stored) {
+                this.settings = {
+                    ...this.settings,
+                    ...stored,
+                    enabled: stored.enabled !== undefined ? !!stored.enabled : true,
+                    stake10Enabled: stored.stake10Enabled !== undefined ? !!stored.stake10Enabled : true,
+                    stake10Target: stored.stake10Target !== undefined ? Math.max(0, Number(stored.stake10Target)) : (Number(stored.targetPlayers) || 20),
+                    stake20Enabled: stored.stake20Enabled !== undefined ? !!stored.stake20Enabled : false,
+                    stake20Target: stored.stake20Target !== undefined ? Math.max(0, Number(stored.stake20Target)) : 0,
+                    targetPlayers: Number(stored.targetPlayers) || 20,
+                    botReactionMinMs: Number(stored.botReactionMinMs) || 1800,
+                    botReactionMaxMs: Number(stored.botReactionMaxMs) || 3200,
+                    joinPacing: ['dynamic', 'rapid', 'relaxed'].includes(stored.joinPacing) ? stored.joinPacing : 'dynamic',
+                    enabledRooms: Array.isArray(stored.enabledRooms) ? stored.enabledRooms : [10, 20]
+                };
             }
         } catch (e) {
             console.error('[BotService] Error reading settings:', e);
@@ -336,16 +337,7 @@ export class BotService {
 
     public saveSettings() {
         try {
-            const dir = path.dirname(this.settingsFilePath);
-            if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-            let currentData: any = {};
-            if (fs.existsSync(this.settingsFilePath)) {
-                try {
-                    currentData = JSON.parse(fs.readFileSync(this.settingsFilePath, 'utf8'));
-                } catch {}
-            }
-            currentData.botSettings = this.settings;
-            fs.writeFileSync(this.settingsFilePath, JSON.stringify(currentData, null, 2), 'utf8');
+            setBotSettings(this.settings);
         } catch (e) {
             console.error('[BotService] Error saving settings:', e);
         }

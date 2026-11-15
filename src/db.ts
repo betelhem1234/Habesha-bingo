@@ -16,6 +16,11 @@ export const prisma = new PrismaClient({ adapter });
 export async function initDbSchema() {
     try {
         await pool.query(`
+            CREATE TABLE IF NOT EXISTS "SystemSetting" (
+                "key" TEXT PRIMARY KEY,
+                "value" TEXT NOT NULL,
+                "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+            );
             CREATE TABLE IF NOT EXISTS "AdminProfile" (
                 "id" SERIAL PRIMARY KEY,
                 "userId" BIGINT NOT NULL UNIQUE,
@@ -102,5 +107,56 @@ export async function getBalancedActiveAdminId(): Promise<number | null> {
     } catch (e) {
         console.error('getBalancedActiveAdminId error:', e);
         return null;
+    }
+}
+
+export async function getSystemSettingDb(key: string): Promise<string | null> {
+    try {
+        const res = await pool.query('SELECT "value" FROM "SystemSetting" WHERE "key" = $1 LIMIT 1', [key]);
+        return res.rows[0]?.value ?? null;
+    } catch {
+        return null;
+    }
+}
+
+export async function setSystemSettingDb(key: string, value: string): Promise<void> {
+    try {
+        await pool.query(`
+            INSERT INTO "SystemSetting" ("key", "value", "updatedAt")
+            VALUES ($1, $2, CURRENT_TIMESTAMP)
+            ON CONFLICT ("key") DO UPDATE SET "value" = $2, "updatedAt" = CURRENT_TIMESTAMP
+        `, [key, value]);
+    } catch (e: any) {
+        if (e?.code === '42P01') {
+            try {
+                await pool.query(`
+                    CREATE TABLE IF NOT EXISTS "SystemSetting" (
+                        "key" TEXT PRIMARY KEY,
+                        "value" TEXT NOT NULL,
+                        "updatedAt" TIMESTAMP(3) NOT NULL DEFAULT CURRENT_TIMESTAMP
+                    );
+                `);
+                await pool.query(`
+                    INSERT INTO "SystemSetting" ("key", "value", "updatedAt")
+                    VALUES ($1, $2, CURRENT_TIMESTAMP)
+                    ON CONFLICT ("key") DO UPDATE SET "value" = $2, "updatedAt" = CURRENT_TIMESTAMP
+                `, [key, value]);
+                return;
+            } catch {}
+        }
+        console.error(`[DB] Failed to save setting "${key}":`, e?.message || e);
+    }
+}
+
+export async function getAllSystemSettingsDb(): Promise<Record<string, string>> {
+    try {
+        const res = await pool.query('SELECT "key", "value" FROM "SystemSetting"');
+        const map: Record<string, string> = {};
+        for (const row of res.rows) {
+            map[row.key] = row.value;
+        }
+        return map;
+    } catch {
+        return {};
     }
 }

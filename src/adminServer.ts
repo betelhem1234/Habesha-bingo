@@ -808,8 +808,10 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         const fee = parseInt(req.query.bet as string, 10) > 0 ? parseInt(req.query.bet as string, 10) : 10;
         const room = parseInt(req.query.room as string, 10) > 0 ? parseInt(req.query.room as string, 10) : 1;
         const gameManager = gameRooms.getRoom(fee, room);
+        const taken = gameManager.getTakenBoards();
         res.json({
-            boards: gameManager.getBoards(),
+            taken,
+            boards: req.query.full === '1' ? gameManager.getBoards() : undefined,
             players: gameManager.players.length,
             boardCount: gameManager.getTotalBoards(),
             gameState: gameManager.state,

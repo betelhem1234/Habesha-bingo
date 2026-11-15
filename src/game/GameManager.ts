@@ -362,6 +362,22 @@ export class GameManager {
         return { success: false, msg: 'Invalid board number' };
     }
 
+    getTakenBoards(): number[] {
+        this.sanitizePlayers();
+        const takenSet = new Set<number>();
+        for (const p of this.players) {
+            if (p.cards && p.cards.length > 0) {
+                for (const c of p.cards) takenSet.add(c.boardNumber);
+            } else if (p.boardNumber) {
+                takenSet.add(p.boardNumber);
+            }
+        }
+        for (const [bn] of this.pendingReservations) {
+            takenSet.add(bn);
+        }
+        return Array.from(takenSet);
+    }
+
     getBoards(): { number: number; taken: boolean }[] {
         this.sanitizePlayers();
         const takenSet = new Set<number>();

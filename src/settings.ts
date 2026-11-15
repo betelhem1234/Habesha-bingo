@@ -1,0 +1,165 @@
+import fs from 'fs';
+import path from 'path';
+import { getSystemSettingDb, setSystemSettingDb, getAllSystemSettingsDb } from './db';
+
+const SETTINGS_PATH = path.join(process.cwd(), 'data', 'settings.json');
+
+export interface SystemSettingsState {
+    callerVoice: 'male' | 'female';
+    minCallToWin: number;
+    newUserBonus: number;
+    referralBonus: number;
+    botSettings?: any;
+}
+
+const state: SystemSettingsState = {
+    callerVoice: 'male',
+    minCallToWin: 15,
+    newUserBonus: 10,
+    referralBonus: 5,
+    botSettings: {
+        enabled: true,
+        stake10Enabled: true,
+        stake10Target: 20,
+        stake20Enabled: false,
+        stake20Target: 0,
+        targetPlayers: 20,
+        botReactionMinMs: 1800,
+        botReactionMaxMs: 3200,
+        joinPacing: 'dynamic',
+        enabledRooms: [10, 20]
+    }
+};
+
+// 1. Synchronous bootstrap from local JSON if available
+function bootstrapFromFile() {
+    try {
+        if (fs.existsSync(SETTINGS_PATH)) {
+            const raw = fs.readFileSync(SETTINGS_PATH, 'utf8');
+            const data = JSON.parse(raw);
+            if (data.callerVoice === 'female' || data.callerVoice === 'male') {
+                state.callerVoice = data.callerVoice;
+            }
+            if (typeof data.minCallToWin === 'number' && data.minCallToWin >= 4 && data.minCallToWin <= 50) {
+                state.minCallToWin = Math.floor(data.minCallToWin);
+            }
+            if (typeof data.newUserBonus === 'number' && data.newUserBonus >= 0) {
+                state.newUserBonus = Math.floor(data.newUserBonus);
+            }
+            if (typeof data.referralBonus === 'number' && data.referralBonus >= 0) {
+                state.referralBonus = Math.floor(data.referralBonus);
+            }
+            if (data.botSettings && typeof data.botSettings === 'object') {
+                state.botSettings = { ...state.botSettings, ...data.botSettings };
+            }
+        }
+    } catch (e) {
+        console.error('[Settings] Error bootstrapping from settings.json:', e);
+    }
+}
+
+bootstrapFromFile();
+
+function persistToFile() {
+    try {
+        const dir = path.dirname(SETTINGS_PATH);
+        if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(SETTINGS_PATH, JSON.stringify(state, null, 2), 'utf8');
+    } catch (e) {
+        console.error('[Settings] Error writing settings.json:', e);
+    }
+}
+
+// 2. Asynchronous sync from PostgreSQL on startup
+export async function initSettingsFromDb() {
+    try {
+        const dbSettings = await getAllSystemSettingsDb();
+        if (dbSettings.callerVoice === 'male' || dbSettings.callerVoice === 'female') {
+            state.callerVoice = dbSettings.callerVoice;
+        }
+        if (dbSettings.minCallToWin) {
+            const val = parseInt(dbSettings.minCallToWin, 10);
+            if (!isNaN(val) && val >= 4 && val <= 50) state.minCallToWin = val;
+        }
+        if (dbSettings.newUserBonus) {
+            const val = parseInt(dbSettings.newUserBonus, 10);
+            if (!isNaN(val) && val >= 0) state.newUserBonus = val;
+        }
+        if (dbSettings.referralBonus) {
+            const val = parseInt(dbSettings.referralBonus, 10);
+            if (!isNaN(val) && val >= 0) state.referralBonus = val;
+        }
+        if (dbSettings.botSettings) {
+            try {
+                const parsed = JSON.parse(dbSettings.botSettings);
+                if (parsed && typeof parsed === 'object') {
+                    state.botSettings = { ...state.botSettings, ...parsed };
+                }
+            } catch {}
+        }
+
+        // Mirror to local file for fast offline reads
+        persistToFile();
+        console.log(`[Settings] Loaded from persistent PostgreSQL: voice=${state.callerVoice}, newUserBonus=${state.newUserBonus}, referralBonus=${state.referralBonus}, minCallToWin=${state.minCallToWin}`);
+    } catch (e) {
+        console.error('[Settings] Could not load from PostgreSQL, keeping memory/file state:', e);
+    }
+}
+
+// 3. Getters & Setters
+export function getCallerVoice(): 'male' | 'female' {
+    return state.callerVoice;
+}
+
+export function setCallerVoice(voice: 'male' | 'female') {
+    state.callerVoice = voice;
+    persistToFile();
+    setSystemSettingDb('callerVoice', voice).catch(err => console.error('[Settings] DB error saving callerVoice:', err));
+}
+
+export function getMinCallToWin(): number {
+    return state.minCallToWin;
+}
+
+export function setMinCallToWin(calls: number) {
+    const clamped = Math.max(4, Math.min(50, Math.floor(calls)));
+    state.minCallToWin = clamped;
+    persistToFile();
+    setSystemSettingDb('minCallToWin', String(clamped)).catch(err => console.error('[Settings] DB error saving minCallToWin:', err));
+}
+
+export function getNewUserBonus(): number {
+    return state.newUserBonus;
+}
+
+export function getReferralBonus(): number {
+    return state.referralBonus;
+}
+
+export function setBonusSettings(newUserBonus: number, referralBonus: number): { newUserBonus: number; referralBonus: number } {
+    if (typeof newUserBonus !== 'number' || isNaN(newUserBonus) || newUserBonus < 0) {
+        throw new Error('Invalid newUserBonus: must be a non-negative number');
+    }
+    if (typeof referralBonus !== 'number' || isNaN(referralBonus) || referralBonus < 0) {
+        throw new Error('Invalid referralBonus: must be a non-negative number');
+    }
+
+    state.newUserBonus = Math.floor(newUserBonus);
+    state.referralBonus = Math.floor(referralBonus);
+    persistToFile();
+
+    setSystemSettingDb('newUserBonus', String(state.newUserBonus)).catch(err => console.error('[Settings] DB error saving newUserBonus:', err));
+    setSystemSettingDb('referralBonus', String(state.referralBonus)).catch(err => console.error('[Settings] DB error saving referralBonus:', err));
+
+    return { newUserBonus: state.newUserBonus, referralBonus: state.referralBonus };
+}
+
+export function getBotSettings(): any {
+    return state.botSettings ? { ...state.botSettings } : null;
+}
+
+export function setBotSettings(settings: any) {
+    state.botSettings = { ...state.botSettings, ...settings };
+    persistToFile();
+    setSystemSettingDb('botSettings', JSON.stringify(state.botSettings)).catch(err => console.error('[Settings] DB error saving botSettings:', err));
+}

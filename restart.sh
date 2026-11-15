@@ -10,6 +10,25 @@ export DBUS_SESSION_BUS_ADDRESS="${DBUS_SESSION_BUS_ADDRESS:-unix:path=${XDG_RUN
 
 echo "🔄 Restarting Habesha Bingo Stack..."
 
+PORT="$(grep -E '^PORT=' "$DIR/.env" 2>/dev/null | cut -d'"' -f2 || echo "3001")"
+[ -z "$PORT" ] && PORT="3001"
+
+# 0. Ensure backend listens on $PORT first so Cloudflare tunnel checks get HTTP 200 (not 502)
+if [ "$(timeout 2 curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/index.html" 2>/dev/null || echo 000)" != "200" ]; then
+    echo "🤖 Ensuring bingobot.service is up on port $PORT first..."
+    systemctl --user restart bingobot
+    for _ in $(seq 1 15); do
+        [ "$(timeout 2 curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$PORT/index.html" 2>/dev/null || echo 000)" = "200" ] && break
+        sleep 1
+    done
+fi
+
+# 0b. Truncate oversized tunnel log before restarting tunnel
+if [ -f "$DIR/tunnel-3001.log" ] && [ "$(stat -c%s "$DIR/tunnel-3001.log" 2>/dev/null || echo 0)" -gt 10485760 ]; then
+    echo "🧹 Truncating oversized tunnel-3001.log..."
+    : > "$DIR/tunnel-3001.log"
+fi
+
 # 1. Restart tunnel to ensure fresh quick-tunnel
 echo "🌐 Restarting bingobot-tunnel.service..."
 systemctl --user restart bingobot-tunnel
@@ -19,7 +38,7 @@ echo "⏳ Waiting for live tunnel to initialize..."
 LIVE_URL=""
 for i in $(seq 1 15); do
     sleep 2
-    CANDIDATE="$(grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$DIR/tunnel-3001.log" 2>/dev/null | tail -1 || true)"
+    CANDIDATE="$(tail -n 500 "$DIR/tunnel-3001.log" 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1 || true)"
     if [ -n "$CANDIDATE" ]; then
         HOST="${CANDIDATE#https://}"; HOST="${HOST%%/*}"
         IP="$(dig +short @8.8.8.8 "$HOST" A 2>/dev/null | grep -Ev '^$' | head -1 || true)"
@@ -37,7 +56,7 @@ done
 
 # Fallback to latest candidate if DNS probe timed out
 if [ -z "$LIVE_URL" ]; then
-    LIVE_URL="$(grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' "$DIR/tunnel-3001.log" 2>/dev/null | tail -1 || true)"
+    LIVE_URL="$(tail -n 500 "$DIR/tunnel-3001.log" 2>/dev/null | grep -aoE 'https://[a-z0-9-]+\.trycloudflare\.com' | tail -1 || true)"
 fi
 
 # 3. Update .env BINGO_APP_URL with the verified tunnel URL
