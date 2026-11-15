@@ -561,29 +561,33 @@
                             <div style="background:rgba(250,204,21,0.06); border:1px solid rgba(250,204,21,0.25); border-radius:10px; padding:14px;">
                                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                                     <div style="font-size:13px; font-weight:700; color:#facc15;">🟡 Stake 1 (10 Birr Room)</div>
-                                    <span id="bot-stake10-badge" style="font-size:11px; padding:2px 8px; border-radius:10px; background:rgba(34,197,94,0.2); color:#4ade80; font-weight:700;">🟢 ON</span>
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <span id="bot-stake10-saved" style="font-size:11px; font-weight:700;"></span>
+                                        <span id="bot-stake10-badge" style="font-size:11px; padding:2px 8px; border-radius:10px; background:rgba(34,197,94,0.2); color:#4ade80; font-weight:700;">🟢 ON</span>
+                                    </div>
                                 </div>
                                 <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
                                     <div style="flex:1; min-width:130px;">
                                         <label style="display:block; font-size:11px; color:#cbd5e1; margin-bottom:4px; font-weight:600;">STAKE 1 STATUS</label>
-                                        <select id="bot-stake10-enabled" onchange="updateStakeBadges()" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(250,204,21,0.3); background:rgba(0,0,0,0.5); color:#fff; font-size:13px; font-weight:700; box-sizing:border-box;">
+                                        <select id="bot-stake10-enabled" onchange="updateStakeBadges(); saveBotSettings();" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(250,204,21,0.3); background:rgba(0,0,0,0.5); color:#fff; font-size:13px; font-weight:700; box-sizing:border-box;">
                                             <option value="true">🟢 ON (Auto-Fill)</option>
                                             <option value="false">🔴 OFF (No Bots)</option>
                                         </select>
                                     </div>
                                     <div style="flex:1; min-width:130px;">
                                         <label style="display:block; font-size:11px; color:#cbd5e1; margin-bottom:4px; font-weight:600;">TARGET BOTS (ብዛት)</label>
-                                        <input type="number" id="bot-stake10-target" min="0" max="300" step="1" placeholder="20" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(250,204,21,0.3); background:rgba(0,0,0,0.5); color:#fff; font-size:13px; font-weight:700; box-sizing:border-box;">
+                                        <input type="number" id="bot-stake10-target" min="0" max="300" step="1" placeholder="20" onchange="saveBotSettings()" onblur="saveBotSettings()" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(250,204,21,0.3); background:rgba(0,0,0,0.5); color:#fff; font-size:13px; font-weight:700; box-sizing:border-box;">
                                     </div>
                                 </div>
                                 <div style="font-size:12px; color:#cbd5e1; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
                                     <span>Active In Lobby: <strong id="bot-count-10" style="color:#facc15;">0</strong> bots</span>
                                 </div>
-                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
                                     <button type="button" onclick="injectBots(5, 10)" class="action-btn-sm" style="background:rgba(250,204,21,0.15); border:1px solid rgba(250,204,21,0.35); color:#facc15; padding:5px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:11px;">+ 5 Bots</button>
                                     <button type="button" onclick="injectBots(10, 10)" class="action-btn-sm" style="background:rgba(250,204,21,0.15); border:1px solid rgba(250,204,21,0.35); color:#facc15; padding:5px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:11px;">+ 10 Bots</button>
                                     <button type="button" onclick="injectBots(20, 10)" class="action-btn-sm" style="background:rgba(250,204,21,0.15); border:1px solid rgba(250,204,21,0.35); color:#facc15; padding:5px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:11px;">+ 20 Bots</button>
                                     <button type="button" onclick="clearBots(10)" class="action-btn-sm" style="background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.4); color:#fca5a5; padding:5px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:11px;">🧹 Clear 10B Bots</button>
+                                    <button type="button" onclick="saveBotSettings()" class="action-btn-sm" style="background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.4); color:#4ade80; padding:5px 12px; border-radius:6px; cursor:pointer; font-weight:700; font-size:11px; margin-left:auto;">💾 Save Stake 1</button>
                                 </div>
                             </div>
 
@@ -591,29 +595,33 @@
                             <div style="background:rgba(192,132,252,0.06); border:1px solid rgba(192,132,252,0.25); border-radius:10px; padding:14px;">
                                 <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px;">
                                     <div style="font-size:13px; font-weight:700; color:#c084fc;">🟣 Stake 2 (20 Birr Room)</div>
-                                    <span id="bot-stake20-badge" style="font-size:11px; padding:2px 8px; border-radius:10px; background:rgba(239,68,68,0.2); color:#f87171; font-weight:700;">🔴 OFF</span>
+                                    <div style="display:flex; align-items:center; gap:8px;">
+                                        <span id="bot-stake20-saved" style="font-size:11px; font-weight:700;"></span>
+                                        <span id="bot-stake20-badge" style="font-size:11px; padding:2px 8px; border-radius:10px; background:rgba(239,68,68,0.2); color:#f87171; font-weight:700;">🔴 OFF</span>
+                                    </div>
                                 </div>
                                 <div style="display:flex; gap:10px; flex-wrap:wrap; margin-bottom:12px;">
                                     <div style="flex:1; min-width:130px;">
                                         <label style="display:block; font-size:11px; color:#cbd5e1; margin-bottom:4px; font-weight:600;">STAKE 2 STATUS</label>
-                                        <select id="bot-stake20-enabled" onchange="updateStakeBadges()" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(192,132,252,0.3); background:rgba(0,0,0,0.5); color:#fff; font-size:13px; font-weight:700; box-sizing:border-box;">
+                                        <select id="bot-stake20-enabled" onchange="updateStakeBadges(); saveBotSettings();" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(192,132,252,0.3); background:rgba(0,0,0,0.5); color:#fff; font-size:13px; font-weight:700; box-sizing:border-box;">
                                             <option value="true">🟢 ON (Auto-Fill)</option>
                                             <option value="false">🔴 OFF (No Bots)</option>
                                         </select>
                                     </div>
                                     <div style="flex:1; min-width:130px;">
                                         <label style="display:block; font-size:11px; color:#cbd5e1; margin-bottom:4px; font-weight:600;">TARGET BOTS (ብዛት)</label>
-                                        <input type="number" id="bot-stake20-target" min="0" max="300" step="1" placeholder="0" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(192,132,252,0.3); background:rgba(0,0,0,0.5); color:#fff; font-size:13px; font-weight:700; box-sizing:border-box;">
+                                        <input type="number" id="bot-stake20-target" min="0" max="300" step="1" placeholder="0" onchange="saveBotSettings()" onblur="saveBotSettings()" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(192,132,252,0.3); background:rgba(0,0,0,0.5); color:#fff; font-size:13px; font-weight:700; box-sizing:border-box;">
                                     </div>
                                 </div>
                                 <div style="font-size:12px; color:#cbd5e1; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
                                     <span>Active In Lobby: <strong id="bot-count-20" style="color:#c084fc;">0</strong> bots</span>
                                 </div>
-                                <div style="display:flex; gap:6px; flex-wrap:wrap;">
+                                <div style="display:flex; gap:6px; flex-wrap:wrap; align-items:center;">
                                     <button type="button" onclick="injectBots(5, 20)" class="action-btn-sm" style="background:rgba(192,132,252,0.15); border:1px solid rgba(192,132,252,0.35); color:#c084fc; padding:5px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:11px;">+ 5 Bots</button>
                                     <button type="button" onclick="injectBots(10, 20)" class="action-btn-sm" style="background:rgba(192,132,252,0.15); border:1px solid rgba(192,132,252,0.35); color:#c084fc; padding:5px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:11px;">+ 10 Bots</button>
                                     <button type="button" onclick="injectBots(20, 20)" class="action-btn-sm" style="background:rgba(192,132,252,0.15); border:1px solid rgba(192,132,252,0.35); color:#c084fc; padding:5px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:11px;">+ 20 Bots</button>
                                     <button type="button" onclick="clearBots(20)" class="action-btn-sm" style="background:rgba(239,68,68,0.2); border:1px solid rgba(239,68,68,0.4); color:#fca5a5; padding:5px 10px; border-radius:6px; cursor:pointer; font-weight:700; font-size:11px;">🧹 Clear 20B Bots</button>
+                                    <button type="button" onclick="saveBotSettings()" class="action-btn-sm" style="background:rgba(34,197,94,0.2); border:1px solid rgba(34,197,94,0.4); color:#4ade80; padding:5px 12px; border-radius:6px; cursor:pointer; font-weight:700; font-size:11px; margin-left:auto;">💾 Save Stake 2</button>
                                 </div>
                             </div>
                         </div>
@@ -622,14 +630,14 @@
                         <div style="background:rgba(0,0,0,0.25); border:1px solid rgba(255,255,255,0.08); border-radius:8px; padding:12px; display:flex; gap:14px; flex-wrap:wrap; align-items:flex-end;">
                             <div style="flex:1; min-width:140px;">
                                 <label style="display:block; font-size:11px; color:#cbd5e1; margin-bottom:4px; font-weight:600;">MASTER SWITCH</label>
-                                <select id="bot-input-enabled" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.5); color:#fff; font-size:13px; font-weight:700; box-sizing:border-box;">
+                                <select id="bot-input-enabled" onchange="saveBotSettings()" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.5); color:#fff; font-size:13px; font-weight:700; box-sizing:border-box;">
                                     <option value="true">🟢 System Enabled</option>
                                     <option value="false">🔴 Master Off (Kill All Bots)</option>
                                 </select>
                             </div>
                             <div style="flex:1; min-width:160px;">
                                 <label style="display:block; font-size:11px; color:#cbd5e1; margin-bottom:4px; font-weight:600;">SELECTION PACING (ፍጥነት)</label>
-                                <select id="bot-input-join-pacing" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.5); color:#fff; font-size:13px; font-weight:700; box-sizing:border-box;">
+                                <select id="bot-input-join-pacing" onchange="saveBotSettings()" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.5); color:#fff; font-size:13px; font-weight:700; box-sizing:border-box;">
                                     <option value="dynamic" selected>⚡ Adaptive (Fits 30s countdown)</option>
                                     <option value="rapid">🚀 Rapid (200ms – 450ms)</option>
                                     <option value="relaxed">🐢 Casual (800ms – 1400ms)</option>
@@ -637,7 +645,7 @@
                             </div>
                             <div style="flex:1; min-width:160px;">
                                 <label style="display:block; font-size:11px; color:#cbd5e1; margin-bottom:4px; font-weight:600;">WIN REACTION (የማሸነፊያ)</label>
-                                <select id="bot-input-speed" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.5); color:#fff; font-size:13px; font-weight:700; box-sizing:border-box;">
+                                <select id="bot-input-speed" onchange="saveBotSettings()" style="width:100%; padding:8px 10px; border-radius:8px; border:1px solid rgba(255,255,255,0.2); background:rgba(0,0,0,0.5); color:#fff; font-size:13px; font-weight:700; box-sizing:border-box;">
                                     <option value="fast">⚡ Fast (1.5s – 2.5s claim)</option>
                                     <option value="normal" selected>🎯 Normal (1.8s – 3.2s claim)</option>
                                     <option value="relaxed">🐢 Relaxed (2.8s – 4.5s claim)</option>
@@ -647,7 +655,6 @@
                                 <button onclick="saveBotSettings()" class="btn-primary" style="margin:0; padding:8px 20px; background:linear-gradient(135deg, #8b5cf6, #6d28d9); border:none; cursor:pointer; font-weight:700; border-radius:8px; box-shadow:0 4px 12px rgba(139,92,246,0.3); font-size:13px;">💾 Save Bot Settings</button>
                             </div>
                         </div>
-                    </div>
                     </div>
 
                     <!-- Security & Banned IPs Control Card -->

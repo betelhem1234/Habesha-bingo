@@ -41,6 +41,16 @@ export class GameRooms {
         setMinCallToWinSetting(this.minCallToWin);
     }
 
+    public reloadSettings() {
+        this.callerVoice = getCallerVoiceSetting();
+        this.minCallToWin = getMinCallToWinSetting();
+        this.botService.reloadSettings();
+        for (const gm of this.rooms.values()) {
+            gm.minCallToWin = this.minCallToWin;
+        }
+        console.log(`[GameRooms] Settings reloaded: voice=${this.callerVoice}, minCall=${this.minCallToWin}, botsEnabled=${this.botService.getSettings().enabled}, stake10Target=${this.botService.getSettings().stake10Target}`);
+    }
+
     getCallerVoice(): 'male' | 'female' {
         return getCallerVoiceSetting();
     }

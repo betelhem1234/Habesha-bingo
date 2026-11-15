@@ -32,7 +32,12 @@ const state: SystemSettingsState = {
 };
 
 // 1. Synchronous bootstrap from local JSON if available
+function isTestMode(): boolean {
+    return process.env.NODE_ENV === 'test' || !!process.env.NODE_TEST_CONTEXT;
+}
+
 function bootstrapFromFile() {
+    if (isTestMode()) return;
     try {
         if (fs.existsSync(SETTINGS_PATH)) {
             const raw = fs.readFileSync(SETTINGS_PATH, 'utf8');
@@ -61,6 +66,7 @@ function bootstrapFromFile() {
 bootstrapFromFile();
 
 function persistToFile() {
+    if (isTestMode()) return;
     try {
         const dir = path.dirname(SETTINGS_PATH);
         if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
@@ -72,6 +78,7 @@ function persistToFile() {
 
 // 2. Asynchronous sync from PostgreSQL on startup
 export async function initSettingsFromDb() {
+    if (isTestMode()) return;
     try {
         const dbSettings = await getAllSystemSettingsDb();
         if (dbSettings.callerVoice === 'male' || dbSettings.callerVoice === 'female') {
@@ -113,6 +120,7 @@ export function getCallerVoice(): 'male' | 'female' {
 
 export function setCallerVoice(voice: 'male' | 'female') {
     state.callerVoice = voice;
+    if (isTestMode()) return;
     persistToFile();
     setSystemSettingDb('callerVoice', voice).catch(err => console.error('[Settings] DB error saving callerVoice:', err));
 }
@@ -124,6 +132,7 @@ export function getMinCallToWin(): number {
 export function setMinCallToWin(calls: number) {
     const clamped = Math.max(4, Math.min(50, Math.floor(calls)));
     state.minCallToWin = clamped;
+    if (isTestMode()) return;
     persistToFile();
     setSystemSettingDb('minCallToWin', String(clamped)).catch(err => console.error('[Settings] DB error saving minCallToWin:', err));
 }
@@ -146,6 +155,9 @@ export function setBonusSettings(newUserBonus: number, referralBonus: number): {
 
     state.newUserBonus = Math.floor(newUserBonus);
     state.referralBonus = Math.floor(referralBonus);
+    if (isTestMode()) {
+        return { newUserBonus: state.newUserBonus, referralBonus: state.referralBonus };
+    }
     persistToFile();
 
     setSystemSettingDb('newUserBonus', String(state.newUserBonus)).catch(err => console.error('[Settings] DB error saving newUserBonus:', err));
@@ -160,6 +172,7 @@ export function getBotSettings(): any {
 
 export function setBotSettings(settings: any) {
     state.botSettings = { ...state.botSettings, ...settings };
+    if (isTestMode()) return;
     persistToFile();
     setSystemSettingDb('botSettings', JSON.stringify(state.botSettings)).catch(err => console.error('[Settings] DB error saving botSettings:', err));
 }

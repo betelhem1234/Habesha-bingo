@@ -2596,6 +2596,7 @@ async function startApp() {
     try {
         await initDbSchema();
         await initSettingsFromDb();
+        gameRooms.reloadSettings();
     } catch (err: any) {
         console.error('[Bot] Database schema initialization error:', err?.message || err);
     }

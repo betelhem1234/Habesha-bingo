@@ -7,7 +7,7 @@
     "postinstall": "node scripts/patch-grammy.js",
     "db:generate": "prisma generate",
     "db:migrate": "prisma migrate dev",
-    "test": "node --import tsx --test tests/*.test.ts",
+    "test": "NODE_ENV=test node --import tsx --test tests/*.test.ts",
     "test:load": "tsx scripts/stressTest.ts"
   },
   "keywords": [],

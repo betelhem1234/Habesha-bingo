@@ -311,19 +311,31 @@ export class BotService {
         this.loadSettings();
     }
 
-    private loadSettings() {
+    public loadSettings() {
         try {
             const stored = getBotSettings();
             if (stored) {
+                const s10Target = typeof stored.stake10Target === 'number' && !isNaN(stored.stake10Target)
+                    ? Math.max(0, stored.stake10Target)
+                    : (typeof stored.targetPlayers === 'number' && !isNaN(stored.targetPlayers) ? Math.max(0, stored.targetPlayers) : 20);
+
+                const s20Target = typeof stored.stake20Target === 'number' && !isNaN(stored.stake20Target)
+                    ? Math.max(0, stored.stake20Target)
+                    : 0;
+
+                const targetPlayers = typeof stored.targetPlayers === 'number' && !isNaN(stored.targetPlayers)
+                    ? Math.max(0, stored.targetPlayers)
+                    : s10Target;
+
                 this.settings = {
                     ...this.settings,
                     ...stored,
                     enabled: stored.enabled !== undefined ? !!stored.enabled : true,
                     stake10Enabled: stored.stake10Enabled !== undefined ? !!stored.stake10Enabled : true,
-                    stake10Target: stored.stake10Target !== undefined ? Math.max(0, Number(stored.stake10Target)) : (Number(stored.targetPlayers) || 20),
+                    stake10Target: s10Target,
                     stake20Enabled: stored.stake20Enabled !== undefined ? !!stored.stake20Enabled : false,
-                    stake20Target: stored.stake20Target !== undefined ? Math.max(0, Number(stored.stake20Target)) : 0,
-                    targetPlayers: Number(stored.targetPlayers) || 20,
+                    stake20Target: s20Target,
+                    targetPlayers: targetPlayers,
                     botReactionMinMs: Number(stored.botReactionMinMs) || 1800,
                     botReactionMaxMs: Number(stored.botReactionMaxMs) || 3200,
                     joinPacing: ['dynamic', 'rapid', 'relaxed'].includes(stored.joinPacing) ? stored.joinPacing : 'dynamic',
@@ -333,6 +345,10 @@ export class BotService {
         } catch (e) {
             console.error('[BotService] Error reading settings:', e);
         }
+    }
+
+    public reloadSettings() {
+        this.loadSettings();
     }
 
     public saveSettings() {

@@ -1787,9 +1787,15 @@ async function fetchBotSettings() {
         if (!botInputsDirty) {
             if (enabledSelect) enabledSelect.value = s.enabled ? 'true' : 'false';
             if (s10EnabledSelect) s10EnabledSelect.value = s.stake10Enabled !== false ? 'true' : 'false';
-            if (s10TargetInput) s10TargetInput.value = s.stake10Target !== undefined ? s.stake10Target : (s.targetPlayers || 20);
+            if (s10TargetInput) {
+                const s10Val = s.stake10Target !== undefined ? s.stake10Target : (s.targetPlayers !== undefined ? s.targetPlayers : 20);
+                s10TargetInput.value = s10Val;
+            }
             if (s20EnabledSelect) s20EnabledSelect.value = s.stake20Enabled ? 'true' : 'false';
-            if (s20TargetInput) s20TargetInput.value = s.stake20Target !== undefined ? s.stake20Target : 0;
+            if (s20TargetInput) {
+                const s20Val = s.stake20Target !== undefined ? s.stake20Target : 0;
+                s20TargetInput.value = s20Val;
+            }
 
             const joinPacingSelect = document.getElementById('bot-input-join-pacing');
             if (joinPacingSelect) {
@@ -1833,9 +1839,9 @@ async function saveBotSettings() {
     const s20TgtEl = document.getElementById('bot-stake20-target');
 
     const stake10Enabled = s10El ? s10El.value === 'true' : true;
-    const stake10Target = s10TgtEl ? Math.max(0, parseInt(s10TgtEl.value, 10) || 0) : 20;
+    const stake10Target = s10TgtEl && s10TgtEl.value !== '' ? Math.max(0, parseInt(s10TgtEl.value, 10) || 0) : 20;
     const stake20Enabled = s20El ? s20El.value === 'true' : false;
-    const stake20Target = s20TgtEl ? Math.max(0, parseInt(s20TgtEl.value, 10) || 0) : 0;
+    const stake20Target = s20TgtEl && s20TgtEl.value !== '' ? Math.max(0, parseInt(s20TgtEl.value, 10) || 0) : 0;
 
     const joinPacing = document.getElementById('bot-input-join-pacing') ? document.getElementById('bot-input-join-pacing').value : 'dynamic';
     const speed = document.getElementById('bot-input-speed').value;
@@ -1851,10 +1857,14 @@ async function saveBotSettings() {
     }
 
     const statusEl = document.getElementById('bot-save-status');
+    const s10StatusEl = document.getElementById('bot-stake10-saved');
+    const s20StatusEl = document.getElementById('bot-stake20-saved');
     if (statusEl) {
         statusEl.textContent = 'Saving...';
         statusEl.style.color = '#38bdf8';
     }
+    if (s10StatusEl) { s10StatusEl.textContent = 'Saving...'; s10StatusEl.style.color = '#38bdf8'; }
+    if (s20StatusEl) { s20StatusEl.textContent = 'Saving...'; s20StatusEl.style.color = '#38bdf8'; }
 
     try {
         const res = await authFetch('/api/admin/bots/settings', {
@@ -1876,9 +1886,19 @@ async function saveBotSettings() {
         if (data.success) {
             botInputsDirty = false;
             if (statusEl) {
-                statusEl.textContent = '✅ Saved successfully!';
+                statusEl.textContent = '✅ Saved to database!';
                 statusEl.style.color = '#4ade80';
-                setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3000);
+                setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3500);
+            }
+            if (s10StatusEl) {
+                s10StatusEl.textContent = '✅ Saved!';
+                s10StatusEl.style.color = '#4ade80';
+                setTimeout(() => { if (s10StatusEl) s10StatusEl.textContent = ''; }, 3500);
+            }
+            if (s20StatusEl) {
+                s20StatusEl.textContent = '✅ Saved!';
+                s20StatusEl.style.color = '#4ade80';
+                setTimeout(() => { if (s20StatusEl) s20StatusEl.textContent = ''; }, 3500);
             }
             fetchBotSettings();
         } else {
