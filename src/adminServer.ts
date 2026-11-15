@@ -1,6 +1,7 @@
 import fs from 'fs';
 import path from 'path';
 import express from 'express';
+import compression from 'compression';
 import cors from 'cors';
 import multer from 'multer';
 import { Bot, InputFile, InlineKeyboard } from 'grammy';
@@ -49,6 +50,17 @@ const upload = multer({
 
 export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     const app = express();
+
+    // Enable gzip/deflate compression for responses, excluding SSE streams
+    app.use(compression({
+        threshold: 1024,
+        filter: (req, res) => {
+            if (req.headers.accept === 'text/event-stream' || req.path.includes('/events')) {
+                return false;
+            }
+            return compression.filter(req, res);
+        }
+    }));
 
     // 1. Health & monitoring endpoint (always accessible for UptimeRobot/Render)
     app.get('/api/health', async (_req, res) => {
@@ -218,13 +230,20 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         next();
     });
     
-    // Serve static files from public directory
+    // Serve static files from public directory with optimized caching
     app.use(express.static(path.join(__dirname, 'public'), {
+        etag: true,
+        lastModified: true,
         setHeaders: (res, filePath) => {
-            if (filePath.endsWith('.html') || filePath.endsWith('.js') || filePath.endsWith('.css')) {
-                res.setHeader('Cache-Control', 'no-store, no-cache, must-revalidate, proxy-revalidate');
-                res.setHeader('Pragma', 'no-cache');
-                res.setHeader('Expires', '0');
+            if (filePath.endsWith('.html')) {
+                // HTML files revalidate with ETag to ensure latest updates without downloading full payload when unchanged
+                res.setHeader('Cache-Control', 'public, max-age=0, must-revalidate');
+            } else if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
+                // Scripts and stylesheets cached for 1 hour with revalidation
+                res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+            } else {
+                // Media assets (images, audio) cached for 24 hours
+                res.setHeader('Cache-Control', 'public, max-age=86400');
             }
         }
     }));
