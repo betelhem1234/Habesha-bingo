@@ -1706,6 +1706,7 @@ async function saveWinCallThreshold() {
         });
         const data = await res.json();
         if (data.success) {
+            botInputsDirty = false;
             if (statusEl) {
                 statusEl.textContent = `✅ Saved! Minimum ${data.minCallToWin} calls (~${data.minCallToWin * 4}s)`;
                 statusEl.style.color = '#10b981';
@@ -1752,8 +1753,23 @@ function updateStakeBadges() {
     }
 }
 
+let botInputsDirty = false;
+
+function attachBotInputListeners() {
+    const ids = ['bot-input-enabled', 'bot-stake10-enabled', 'bot-stake10-target', 'bot-stake20-enabled', 'bot-stake20-target', 'bot-input-join-pacing', 'bot-input-speed'];
+    ids.forEach(id => {
+        const el = document.getElementById(id);
+        if (el && !el.dataset.dirtyAttached) {
+            el.dataset.dirtyAttached = '1';
+            el.addEventListener('input', () => { botInputsDirty = true; });
+            el.addEventListener('change', () => { botInputsDirty = true; });
+        }
+    });
+}
+
 async function fetchBotSettings() {
     try {
+        attachBotInputListeners();
         const res = await authFetch('/api/admin/bots');
         if (!res.ok) return;
         const data = await res.json();
@@ -1768,21 +1784,23 @@ async function fetchBotSettings() {
         const s20EnabledSelect = document.getElementById('bot-stake20-enabled');
         const s20TargetInput = document.getElementById('bot-stake20-target');
 
-        if (enabledSelect) enabledSelect.value = s.enabled ? 'true' : 'false';
-        if (s10EnabledSelect) s10EnabledSelect.value = s.stake10Enabled !== false ? 'true' : 'false';
-        if (s10TargetInput) s10TargetInput.value = s.stake10Target !== undefined ? s.stake10Target : (s.targetPlayers || 20);
-        if (s20EnabledSelect) s20EnabledSelect.value = s.stake20Enabled ? 'true' : 'false';
-        if (s20TargetInput) s20TargetInput.value = s.stake20Target !== undefined ? s.stake20Target : 0;
+        if (!botInputsDirty) {
+            if (enabledSelect) enabledSelect.value = s.enabled ? 'true' : 'false';
+            if (s10EnabledSelect) s10EnabledSelect.value = s.stake10Enabled !== false ? 'true' : 'false';
+            if (s10TargetInput) s10TargetInput.value = s.stake10Target !== undefined ? s.stake10Target : (s.targetPlayers || 20);
+            if (s20EnabledSelect) s20EnabledSelect.value = s.stake20Enabled ? 'true' : 'false';
+            if (s20TargetInput) s20TargetInput.value = s.stake20Target !== undefined ? s.stake20Target : 0;
 
-        const joinPacingSelect = document.getElementById('bot-input-join-pacing');
-        if (joinPacingSelect) {
-            joinPacingSelect.value = s.joinPacing || 'dynamic';
-        }
+            const joinPacingSelect = document.getElementById('bot-input-join-pacing');
+            if (joinPacingSelect) {
+                joinPacingSelect.value = s.joinPacing || 'dynamic';
+            }
 
-        if (speedSelect) {
-            if (s.botReactionMinMs <= 1600) speedSelect.value = 'fast';
-            else if (s.botReactionMinMs >= 2500) speedSelect.value = 'relaxed';
-            else speedSelect.value = 'normal';
+            if (speedSelect) {
+                if (s.botReactionMinMs <= 1600) speedSelect.value = 'fast';
+                else if (s.botReactionMinMs >= 2500) speedSelect.value = 'relaxed';
+                else speedSelect.value = 'normal';
+            }
         }
 
         if (statusBadge) {
@@ -1856,6 +1874,7 @@ async function saveBotSettings() {
         });
         const data = await res.json();
         if (data.success) {
+            botInputsDirty = false;
             if (statusEl) {
                 statusEl.textContent = '✅ Saved successfully!';
                 statusEl.style.color = '#4ade80';
