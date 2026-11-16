@@ -2,6 +2,8 @@ FROM node:22-alpine
 
 WORKDIR /app
 
+RUN apk add --no-cache postgresql-client
+
 ARG DATABASE_URL=postgresql://build:build@localhost:5432/build
 ENV DATABASE_URL=$DATABASE_URL
 

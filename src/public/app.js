@@ -53,6 +53,7 @@ function switchAdminTab(tabId) {
         fetchAdminAuditStats();
     } else if (tabId === 'tab-controls') {
         loadSecurityStats();
+        checkDatabaseBackupStatus();
     }
 }
 window.switchAdminTab = switchAdminTab;
@@ -3251,6 +3252,103 @@ function renderAdminAuditStats(data) {
 }
 
 window.fetchAdminAuditStats = fetchAdminAuditStats;
+
+// ----------------------------------------------------
+// 12. Database Backup & Disaster Recovery
+// ----------------------------------------------------
+
+async function checkDatabaseBackupStatus() {
+    const statusText = document.getElementById('backup-status-text');
+    if (!statusText) return;
+
+    const token = getAdminToken();
+    if (!token) return;
+
+    try {
+        const res = await fetch('/api/admin/database/status', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success && data.info) {
+            if (data.info.exists) {
+                const sizeKb = (data.info.size / 1024).toFixed(1);
+                const dateStr = data.info.mtime ? new Date(data.info.mtime).toLocaleString() : '';
+                statusText.innerHTML = `✅ Server file: <strong style="color:#38bdf8;">${sizeKb} KB</strong> (${dateStr})`;
+            } else {
+                statusText.textContent = 'No server backup created yet. Click download to generate.';
+            }
+        }
+    } catch (e) {
+        // Non-blocking
+    }
+}
+
+async function downloadDatabaseDump() {
+    const btn = document.getElementById('btn-download-db-dump');
+    const spinner = document.getElementById('backup-spinner');
+    const statusText = document.getElementById('backup-status-text');
+
+    const token = getAdminToken();
+    if (!token) {
+        alert('Please log in as an administrator first.');
+        return;
+    }
+
+    try {
+        if (btn) btn.disabled = true;
+        if (spinner) spinner.style.display = 'inline-block';
+        if (statusText) statusText.textContent = '⏳ Dumping Neon PostgreSQL database...';
+
+        const res = await fetch(`/api/admin/database/dump?token=${encodeURIComponent(token)}`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+
+        if (!res.ok) {
+            const errData = await res.json().catch(() => ({}));
+            throw new Error(errData.error || errData.msg || `Server error (${res.status})`);
+        }
+
+        // Extract client filename from Content-Disposition header
+        let filename = 'neon_backup.sql';
+        const disposition = res.headers.get('Content-Disposition') || res.headers.get('content-disposition');
+        if (disposition) {
+            const match = disposition.match(/filename=["']?([^"';]+)["']?/i);
+            if (match && match[1]) {
+                filename = match[1].trim();
+            }
+        }
+
+        const blob = await res.blob();
+        const url = window.URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.style.display = 'none';
+        a.href = url;
+        a.download = filename;
+        document.body.appendChild(a);
+        a.click();
+        setTimeout(() => {
+            document.body.removeChild(a);
+            window.URL.revokeObjectURL(url);
+        }, 2000);
+
+        const sizeKb = (blob.size / 1024).toFixed(1);
+        if (statusText) {
+            statusText.innerHTML = `✅ Downloaded: <strong style="color:#4ade80;">${filename}</strong> (${sizeKb} KB)`;
+        }
+    } catch (err) {
+        alert(`Failed to download database backup: ${err.message}`);
+        if (statusText) {
+            statusText.textContent = `❌ Backup error: ${err.message}`;
+        }
+    } finally {
+        if (btn) btn.disabled = false;
+        if (spinner) spinner.style.display = 'none';
+    }
+}
+
+window.checkDatabaseBackupStatus = checkDatabaseBackupStatus;
+window.downloadDatabaseDump = downloadDatabaseDump;
 
 
 

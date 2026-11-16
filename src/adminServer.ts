@@ -26,6 +26,7 @@ import { requirePlayerOwnership, authenticateCaller } from './playerAuth';
 import { monitorEventLoopDelay } from 'perf_hooks';
 import { getNewUserBonus, getReferralBonus, setBonusSettings } from './bonus';
 import { syncTelegramRequestNotification } from './bot';
+import { generateDatabaseBackup, getLatestBackupInfo } from './dbBackup';
 
 const loopDelayHistogram = monitorEventLoopDelay({ resolution: 20 });
 loopDelayHistogram.enable();
@@ -261,7 +262,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     function adminAuthMiddleware(req: express.Request, res: express.Response, next: express.NextFunction) {
         const authHeader = req.headers['authorization'];
         const bearerToken = authHeader && authHeader.startsWith('Bearer ') ? authHeader.slice(7).trim() : null;
-        const queryToken = typeof req.query.token === 'string' ? req.query.token : null;
+        const queryToken = typeof req.query.token === 'string' ? req.query.token : (typeof req.query.adminToken === 'string' ? req.query.adminToken : null);
         const customToken = req.headers['x-admin-token'] as string | undefined;
 
         const token = bearerToken || queryToken || customToken;
@@ -3022,6 +3023,43 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             removed,
             totalPlayers: gm.players.length
         });
+    });
+
+    // Database Disaster Recovery: Get latest backup status
+    app.get('/api/admin/database/status', adminAuthMiddleware, async (_req, res) => {
+        try {
+            const info = await getLatestBackupInfo();
+            res.json({ success: true, info });
+        } catch (e: any) {
+            res.status(500).json({ success: false, error: e?.message || 'Failed to check backup status' });
+        }
+    });
+
+    // Database Disaster Recovery: 1-Click Dump & Download
+    // Overwrites backups/latest_neon_backup.sql on server (zero storage bloat)
+    // Streams timestamped file to client for local storage
+    app.get('/api/admin/database/dump', adminAuthMiddleware, async (_req, res) => {
+        try {
+            console.log('[Admin Backup] Starting database dump...');
+            const backup = await generateDatabaseBackup();
+            console.log(`[Admin Backup] Completed dump: ${backup.clientFilename} (${backup.size} bytes)`);
+
+            res.setHeader('Content-Type', 'application/sql');
+            res.setHeader('Content-Disposition', `attachment; filename="${backup.clientFilename}"`);
+            res.setHeader('X-Backup-Size', backup.size.toString());
+            res.setHeader('X-Backup-Timestamp', backup.timestamp);
+
+            res.download(backup.filePath, backup.clientFilename, (err) => {
+                if (err && !res.headersSent) {
+                    res.status(500).json({ success: false, error: 'Failed to stream backup file' });
+                }
+            });
+        } catch (e: any) {
+            console.error('[Admin Backup Error]', e);
+            if (!res.headersSent) {
+                res.status(500).json({ success: false, error: e?.message || 'Database dump failed' });
+            }
+        }
     });
 
     app.listen(Number(config.PORT), '0.0.0.0', () => {
