@@ -621,6 +621,9 @@ function mulberry32(seed){
 }
 
 let currentShuffleSeed = 0;
+try {
+  currentShuffleSeed = Number(sessionStorage.getItem('lastShuffleSeed') || 0);
+} catch(e){}
 
 function combineSeedClient(boardNumber, shuffleSalt){
   if(!shuffleSalt) return boardNumber;
@@ -922,9 +925,8 @@ async function poll(){
 
     if(boardData.shuffleSeed !== undefined && boardData.shuffleSeed !== currentShuffleSeed){
       currentShuffleSeed = boardData.shuffleSeed;
-      if(selectedBoards && selectedBoards.length > 0){
-        renderPreviews();
-      }
+      try { sessionStorage.setItem('lastShuffleSeed', currentShuffleSeed); } catch(e){}
+      renderPreviews();
     }
 
     if(boardData.lobbyCountdown !== undefined){

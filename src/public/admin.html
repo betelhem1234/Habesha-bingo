@@ -1154,10 +1154,12 @@
     </div>
     
     <script src="https://telegram.org/js/telegram-web-app.js"></script>
-    <script src="app.js"></script>
+    <script src="app.js?v=2.2"></script>
     <script>
         if (typeof fetchCallerVoice === 'function') fetchCallerVoice();
         if (typeof fetchWinCallThreshold === 'function') fetchWinCallThreshold();
+        if (typeof loadBoardShuffleStatus === 'function') loadBoardShuffleStatus();
+        if (typeof checkDatabaseBackupStatus === 'function') checkDatabaseBackupStatus();
     </script>
 </body>
 </html>

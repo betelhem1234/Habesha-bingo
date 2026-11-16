@@ -297,7 +297,9 @@ async function refreshAllData() {
         fetchAdminBanks(),
         fetchWithdrawalBanks(),
         fetchAdminAuditStats(),
-        loadSecurityStats()
+        loadSecurityStats(),
+        checkDatabaseBackupStatus(),
+        loadBoardShuffleStatus()
     ]);
 }
 
@@ -3262,14 +3264,8 @@ async function checkDatabaseBackupStatus() {
     const statusText = document.getElementById('backup-status-text');
     if (!statusText) return;
 
-    const token = getAdminToken();
-    if (!token) return;
-
     try {
-        const res = await fetch('/api/admin/database/status', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) return;
+        const res = await authFetch('/api/admin/database/status');
         const data = await res.json();
         if (data.success && data.info) {
             if (data.info.exists) {
@@ -3290,20 +3286,12 @@ async function downloadDatabaseDump() {
     const spinner = document.getElementById('backup-spinner');
     const statusText = document.getElementById('backup-status-text');
 
-    const token = getAdminToken();
-    if (!token) {
-        alert('Please log in as an administrator first.');
-        return;
-    }
-
     try {
         if (btn) btn.disabled = true;
         if (spinner) spinner.style.display = 'inline-block';
         if (statusText) statusText.textContent = '⏳ Dumping Neon PostgreSQL database...';
 
-        const res = await fetch(`/api/admin/database/dump?token=${encodeURIComponent(token)}`, {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
+        const res = await authFetch('/api/admin/database/dump');
 
         if (!res.ok) {
             const errData = await res.json().catch(() => ({}));
@@ -3360,14 +3348,8 @@ async function loadBoardShuffleStatus() {
     const statusText = document.getElementById('shuffle-status-text');
     const select = document.getElementById('select-auto-reshuffle');
 
-    const token = getAdminToken();
-    if (!token) return;
-
     try {
-        const res = await fetch('/api/admin/boards/shuffle', {
-            headers: { 'Authorization': `Bearer ${token}` }
-        });
-        if (!res.ok) return;
+        const res = await authFetch('/api/admin/boards/shuffle');
         const data = await res.json();
         if (data.success) {
             if (badge) badge.textContent = `Seed: #${data.currentSeed}`;
@@ -3382,7 +3364,9 @@ async function loadBoardShuffleStatus() {
             }
         }
     } catch (e) {
-        // Non-blocking
+        if (statusText) {
+            statusText.textContent = 'Ready (click reshuffle or refresh to view)';
+        }
     }
 }
 
@@ -3391,26 +3375,12 @@ async function triggerManualBoardReshuffle() {
     const statusText = document.getElementById('shuffle-status-text');
     const badge = document.getElementById('shuffle-seed-badge');
 
-    const token = getAdminToken();
-    if (!token) {
-        alert('Please log in as an administrator first.');
-        return;
-    }
-
-    if (!confirm('🎲 Are you sure you want to reshuffle all 500 boards with fresh random numbers?')) {
-        return;
-    }
-
     try {
         if (btn) btn.disabled = true;
         if (statusText) statusText.textContent = '⏳ Reshuffling all 500 boards...';
 
-        const res = await fetch('/api/admin/boards/shuffle', {
-            method: 'POST',
-            headers: {
-                'Authorization': `Bearer ${token}`,
-                'Content-Type': 'application/json'
-            }
+        const res = await authFetch('/api/admin/boards/shuffle', {
+            method: 'POST'
         });
 
         const data = await res.json();
@@ -3424,8 +3394,10 @@ async function triggerManualBoardReshuffle() {
         }
         alert(`✅ Success: All 500 boards have been scrambled with new numbers!\nNew Board Seed: #${data.newSeed}`);
     } catch (err) {
-        alert(`Error reshuffling boards: ${err.message}`);
-        if (statusText) statusText.textContent = `❌ Error: ${err.message}`;
+        if (err.message !== 'Unauthorized') {
+            alert(`Error reshuffling boards: ${err.message}`);
+            if (statusText) statusText.textContent = `❌ Error: ${err.message}`;
+        }
     } finally {
         if (btn) btn.disabled = false;
     }
@@ -3435,19 +3407,12 @@ async function saveAutoReshuffleSetting() {
     const select = document.getElementById('select-auto-reshuffle');
     const statusText = document.getElementById('shuffle-status-text');
 
-    const token = getAdminToken();
-    if (!token) {
-        alert('Please log in as an administrator first.');
-        return;
-    }
-
     const autoReshuffle = select ? select.value : 'off';
 
     try {
-        const res = await fetch('/api/admin/boards/auto-shuffle-settings', {
+        const res = await authFetch('/api/admin/boards/auto-shuffle-settings', {
             method: 'POST',
             headers: {
-                'Authorization': `Bearer ${token}`,
                 'Content-Type': 'application/json'
             },
             body: JSON.stringify({ autoReshuffle })
@@ -3463,7 +3428,9 @@ async function saveAutoReshuffleSetting() {
         }
         alert('✅ Auto-reshuffle setting saved successfully!');
     } catch (err) {
-        alert(`Error saving setting: ${err.message}`);
+        if (err.message !== 'Unauthorized') {
+            alert(`Error saving setting: ${err.message}`);
+        }
     }
 }
 
