@@ -63,6 +63,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     }));
 
     // 1. Health & monitoring endpoint (always accessible for UptimeRobot/Render)
+    app.get('/healthz', (_req, res) => res.status(200).send('OK'));
     app.get('/api/health', async (_req, res) => {
         const mem = process.memoryUsage();
         let dbStatus = 'ok';
