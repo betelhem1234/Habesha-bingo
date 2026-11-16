@@ -1,12 +1,12 @@
 services:
   - type: web
-    name: pwm-bot
+    name: habesha-bingo
     runtime: docker
-    repo: https://github.com/betelhem1234/play-with-me
+    repo: https://github.com/betelhem1234/Habesha-bingo
     plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /
-    autoDeploy: true
+    autoDeploy: false
     envVars:
       - key: BOT_TOKEN
         sync: false

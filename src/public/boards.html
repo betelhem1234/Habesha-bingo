@@ -796,17 +796,6 @@ async function exitGame(){
   window.location.href=`/index.html?userId=${userId}`;
 }
 
-// Automatically release board if user closes Telegram WebApp or browser tab
-window.addEventListener('pagehide', () => {
-  if (selectedBoards.length > 0 && !redirected && userId && userId !== '0') {
-    const payload = JSON.stringify({ userId, bet, room });
-    if (navigator.sendBeacon) {
-      const leaveUrl = window.getAuthUrl ? window.getAuthUrl('/api/leave') : '/api/leave';
-      navigator.sendBeacon(leaveUrl, new Blob([payload], { type: 'application/json' }));
-    }
-  }
-});
-
 function updateCountdownTarget(serverSecs){
   const s = parseInt(serverSecs, 10) || 0;
   const now = Date.now();
@@ -949,21 +938,49 @@ async function poll(){
 }
 
 let pollTimer = null;
+let bgHeartbeatTimer = null;
+
 function startLobbyPolling() {
   if (pollTimer) clearInterval(pollTimer);
+  stopBackgroundHeartbeat();
   poll();
   pollTimer = setInterval(poll, 3500);
 }
+
 function stopLobbyPolling() {
   if (pollTimer) {
     clearInterval(pollTimer);
     pollTimer = null;
   }
 }
+
+function startBackgroundHeartbeat() {
+  stopLobbyPolling();
+  if (bgHeartbeatTimer) clearInterval(bgHeartbeatTimer);
+  poll();
+  bgHeartbeatTimer = setInterval(poll, 6000); // 6s heartbeat keeps player.lastSeen active on server
+}
+
+function stopBackgroundHeartbeat() {
+  if (bgHeartbeatTimer) {
+    clearInterval(bgHeartbeatTimer);
+    bgHeartbeatTimer = null;
+  }
+}
+
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    stopLobbyPolling();
+    if (selectedBoards.length > 0) {
+      // Player has selected board(s): keep heartbeat alive so server never evicts them
+      startBackgroundHeartbeat();
+    } else {
+      // Idle spectator with no boards: stop polling to save bandwidth
+      stopLobbyPolling();
+      stopBackgroundHeartbeat();
+    }
   } else {
+    // Returning to tab: resume full polling and sync immediately
+    stopBackgroundHeartbeat();
     startLobbyPolling();
   }
 });

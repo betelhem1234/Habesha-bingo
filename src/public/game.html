@@ -792,8 +792,9 @@ function releaseWakeLock(){
 }
 
 document.addEventListener('visibilitychange', ()=>{
-  if(document.visibilityState === 'visible' && autoEnabled){
-    requestWakeLock();
+  if(document.visibilityState === 'visible'){
+    if(autoEnabled) requestWakeLock();
+    poll();
   }
 });
 

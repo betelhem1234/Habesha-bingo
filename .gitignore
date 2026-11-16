@@ -23,4 +23,8 @@ tunnel.log
 # Stray SQL scratch file
 SELECT id, type, amount, status FROM "TransactionRequest";
 
+# Database backup dumps
+backups/
+*.sql
+
 .pg_data/
