@@ -3024,7 +3024,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         });
     });
 
-    app.listen(Number(config.PORT), () => {
-        console.log(`Admin server running on http://localhost:${config.PORT}`);
+    app.listen(Number(config.PORT), '0.0.0.0', () => {
+        console.log(`Admin server running on http://0.0.0.0:${config.PORT}`);
     });
 }
