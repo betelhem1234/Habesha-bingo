@@ -75,6 +75,7 @@ export class GameRooms {
 
     private async sweepStalePlayers() {
         for (const gm of this.rooms.values()) {
+            if (gm.lobbyCountdown > 0) continue;
             await gm.removeStalePlayers();
         }
     }
