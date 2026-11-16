@@ -2,7 +2,7 @@ services:
   - type: web
     name: habesha-bingo
     runtime: docker
-    repo: https://github.com/betelhem1234/Habesha-bingo
+    repo: https://github.com/kalabgezahegn1234-cell/ethio-bingo
     plan: free
     dockerfilePath: ./Dockerfile
     healthCheckPath: /
