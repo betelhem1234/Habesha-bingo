@@ -54,6 +54,7 @@ function switchAdminTab(tabId) {
     } else if (tabId === 'tab-controls') {
         loadSecurityStats();
         checkDatabaseBackupStatus();
+        loadBoardShuffleStatus();
     }
 }
 window.switchAdminTab = switchAdminTab;
@@ -3349,6 +3350,126 @@ async function downloadDatabaseDump() {
 
 window.checkDatabaseBackupStatus = checkDatabaseBackupStatus;
 window.downloadDatabaseDump = downloadDatabaseDump;
+
+// ----------------------------------------------------
+// 13. Board Numbers Shuffling & Anti-Memorization
+// ----------------------------------------------------
+
+async function loadBoardShuffleStatus() {
+    const badge = document.getElementById('shuffle-seed-badge');
+    const statusText = document.getElementById('shuffle-status-text');
+    const select = document.getElementById('select-auto-reshuffle');
+
+    const token = getAdminToken();
+    if (!token) return;
+
+    try {
+        const res = await fetch('/api/admin/boards/shuffle', {
+            headers: { 'Authorization': `Bearer ${token}` }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data.success) {
+            if (badge) badge.textContent = `Seed: #${data.currentSeed}`;
+            if (select && data.autoReshuffle) select.value = data.autoReshuffle;
+            if (statusText) {
+                if (data.currentSeed === 0) {
+                    statusText.textContent = 'Default boards (never reshuffled)';
+                } else {
+                    const dateStr = data.lastReshuffledAt ? new Date(data.lastReshuffledAt).toLocaleTimeString() : '';
+                    statusText.innerHTML = `Active seed: <strong style="color:#c084fc;">#${data.currentSeed}</strong> (games since shuffle: ${data.gamesSinceLastShuffle || 0}${dateStr ? ' • ' + dateStr : ''})`;
+                }
+            }
+        }
+    } catch (e) {
+        // Non-blocking
+    }
+}
+
+async function triggerManualBoardReshuffle() {
+    const btn = document.getElementById('btn-manual-reshuffle');
+    const statusText = document.getElementById('shuffle-status-text');
+    const badge = document.getElementById('shuffle-seed-badge');
+
+    const token = getAdminToken();
+    if (!token) {
+        alert('Please log in as an administrator first.');
+        return;
+    }
+
+    if (!confirm('🎲 Are you sure you want to reshuffle all 500 boards with fresh random numbers?')) {
+        return;
+    }
+
+    try {
+        if (btn) btn.disabled = true;
+        if (statusText) statusText.textContent = '⏳ Reshuffling all 500 boards...';
+
+        const res = await fetch('/api/admin/boards/shuffle', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            }
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Failed to reshuffle boards');
+        }
+
+        if (badge) badge.textContent = `Seed: #${data.newSeed}`;
+        if (statusText) {
+            statusText.innerHTML = `✅ <strong style="color:#4ade80;">All 500 boards reshuffled!</strong> (New Seed: #${data.newSeed})`;
+        }
+        alert(`✅ Success: All 500 boards have been scrambled with new numbers!\nNew Board Seed: #${data.newSeed}`);
+    } catch (err) {
+        alert(`Error reshuffling boards: ${err.message}`);
+        if (statusText) statusText.textContent = `❌ Error: ${err.message}`;
+    } finally {
+        if (btn) btn.disabled = false;
+    }
+}
+
+async function saveAutoReshuffleSetting() {
+    const select = document.getElementById('select-auto-reshuffle');
+    const statusText = document.getElementById('shuffle-status-text');
+
+    const token = getAdminToken();
+    if (!token) {
+        alert('Please log in as an administrator first.');
+        return;
+    }
+
+    const autoReshuffle = select ? select.value : 'off';
+
+    try {
+        const res = await fetch('/api/admin/boards/auto-shuffle-settings', {
+            method: 'POST',
+            headers: {
+                'Authorization': `Bearer ${token}`,
+                'Content-Type': 'application/json'
+            },
+            body: JSON.stringify({ autoReshuffle })
+        });
+
+        const data = await res.json();
+        if (!res.ok || !data.success) {
+            throw new Error(data.error || 'Failed to save auto-reshuffle setting');
+        }
+
+        if (statusText) {
+            statusText.innerHTML = `✅ <strong style="color:#4ade80;">Auto-reshuffle setting saved: ${autoReshuffle}</strong>`;
+        }
+        alert('✅ Auto-reshuffle setting saved successfully!');
+    } catch (err) {
+        alert(`Error saving setting: ${err.message}`);
+    }
+}
+
+window.loadBoardShuffleStatus = loadBoardShuffleStatus;
+window.triggerManualBoardReshuffle = triggerManualBoardReshuffle;
+window.saveAutoReshuffleSetting = saveAutoReshuffleSetting;
 
 
 

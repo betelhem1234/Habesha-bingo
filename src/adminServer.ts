@@ -27,6 +27,7 @@ import { monitorEventLoopDelay } from 'perf_hooks';
 import { getNewUserBonus, getReferralBonus, setBonusSettings } from './bonus';
 import { syncTelegramRequestNotification } from './bot';
 import { generateDatabaseBackup, getLatestBackupInfo } from './dbBackup';
+import { getBoardShuffleSeed, reshuffleBoards, setAutoReshuffleSetting, getBoardShuffleStatus } from './settings';
 
 const loopDelayHistogram = monitorEventLoopDelay({ resolution: 20 });
 loopDelayHistogram.enable();
@@ -818,7 +819,8 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             boardCount: gameManager.getTotalBoards(),
             gameState: gameManager.state,
             pot: gameManager.getPot(),
-            lobbyCountdown: gameManager.lobbyCountdown
+            lobbyCountdown: gameManager.lobbyCountdown,
+            shuffleSeed: getBoardShuffleSeed()
         });
     });
 
@@ -3059,6 +3061,57 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             if (!res.headersSent) {
                 res.status(500).json({ success: false, error: e?.message || 'Database dump failed' });
             }
+        }
+    });
+
+    // Board Numbers Reshuffle Status
+    app.get('/api/admin/boards/shuffle', adminAuthMiddleware, (_req, res) => {
+        res.json({
+            success: true,
+            ...getBoardShuffleStatus()
+        });
+    });
+
+    // 1-Click Manual Board Reshuffle
+    app.post('/api/admin/boards/shuffle', adminAuthMiddleware, (_req, res) => {
+        try {
+            const result = reshuffleBoards();
+            for (const gm of gameRooms.roomsList()) {
+                gm.broadcastSSE('boards', {
+                    boards: gm.getBoards(),
+                    players: gm.players.length,
+                    boardCount: gm.getTotalBoards(),
+                    pot: gm.getPot(),
+                    shuffleSeed: result.seed
+                });
+            }
+            res.json({
+                success: true,
+                newSeed: result.seed,
+                timestamp: result.timestamp,
+                ...getBoardShuffleStatus(),
+                msg: 'All 500 boards have been successfully reshuffled with new numbers!'
+            });
+        } catch (e: any) {
+            res.status(500).json({ success: false, error: e?.message || 'Failed to reshuffle boards' });
+        }
+    });
+
+    // Save Auto-Reshuffle Mode Setting
+    app.post('/api/admin/boards/auto-shuffle-settings', adminAuthMiddleware, (req, res) => {
+        try {
+            const { autoReshuffle } = req.body || {};
+            if (!['off', 'every_game', 'every_5', 'every_10'].includes(autoReshuffle)) {
+                return res.status(400).json({ success: false, error: 'Invalid autoReshuffle mode' });
+            }
+            setAutoReshuffleSetting(autoReshuffle);
+            res.json({
+                success: true,
+                ...getBoardShuffleStatus(),
+                msg: 'Auto-reshuffle setting saved successfully!'
+            });
+        } catch (e: any) {
+            res.status(500).json({ success: false, error: e?.message || 'Failed to save auto-reshuffle setting' });
         }
     });
 

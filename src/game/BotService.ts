@@ -1,6 +1,6 @@
 import fs from 'fs';
 import path from 'path';
-import { getBotSettings, setBotSettings } from '../settings';
+import { getBotSettings, setBotSettings, getBoardShuffleSeed } from '../settings';
 import { GameManager, Player } from './GameManager';
 import { checkWinFreshness, generateTicket } from './bingo';
 
@@ -503,7 +503,7 @@ export class BotService {
 
         const cards = boards.map(bn => ({
             boardNumber: bn,
-            ticket: generateTicket(bn),
+            ticket: generateTicket(bn, getBoardShuffleSeed()),
             daubed: new Set<number>()
         }));
 

@@ -7,8 +7,21 @@ export type BingoTicket = number[][];
 export const COLUMN_COLORS = ['🔵', '🟣', '🟢', '🟡', '🔴'];
 export const COLUMN_LETTERS = ['B', 'I', 'N', 'G', 'O'];
 
-export function generateTicket(seed?: number): BingoTicket {
-    const rand = seed ? mulberry32(seed) : Math.random;
+/**
+ * Combine boardNumber and shuffleSalt into a pseudo-random, uniformly distributed 32-bit seed.
+ * If shuffleSalt is 0, returns boardNumber directly for 100% backward compatibility.
+ */
+export function combineSeed(boardNumber: number, shuffleSalt: number = 0): number {
+    if (!shuffleSalt) return boardNumber;
+    let h = (boardNumber ^ Math.imul(shuffleSalt, 0x5DEECE66)) >>> 0;
+    h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+    h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+    return (h ^ (h >>> 16)) >>> 0;
+}
+
+export function generateTicket(seed?: number, shuffleSalt: number = 0): BingoTicket {
+    const effectiveSeed = seed !== undefined ? combineSeed(seed, shuffleSalt) : undefined;
+    const rand = effectiveSeed !== undefined ? mulberry32(effectiveSeed) : Math.random;
     const ticket: number[][] = [];
     for (let i = 0; i < 5; i++) ticket[i] = [];
 

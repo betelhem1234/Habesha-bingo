@@ -620,8 +620,19 @@ function mulberry32(seed){
   };
 }
 
-function generateTicketClient(seed){
-  const rand=mulberry32(seed);
+let currentShuffleSeed = 0;
+
+function combineSeedClient(boardNumber, shuffleSalt){
+  if(!shuffleSalt) return boardNumber;
+  let h = (boardNumber ^ Math.imul(shuffleSalt, 0x5DEECE66)) >>> 0;
+  h = Math.imul(h ^ (h >>> 16), 0x85ebca6b) >>> 0;
+  h = Math.imul(h ^ (h >>> 13), 0xc2b2ae35) >>> 0;
+  return (h ^ (h >>> 16)) >>> 0;
+}
+
+function generateTicketClient(boardNum, shuffleSalt = 0){
+  const effectiveSeed = combineSeedClient(boardNum, shuffleSalt);
+  const rand=mulberry32(effectiveSeed);
   const ticket=[];
   for(let i=0;i<5;i++) ticket[i]=[];
   const ranges=[
@@ -657,7 +668,7 @@ function renderPreviews(){
   wrapper.style.display='flex';
 
   container.innerHTML=selectedBoards.map(boardNum=>{
-    const ticket=generateTicketClient(boardNum);
+    const ticket=generateTicketClient(boardNum, currentShuffleSeed);
     let gridHtml='';
     for(let r=0;r<5;r++){
       for(let c=0;c<5;c++){
@@ -907,6 +918,13 @@ async function poll(){
       }
       renderPreviews();
       updateStakeDisplay();
+    }
+
+    if(boardData.shuffleSeed !== undefined && boardData.shuffleSeed !== currentShuffleSeed){
+      currentShuffleSeed = boardData.shuffleSeed;
+      if(selectedBoards && selectedBoards.length > 0){
+        renderPreviews();
+      }
     }
 
     if(boardData.lobbyCountdown !== undefined){

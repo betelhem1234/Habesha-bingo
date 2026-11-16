@@ -2,6 +2,7 @@ import { Bot, InlineKeyboard } from 'grammy';
 import { generateTicket, createTicketKeyboard, checkWin, checkWinDetails, checkWinFreshness, getNumberName, getColumnEmoji, BingoTicket } from './bingo';
 import { prisma } from '../db';
 import { deductFee } from '../bonus';
+import { getBoardShuffleSeed, onGameCompletedCheckAutoReshuffle } from '../settings';
 
 export interface PlayerCard {
     boardNumber: number;
@@ -281,7 +282,7 @@ export class GameManager {
 
                 const cards: PlayerCard[] = boardNumbers.map(bn => ({
                     boardNumber: bn,
-                    ticket: generateTicket(bn),
+                    ticket: generateTicket(bn, getBoardShuffleSeed()),
                     daubed: new Set<number>()
                 }));
 
@@ -563,7 +564,8 @@ export class GameManager {
             boards: this.getBoards(),
             players: this.players.length,
             boardCount: this.getTotalBoards(),
-            pot: this.getPot()
+            pot: this.getPot(),
+            shuffleSeed: getBoardShuffleSeed()
         });
     }
 
@@ -606,7 +608,8 @@ export class GameManager {
                 boards: this.getBoards(),
                 players: this.players.length,
                 boardCount: this.getTotalBoards(),
-                pot: this.getPot()
+                pot: this.getPot(),
+                shuffleSeed: getBoardShuffleSeed()
             });
         }
         return removed;
@@ -673,7 +676,8 @@ export class GameManager {
                 boards: this.getBoards(),
                 players: this.players.length,
                 boardCount: this.getTotalBoards(),
-                pot: this.getPot()
+                pot: this.getPot(),
+                shuffleSeed: getBoardShuffleSeed()
             });
             for (const other of this.players) {
                 await this.editTicketMessage(other, `👥 *Players: ${this.players.length}*\n\nA player left the lobby. ${this.lobbyCountdown > 0 ? `⏳ Auto-starting in *${this.lobbyCountdown} seconds*...` : '⏳ Waiting for more players...'}\n\n👇 Your board:`);
@@ -1316,6 +1320,11 @@ export class GameManager {
 
     private async endGame(winners: WinnerCandidate[] | null) {
         this.botService?.onGameEnded(this.fee, this.room);
+        try {
+            onGameCompletedCheckAutoReshuffle();
+        } catch (e) {
+            console.error('[Game] Error in auto-reshuffle check:', e);
+        }
         this.state = 'WAITING';
         if (this.startTimeout) {
             clearTimeout(this.startTimeout);

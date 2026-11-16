@@ -10,6 +10,10 @@ export interface SystemSettingsState {
     newUserBonus: number;
     referralBonus: number;
     botSettings?: any;
+    boardShuffleSeed: number;
+    autoReshuffle: 'off' | 'every_game' | 'every_5' | 'every_10';
+    gamesSinceLastShuffle: number;
+    lastReshuffledAt?: string;
 }
 
 const state: SystemSettingsState = {
@@ -17,6 +21,10 @@ const state: SystemSettingsState = {
     minCallToWin: 15,
     newUserBonus: 10,
     referralBonus: 5,
+    boardShuffleSeed: 0,
+    autoReshuffle: 'off',
+    gamesSinceLastShuffle: 0,
+    lastReshuffledAt: undefined,
     botSettings: {
         enabled: true,
         stake10Enabled: true,
@@ -56,6 +64,18 @@ function bootstrapFromFile() {
             }
             if (data.botSettings && typeof data.botSettings === 'object') {
                 state.botSettings = { ...state.botSettings, ...data.botSettings };
+            }
+            if (typeof data.boardShuffleSeed === 'number') {
+                state.boardShuffleSeed = Math.floor(data.boardShuffleSeed);
+            }
+            if (['off', 'every_game', 'every_5', 'every_10'].includes(data.autoReshuffle)) {
+                state.autoReshuffle = data.autoReshuffle;
+            }
+            if (typeof data.gamesSinceLastShuffle === 'number') {
+                state.gamesSinceLastShuffle = Math.floor(data.gamesSinceLastShuffle);
+            }
+            if (typeof data.lastReshuffledAt === 'string') {
+                state.lastReshuffledAt = data.lastReshuffledAt;
             }
         }
     } catch (e) {
@@ -103,6 +123,22 @@ export async function initSettingsFromDb() {
                     state.botSettings = { ...state.botSettings, ...parsed };
                 }
             } catch {}
+        }
+        if (dbSettings.boardShuffleSeed) {
+            const val = parseInt(dbSettings.boardShuffleSeed, 10);
+            if (!isNaN(val) && val >= 0) state.boardShuffleSeed = val;
+        }
+        if (dbSettings.autoReshuffle) {
+            if (['off', 'every_game', 'every_5', 'every_10'].includes(dbSettings.autoReshuffle)) {
+                state.autoReshuffle = dbSettings.autoReshuffle as any;
+            }
+        }
+        if (dbSettings.gamesSinceLastShuffle) {
+            const val = parseInt(dbSettings.gamesSinceLastShuffle, 10);
+            if (!isNaN(val) && val >= 0) state.gamesSinceLastShuffle = val;
+        }
+        if (dbSettings.lastReshuffledAt) {
+            state.lastReshuffledAt = dbSettings.lastReshuffledAt;
         }
 
         // Mirror to local file for fast offline reads
@@ -175,4 +211,70 @@ export function setBotSettings(settings: any) {
     if (isTestMode()) return;
     persistToFile();
     setSystemSettingDb('botSettings', JSON.stringify(state.botSettings)).catch(err => console.error('[Settings] DB error saving botSettings:', err));
+}
+
+export function getBoardShuffleSeed(): number {
+    return state.boardShuffleSeed || 0;
+}
+
+export function reshuffleBoards(): { seed: number; timestamp: string } {
+    state.boardShuffleSeed = Math.floor(Math.random() * 2147483647) + 1;
+    state.gamesSinceLastShuffle = 0;
+    state.lastReshuffledAt = new Date().toISOString();
+
+    if (!isTestMode()) {
+        persistToFile();
+        setSystemSettingDb('boardShuffleSeed', String(state.boardShuffleSeed)).catch(() => {});
+        setSystemSettingDb('gamesSinceLastShuffle', '0').catch(() => {});
+        setSystemSettingDb('lastReshuffledAt', state.lastReshuffledAt).catch(() => {});
+    }
+
+    console.log(`[Settings] 🎲 Boards reshuffled! New active seed: ${state.boardShuffleSeed}`);
+    return { seed: state.boardShuffleSeed, timestamp: state.lastReshuffledAt };
+}
+
+export function getAutoReshuffleSetting(): 'off' | 'every_game' | 'every_5' | 'every_10' {
+    return state.autoReshuffle || 'off';
+}
+
+export function setAutoReshuffleSetting(mode: 'off' | 'every_game' | 'every_5' | 'every_10') {
+    state.autoReshuffle = mode;
+    if (!isTestMode()) {
+        persistToFile();
+        setSystemSettingDb('autoReshuffle', mode).catch(() => {});
+    }
+    console.log(`[Settings] Auto-reshuffle mode set to: ${mode}`);
+}
+
+export function getBoardShuffleStatus() {
+    return {
+        currentSeed: state.boardShuffleSeed || 0,
+        autoReshuffle: state.autoReshuffle || 'off',
+        gamesSinceLastShuffle: state.gamesSinceLastShuffle || 0,
+        lastReshuffledAt: state.lastReshuffledAt || null
+    };
+}
+
+/**
+ * Called at the end of each game. Increments game count and automatically reshuffles if threshold reached.
+ */
+export function onGameCompletedCheckAutoReshuffle(): boolean {
+    state.gamesSinceLastShuffle = (state.gamesSinceLastShuffle || 0) + 1;
+
+    let shouldReshuffle = false;
+    if (state.autoReshuffle === 'every_game') {
+        shouldReshuffle = true;
+    } else if (state.autoReshuffle === 'every_5' && state.gamesSinceLastShuffle >= 5) {
+        shouldReshuffle = true;
+    } else if (state.autoReshuffle === 'every_10' && state.gamesSinceLastShuffle >= 10) {
+        shouldReshuffle = true;
+    }
+
+    if (shouldReshuffle) {
+        reshuffleBoards();
+        return true;
+    } else if (!isTestMode()) {
+        setSystemSettingDb('gamesSinceLastShuffle', String(state.gamesSinceLastShuffle)).catch(() => {});
+    }
+    return false;
 }
