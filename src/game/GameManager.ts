@@ -419,6 +419,11 @@ export class GameManager {
         this.lobbyInterval = setInterval(async () => {
             this.lobbyCountdown -= 1;
 
+            // Periodically evict any players who closed the app or stopped polling
+            if (this.lobbyCountdown > 0 && this.lobbyCountdown % 5 === 0) {
+                await this.removeStalePlayers(15000);
+            }
+
             this.broadcastSSE('lobby', {
                 lobbyCountdown: this.lobbyCountdown,
                 playerCount: this.players.length,
@@ -431,6 +436,9 @@ export class GameManager {
                 clearInterval(this.lobbyInterval!);
                 this.lobbyInterval = null;
                 this.lobbyCountdown = 0;
+                
+                // Pre-game verification sweep: evict anyone who abandoned the lobby in the last 15s
+                await this.removeStalePlayers(15000);
 
                 if (this.players.length >= 1) {
                     console.log(`[Game] Lobby auto-starting with ${this.players.length} active player(s) (${this.getTotalBoards()} boards)`);
@@ -570,7 +578,7 @@ export class GameManager {
     }
 
     // Auto-remove players who haven't been seen recently (closed the page/app) while waiting.
-    async removeStalePlayers(maxIdleMs: number = 60000): Promise<number> {
+    async removeStalePlayers(maxIdleMs: number = 15000): Promise<number> {
         if (this.state !== 'WAITING') return 0;
         const now = Date.now();
         // Ignore virtual bots for idle stale sweeps

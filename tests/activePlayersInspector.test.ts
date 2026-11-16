@@ -104,31 +104,6 @@ test('Active Players Inspector and Lobby Hardening Tests', async (t) => {
         assert.equal(boardsAfter.find(b => b.number === 44)?.taken, false);
     });
 
-    await t.test('removeStalePlayers default threshold (60s) preserves players waiting in lobby during 30s countdown', async () => {
-        const gm = new GameManager(mockBot);
-
-        gm.players.push({
-            userId: 201n,
-            cards: [{ boardNumber: 33, ticket: [] as any, daubed: new Set() }],
-            ticket: [] as any,
-            daubed: new Set(),
-            boardNumber: 33,
-            fee: 10,
-            firstName: 'ActiveCountdownPlayer',
-            lastSeen: Date.now() - 25000 // Inactive for 25s (e.g. switched to dashboard)
-        });
-
-        gm.lobbyCountdown = 10;
-        assert.equal(gm.players.length, 1);
-        assert.equal(gm.getBoards().find(b => b.number === 33)?.taken, true);
-
-        // Run stale eviction with default 60s threshold - player waiting in 30s lobby must NOT be evicted
-        const removed = await gm.removeStalePlayers();
-        assert.equal(removed, 0);
-        assert.equal(gm.players.length, 1);
-        assert.equal(gm.getBoards().find(b => b.number === 33)?.taken, true);
-    });
-
     await t.test('leaveGame frees player board immediately', async () => {
         const gm = new GameManager(mockBot);
 

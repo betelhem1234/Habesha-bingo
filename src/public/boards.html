@@ -730,8 +730,9 @@ async function syncBoardSelection(){
         loadBalance();
       }else{
         if(data.msg && data.msg.toLowerCase().includes('in progress')){
-          showToast('ይህ ጨዋታ በሂደት ላይ ነው። የሚቀጥለውን ዙር ይጠብቁ።');
-          poll();
+          redirected = true;
+          if(smoothTimer) clearInterval(smoothTimer);
+          window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
           return;
         }
         alert(data.msg||'Failed to update board selection.');
@@ -795,21 +796,27 @@ async function exitGame(){
   window.location.href=`/index.html?userId=${userId}`;
 }
 
+// Automatically release board if user closes Telegram WebApp or browser tab
+window.addEventListener('pagehide', () => {
+  if (selectedBoards.length > 0 && !redirected && userId && userId !== '0') {
+    const payload = JSON.stringify({ userId, bet, room });
+    if (navigator.sendBeacon) {
+      const leaveUrl = window.getAuthUrl ? window.getAuthUrl('/api/leave') : '/api/leave';
+      navigator.sendBeacon(leaveUrl, new Blob([payload], { type: 'application/json' }));
+    }
+  }
+});
+
 function updateCountdownTarget(serverSecs){
   const s = parseInt(serverSecs, 10) || 0;
   const now = Date.now();
   if(s > 0){
     const incomingEndTime = now + (s * 1000);
-    // If not running, or if server drifted (> 1.5s offset, e.g. new game/reset or wake from sleep)
-    if(!countdownActive || Math.abs(incomingEndTime - targetEndTime) > 1500){
+    // If not running, or if server drifted significantly (> 2.5s offset, e.g. new game/reset)
+    if(!countdownActive || Math.abs(incomingEndTime - targetEndTime) > 2500){
       targetEndTime = incomingEndTime;
       countdownActive = true;
     }
-    // Eagerly update screen display so user immediately sees fresh second count on wake
-    const remaining = Math.max(0, Math.ceil((targetEndTime - now) / 1000));
-    document.getElementById('timer').textContent = remaining;
-    lastDisplayedSec = remaining;
-
     if(!smoothTimer){
       startSmoothTimer();
     }
@@ -843,9 +850,19 @@ function startSmoothTimer(){
       document.getElementById('timer').textContent = '0';
 
       if(selectedBoards.length > 0 && !redirected){
-        // Player has selected board(s) -> Navigate to game.html with boards
+        // Player has selected board(s) -> Start game and navigate to game.html
         redirected = true;
+        try{
+          await fetch('/api/start-game',{
+            method:'POST',headers:{'Content-Type':'application/json'},
+            body:JSON.stringify({bet,room})
+          });
+        }catch(e){}
         window.location.href = `/game.html?userId=${userId}&bet=${bet}&room=${room}&boards=${selectedBoards.join(',')}&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
+      } else if (!redirected) {
+        // Player has NO selected boards: smoothly transition to spectator mode!
+        redirected = true;
+        window.location.href = `/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
       }
     }
   }, 250);
@@ -919,20 +936,23 @@ async function poll(){
     renderBoards(boardData.taken || boardData.boards || []);
 
     if(boardData.gameState==='PLAYING' && !redirected){
+      redirected = true;
+      if(smoothTimer) clearInterval(smoothTimer);
       if(selectedBoards.length > 0){
-        redirected = true;
-        if(smoothTimer) clearInterval(smoothTimer);
         window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&boards=${selectedBoards.join(',')}&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
+      } else {
+        // Player has NO boards selected: redirect to game as spectator
+        window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
       }
     }
   }catch(e){console.error('poll error',e);}
 }
 
 let pollTimer = null;
-function startLobbyPolling(intervalMs = 3500) {
+function startLobbyPolling() {
   if (pollTimer) clearInterval(pollTimer);
   poll();
-  pollTimer = setInterval(poll, intervalMs);
+  pollTimer = setInterval(poll, 3500);
 }
 function stopLobbyPolling() {
   if (pollTimer) {
@@ -942,12 +962,9 @@ function stopLobbyPolling() {
 }
 document.addEventListener('visibilitychange', () => {
   if (document.hidden) {
-    // Maintain a relaxed 5s keep-alive heartbeat while backgrounded or locked
-    startLobbyPolling(5000);
+    stopLobbyPolling();
   } else {
-    // Immediately sync upon returning/unlocking and resume normal 3.5s polling
-    poll();
-    startLobbyPolling(3500);
+    startLobbyPolling();
   }
 });
 
