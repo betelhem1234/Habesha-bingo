@@ -44,6 +44,7 @@ echo "Target platform: ${TARGET}"
 git add -A
 git commit -q -m "${MSG}" || echo "Nothing new to commit."
 git push -q origin main
+git push -q new_origin main 2>/dev/null || true
 
 LATEST_COMMIT="$(git rev-parse HEAD)"
 
