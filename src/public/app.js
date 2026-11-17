@@ -18,6 +18,13 @@ document.addEventListener('DOMContentLoaded', () => {
     initUserModals();
     initAuditPeriodFilters();
     
+    // Prevent accidental mouse-wheel number changes on all number inputs during dashboard scrolling
+    document.addEventListener('wheel', (e) => {
+        if (e.target && (e.target.type === 'number' || (e.target.tagName === 'INPUT' && e.target.getAttribute('type') === 'number'))) {
+            e.preventDefault();
+        }
+    }, { passive: false });
+    
     // Check if authenticated
     const token = getAdminToken();
     if (!token) {
@@ -1492,7 +1499,27 @@ function escapeHtml(str) {
 // ----------------------------------------------------
 let bonusInputsDirty = false;
 
-async function fetchBonusSettings() {
+function markBonusInputDirty() {
+    bonusInputsDirty = true;
+    const statusEl = document.getElementById('bonus-save-status');
+    if (statusEl) {
+        statusEl.textContent = '⚠️ Unsaved changes (Click "Save" to apply or "Revert" to cancel)';
+        statusEl.style.color = '#facc15';
+    }
+}
+
+async function revertBonusSettings() {
+    bonusInputsDirty = false;
+    const statusEl = document.getElementById('bonus-save-status');
+    if (statusEl) {
+        statusEl.textContent = '↺ Reverted to active server values';
+        statusEl.style.color = '#94a3b8';
+        setTimeout(() => { if (statusEl && !bonusInputsDirty) statusEl.textContent = ''; }, 3000);
+    }
+    await fetchBonusSettings(true);
+}
+
+async function fetchBonusSettings(force = false) {
     try {
         const res = await authFetch('/api/admin/bonus');
         if (!res.ok) return;
@@ -1502,13 +1529,15 @@ async function fetchBonusSettings() {
             const inputReferral = document.getElementById('input-referral-bonus');
             if (inputNewUser && !inputNewUser.dataset.listenerAttached) {
                 inputNewUser.dataset.listenerAttached = '1';
-                inputNewUser.addEventListener('input', () => { bonusInputsDirty = true; });
+                inputNewUser.addEventListener('input', markBonusInputDirty);
+                inputNewUser.addEventListener('change', markBonusInputDirty);
             }
             if (inputReferral && !inputReferral.dataset.listenerAttached) {
                 inputReferral.dataset.listenerAttached = '1';
-                inputReferral.addEventListener('input', () => { bonusInputsDirty = true; });
+                inputReferral.addEventListener('input', markBonusInputDirty);
+                inputReferral.addEventListener('change', markBonusInputDirty);
             }
-            if (!bonusInputsDirty) {
+            if (force || !bonusInputsDirty) {
                 if (inputNewUser && data.newUserBonus !== undefined) {
                     inputNewUser.value = data.newUserBonus;
                 }
@@ -1639,6 +1668,29 @@ async function setAdminVoice(voice) {
 // ----------------------------------------------------
 // Minimum Calls to Win Controller
 // ----------------------------------------------------
+let winCallInputsDirty = false;
+
+function markWinCallDirty() {
+    winCallInputsDirty = true;
+    updateWinCallPreview();
+    const statusEl = document.getElementById('win-call-save-status');
+    if (statusEl) {
+        statusEl.textContent = '⚠️ Unsaved changes (Click "Save" to apply or "Revert" to cancel)';
+        statusEl.style.color = '#facc15';
+    }
+}
+
+async function revertWinCallThreshold() {
+    winCallInputsDirty = false;
+    const statusEl = document.getElementById('win-call-save-status');
+    if (statusEl) {
+        statusEl.textContent = '↺ Reverted to active server threshold';
+        statusEl.style.color = '#94a3b8';
+        setTimeout(() => { if (statusEl && !winCallInputsDirty) statusEl.textContent = ''; }, 3000);
+    }
+    await fetchWinCallThreshold(true);
+}
+
 function updateWinCallPreview() {
     const input = document.getElementById('input-win-call-threshold');
     const preview = document.getElementById('win-call-preview-text');
@@ -1656,11 +1708,11 @@ function applyWinCallPreset(preset) {
     const input = document.getElementById('input-win-call-threshold');
     if (input) {
         input.value = preset;
-        updateWinCallPreview();
+        markWinCallDirty();
     }
 }
 
-async function fetchWinCallThreshold() {
+async function fetchWinCallThreshold(force = false) {
     try {
         const res = await authFetch('/api/admin/win-call-threshold');
         if (!res.ok) return;
@@ -1669,7 +1721,12 @@ async function fetchWinCallThreshold() {
             const input = document.getElementById('input-win-call-threshold');
             const badge = document.getElementById('win-call-badge');
             const threshold = data.minCallToWin || 15;
-            if (input && document.activeElement !== input) {
+            if (input && !input.dataset.dirtyAttached) {
+                input.dataset.dirtyAttached = '1';
+                input.addEventListener('input', markWinCallDirty);
+                input.addEventListener('change', markWinCallDirty);
+            }
+            if (input && (force || (!winCallInputsDirty && document.activeElement !== input))) {
                 input.value = threshold;
                 updateWinCallPreview();
             }
@@ -1710,7 +1767,7 @@ async function saveWinCallThreshold() {
         });
         const data = await res.json();
         if (data.success) {
-            botInputsDirty = false;
+            winCallInputsDirty = false;
             if (statusEl) {
                 statusEl.textContent = `✅ Saved! Minimum ${data.minCallToWin} calls (~${data.minCallToWin * 4}s)`;
                 statusEl.style.color = '#10b981';
@@ -1725,7 +1782,7 @@ async function saveWinCallThreshold() {
                 statusEl.style.color = '#ef4444';
             }
         }
-    } catch (err) {
+    } catch (err) { {
         console.error('Error saving win call threshold:', err);
         if (statusEl) {
             statusEl.textContent = '❌ Failed to save threshold.';
@@ -1759,19 +1816,53 @@ function updateStakeBadges() {
 
 let botInputsDirty = false;
 
+function markBotInputDirty(scope = 'all') {
+    botInputsDirty = true;
+    if (scope === '10' || scope === 10 || scope === 'all') {
+        const s10Status = document.getElementById('bot-stake10-saved');
+        if (s10Status) { s10Status.textContent = '⚠️ Unsaved'; s10Status.style.color = '#facc15'; }
+    }
+    if (scope === '20' || scope === 20 || scope === 'all') {
+        const s20Status = document.getElementById('bot-stake20-saved');
+        if (s20Status) { s20Status.textContent = '⚠️ Unsaved'; s20Status.style.color = '#facc15'; }
+    }
+    const statusEl = document.getElementById('bot-save-status');
+    if (statusEl) { statusEl.textContent = '⚠️ Unsaved changes (Click "Save" to apply or "Revert" to cancel)'; statusEl.style.color = '#facc15'; }
+}
+
+async function revertBotSettings(scope = 'all') {
+    botInputsDirty = false;
+    if (scope === '10' || scope === 10) {
+        const s10Status = document.getElementById('bot-stake10-saved');
+        if (s10Status) { s10Status.textContent = '↺ Reverted'; s10Status.style.color = '#94a3b8'; setTimeout(() => { if (s10Status && !botInputsDirty) s10Status.textContent = ''; }, 3000); }
+    } else if (scope === '20' || scope === 20) {
+        const s20Status = document.getElementById('bot-stake20-saved');
+        if (s20Status) { s20Status.textContent = '↺ Reverted'; s20Status.style.color = '#94a3b8'; setTimeout(() => { if (s20Status && !botInputsDirty) s20Status.textContent = ''; }, 3000); }
+    } else {
+        const statusEl = document.getElementById('bot-save-status');
+        if (statusEl) { statusEl.textContent = '↺ Reverted all'; statusEl.style.color = '#94a3b8'; setTimeout(() => { if (statusEl && !botInputsDirty) statusEl.textContent = ''; }, 3000); }
+        const s10Status = document.getElementById('bot-stake10-saved');
+        if (s10Status) s10Status.textContent = '';
+        const s20Status = document.getElementById('bot-stake20-saved');
+        if (s20Status) s20Status.textContent = '';
+    }
+    await fetchBotSettings(true);
+}
+
 function attachBotInputListeners() {
     const ids = ['bot-input-enabled', 'bot-stake10-enabled', 'bot-stake10-target', 'bot-stake20-enabled', 'bot-stake20-target', 'bot-input-join-pacing', 'bot-input-speed'];
     ids.forEach(id => {
         const el = document.getElementById(id);
         if (el && !el.dataset.dirtyAttached) {
             el.dataset.dirtyAttached = '1';
-            el.addEventListener('input', () => { botInputsDirty = true; });
-            el.addEventListener('change', () => { botInputsDirty = true; });
+            const scope = id.includes('stake10') ? '10' : (id.includes('stake20') ? '20' : 'master');
+            el.addEventListener('input', () => { markBotInputDirty(scope); });
+            el.addEventListener('change', () => { markBotInputDirty(scope); });
         }
     });
 }
 
-async function fetchBotSettings() {
+async function fetchBotSettings(force = false) {
     try {
         attachBotInputListeners();
         const res = await authFetch('/api/admin/bots');
@@ -1788,7 +1879,7 @@ async function fetchBotSettings() {
         const s20EnabledSelect = document.getElementById('bot-stake20-enabled');
         const s20TargetInput = document.getElementById('bot-stake20-target');
 
-        if (!botInputsDirty) {
+        if (force || !botInputsDirty) {
             if (enabledSelect) enabledSelect.value = s.enabled ? 'true' : 'false';
             if (s10EnabledSelect) s10EnabledSelect.value = s.stake10Enabled !== false ? 'true' : 'false';
             if (s10TargetInput) {
@@ -1835,7 +1926,7 @@ async function fetchBotSettings() {
     }
 }
 
-async function saveBotSettings() {
+async function saveBotSettings(stakeTarget = 'all') {
     const enabled = document.getElementById('bot-input-enabled').value === 'true';
     const s10El = document.getElementById('bot-stake10-enabled');
     const s10TgtEl = document.getElementById('bot-stake10-target');
@@ -1863,12 +1954,16 @@ async function saveBotSettings() {
     const statusEl = document.getElementById('bot-save-status');
     const s10StatusEl = document.getElementById('bot-stake10-saved');
     const s20StatusEl = document.getElementById('bot-stake20-saved');
-    if (statusEl) {
-        statusEl.textContent = 'Saving...';
-        statusEl.style.color = '#38bdf8';
+
+    if (stakeTarget === 10 || stakeTarget === '10') {
+        if (s10StatusEl) { s10StatusEl.textContent = 'Saving...'; s10StatusEl.style.color = '#38bdf8'; }
+    } else if (stakeTarget === 20 || stakeTarget === '20') {
+        if (s20StatusEl) { s20StatusEl.textContent = 'Saving...'; s20StatusEl.style.color = '#38bdf8'; }
+    } else {
+        if (statusEl) { statusEl.textContent = 'Saving...'; statusEl.style.color = '#38bdf8'; }
+        if (s10StatusEl) { s10StatusEl.textContent = 'Saving...'; s10StatusEl.style.color = '#38bdf8'; }
+        if (s20StatusEl) { s20StatusEl.textContent = 'Saving...'; s20StatusEl.style.color = '#38bdf8'; }
     }
-    if (s10StatusEl) { s10StatusEl.textContent = 'Saving...'; s10StatusEl.style.color = '#38bdf8'; }
-    if (s20StatusEl) { s20StatusEl.textContent = 'Saving...'; s20StatusEl.style.color = '#38bdf8'; }
 
     try {
         const res = await authFetch('/api/admin/bots/settings', {
@@ -1889,20 +1984,34 @@ async function saveBotSettings() {
         const data = await res.json();
         if (data.success) {
             botInputsDirty = false;
-            if (statusEl) {
-                statusEl.textContent = '✅ Saved to database!';
-                statusEl.style.color = '#4ade80';
-                setTimeout(() => { if (statusEl) statusEl.textContent = ''; }, 3500);
-            }
-            if (s10StatusEl) {
-                s10StatusEl.textContent = '✅ Saved!';
-                s10StatusEl.style.color = '#4ade80';
-                setTimeout(() => { if (s10StatusEl) s10StatusEl.textContent = ''; }, 3500);
-            }
-            if (s20StatusEl) {
-                s20StatusEl.textContent = '✅ Saved!';
-                s20StatusEl.style.color = '#4ade80';
-                setTimeout(() => { if (s20StatusEl) s20StatusEl.textContent = ''; }, 3500);
+            if (stakeTarget === 10 || stakeTarget === '10') {
+                if (s10StatusEl) {
+                    s10StatusEl.textContent = '✅ Stake 1 Saved!';
+                    s10StatusEl.style.color = '#4ade80';
+                    setTimeout(() => { if (s10StatusEl && !botInputsDirty) s10StatusEl.textContent = ''; }, 3500);
+                }
+            } else if (stakeTarget === 20 || stakeTarget === '20') {
+                if (s20StatusEl) {
+                    s20StatusEl.textContent = '✅ Stake 2 Saved!';
+                    s20StatusEl.style.color = '#4ade80';
+                    setTimeout(() => { if (s20StatusEl && !botInputsDirty) s20StatusEl.textContent = ''; }, 3500);
+                }
+            } else {
+                if (statusEl) {
+                    statusEl.textContent = '✅ Saved to database!';
+                    statusEl.style.color = '#4ade80';
+                    setTimeout(() => { if (statusEl && !botInputsDirty) statusEl.textContent = ''; }, 3500);
+                }
+                if (s10StatusEl) {
+                    s10StatusEl.textContent = '✅ Saved!';
+                    s10StatusEl.style.color = '#4ade80';
+                    setTimeout(() => { if (s10StatusEl && !botInputsDirty) s10StatusEl.textContent = ''; }, 3500);
+                }
+                if (s20StatusEl) {
+                    s20StatusEl.textContent = '✅ Saved!';
+                    s20StatusEl.style.color = '#4ade80';
+                    setTimeout(() => { if (s20StatusEl && !botInputsDirty) s20StatusEl.textContent = ''; }, 3500);
+                }
             }
             fetchBotSettings();
         } else {
@@ -2985,12 +3094,18 @@ window.loadVoice = fetchCallerVoice;
 window.updateVoiceUI = updateVoiceUI;
 window.fetchBonusSettings = fetchBonusSettings;
 window.saveBonusSettings = saveBonusSettings;
+window.markBonusInputDirty = markBonusInputDirty;
+window.revertBonusSettings = revertBonusSettings;
 window.fetchWinCallThreshold = fetchWinCallThreshold;
 window.saveWinCallThreshold = saveWinCallThreshold;
 window.applyWinCallPreset = applyWinCallPreset;
 window.updateWinCallPreview = updateWinCallPreview;
+window.markWinCallDirty = markWinCallDirty;
+window.revertWinCallThreshold = revertWinCallThreshold;
 window.fetchBotSettings = fetchBotSettings;
 window.saveBotSettings = saveBotSettings;
+window.markBotInputDirty = markBotInputDirty;
+window.revertBotSettings = revertBotSettings;
 window.updateStakeBadges = updateStakeBadges;
 window.injectBots = injectBots;
 window.clearBots = clearBots;
