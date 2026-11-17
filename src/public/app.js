@@ -1782,7 +1782,7 @@ async function saveWinCallThreshold() {
                 statusEl.style.color = '#ef4444';
             }
         }
-    } catch (err) { {
+    } catch (err) {
         console.error('Error saving win call threshold:', err);
         if (statusEl) {
             statusEl.textContent = '❌ Failed to save threshold.';

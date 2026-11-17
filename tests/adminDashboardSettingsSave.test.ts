@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { execSync } from 'node:child_process';
 import { 
     getBotSettings, 
     setBotSettings, 
@@ -35,6 +36,11 @@ test('Admin Dashboard Explicit Save-Button-Only Verification', async (t) => {
         assert.ok(adminHtml.includes('onclick="revertBotSettings(\'all\')"'), 'Should have Revert All bot settings button');
         assert.ok(adminHtml.includes('onclick="revertBonusSettings()"'), 'Should have Revert Bonus settings button');
         assert.ok(adminHtml.includes('onclick="revertWinCallThreshold()"'), 'Should have Revert Win Call threshold button');
+    });
+
+    await t.test('app.js has valid syntax and compiles without error', () => {
+        // Assert node -c successfully checks syntax of app.js with zero errors
+        execSync(`node -c "${appJsPath}"`);
     });
 
     await t.test('app.js includes global wheel scroll protection on numeric inputs', () => {
