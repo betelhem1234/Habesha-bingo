@@ -360,7 +360,23 @@ body{
 .btn-refresh{
   flex:1;background:#1d4ed8;color:#fff;border:none;border-radius:24px;
   padding:9px 2px;font-size:0.84rem;font-weight:900;cursor:pointer;
-  box-shadow:0 2px 6px rgba(29,78,216,0.35);
+  box-shadow:0 2px 6px rgba(29,78,216,0.35);transition:all 0.2s ease;
+}
+.btn-refresh.spinning{
+  background:#2563eb;opacity:0.9;cursor:wait;
+}
+.btn-refresh.success{
+  background:#16a34a !important;box-shadow:0 2px 8px rgba(22,163,74,0.5) !important;
+}
+.btn-refresh.error{
+  background:#b91c1c !important;box-shadow:0 2px 8px rgba(185,28,28,0.5) !important;
+}
+@keyframes spin-refresh{
+  from{transform:rotate(0deg);}
+  to{transform:rotate(360deg);}
+}
+.spin-icon{
+  display:inline-block;animation:spin-refresh 0.7s linear infinite;
 }
 .btn-bingo{
   flex:1.2;background:#e89f6b;color:#fff;border:none;border-radius:24px;
@@ -701,7 +717,7 @@ body{
 <!-- ─── Bottom Action Bar (Image 1) ─── -->
 <div class="bottom-action-bar">
   <button class="btn-leave" onclick="leaveGame()">← Leave</button>
-  <button class="btn-refresh" onclick="poll()">↻ Refresh</button>
+  <button class="btn-refresh" id="btn-refresh" onclick="refreshGame()">↻ Refresh</button>
   <button class="btn-bingo" id="btn-bingo" disabled onclick="onBingoClick()">Bingo!</button>
 </div>
 
@@ -1939,66 +1955,168 @@ function applyWinnerEvent(data) {
 // ─── Real-Time Server-Sent Events (SSE) Stream ───
 let evtSource = null;
 let sseActive = false;
+let lastSSEEventTime = Date.now();
 
 function initSSE() {
   if (!window.EventSource) return;
 
   try {
-    if (evtSource) evtSource.close();
-    evtSource = new EventSource(`/api/game-stream/${userId}?bet=${bet}&room=${room}`);
+    if (evtSource) {
+      try { evtSource.close(); } catch(e){}
+      evtSource = null;
+    }
+    const sseUrl = `/api/game-stream/${userId}?bet=${bet}&room=${room}&_t=${Date.now()}`;
+    evtSource = new EventSource(sseUrl);
 
     evtSource.onopen = () => {
       sseActive = true;
+      lastSSEEventTime = Date.now();
       console.log('[SSE] Connected to real-time game stream');
     };
 
     evtSource.addEventListener('init', (e) => {
+      lastSSEEventTime = Date.now();
       try { applyGameState(JSON.parse(e.data)); } catch (err) {}
     });
 
     evtSource.addEventListener('ball', (e) => {
+      lastSSEEventTime = Date.now();
       try { applyBallEvent(JSON.parse(e.data)); } catch (err) {}
     });
 
     evtSource.addEventListener('lobby', (e) => {
+      lastSSEEventTime = Date.now();
       try { applyLobbyEvent(JSON.parse(e.data)); } catch (err) {}
     });
 
     evtSource.addEventListener('start', (e) => {
+      lastSSEEventTime = Date.now();
       try { applyStartEvent(JSON.parse(e.data)); } catch (err) {}
     });
 
     evtSource.addEventListener('winner', (e) => {
+      lastSSEEventTime = Date.now();
       try { applyWinnerEvent(JSON.parse(e.data)); } catch (err) {}
     });
 
     evtSource.addEventListener('all_blocked', (e) => {
+      lastSSEEventTime = Date.now();
       try { showAllBlockedOverlay(JSON.parse(e.data)); } catch (err) {}
     });
 
     evtSource.addEventListener('reset', () => {
+      lastSSEEventTime = Date.now();
       poll();
     });
 
     evtSource.onerror = () => {
       sseActive = false;
-      // Browser EventSource automatically reconnects
+      // Browser EventSource automatically reconnects, but on mobile half-open sockets may hang
     };
   } catch (err) {
     sseActive = false;
   }
 }
 
+// ─── Robust In-Place Game Refresh & Recovery Engine ───
+let isRefreshing = false;
+
+async function refreshGame(isAutoRecovery = false) {
+  if (isRefreshing) return;
+  isRefreshing = true;
+
+  const btn = document.getElementById('btn-refresh');
+  const originalHtml = '↻ Refresh';
+
+  if (btn && !isAutoRecovery) {
+    btn.innerHTML = '<span class="spin-icon">↻</span> Syncing...';
+    btn.classList.add('spinning');
+    if (window.Telegram?.WebApp?.HapticFeedback) {
+      try { Telegram.WebApp.HapticFeedback.impactOccurred('light'); } catch(e){}
+    }
+  }
+
+  // 1. Direct user gesture: Resume and unlock audio context if suspended
+  unlockAudio();
+
+  // 2. Re-establish SSE real-time stream (closes any dead socket and opens fresh)
+  try {
+    initSSE();
+  } catch (sseErr) {
+    console.warn('[Refresh] SSE re-init error:', sseErr);
+  }
+
+  // 3. Authoritative HTTP state sync with cache-busting and automatic retry
+  let success = false;
+  for (let attempt = 1; attempt <= 2; attempt++) {
+    try {
+      const res = await fetch(`/api/game-state/${userId}?bet=${bet}&room=${room}&_t=${Date.now()}`, {
+        cache: 'no-store'
+      });
+      if (res.ok) {
+        const data = await res.json();
+        applyGameState(data);
+        success = true;
+        break;
+      }
+    } catch (netErr) {
+      console.warn(`[Refresh] HTTP fetch attempt ${attempt} failed:`, netErr);
+      if (attempt < 2) {
+        await new Promise(r => setTimeout(r, 400));
+      }
+    }
+  }
+
+  // 4. Update visual button feedback
+  if (btn && !isAutoRecovery) {
+    btn.classList.remove('spinning');
+    if (success) {
+      btn.classList.add('success');
+      btn.innerHTML = '✓ Synced!';
+      if (window.Telegram?.WebApp?.HapticFeedback) {
+        try { Telegram.WebApp.HapticFeedback.notificationOccurred('success'); } catch(e){}
+      }
+      setTimeout(() => {
+        if (btn) {
+          btn.classList.remove('success');
+          btn.innerHTML = originalHtml;
+          isRefreshing = false;
+        }
+      }, 1200);
+    } else {
+      btn.classList.add('error');
+      btn.innerHTML = '⚠️ Offline';
+      setTimeout(() => {
+        if (btn) {
+          btn.classList.remove('error');
+          btn.innerHTML = originalHtml;
+          isRefreshing = false;
+        }
+      }, 1500);
+    }
+  } else {
+    isRefreshing = false;
+  }
+}
+
 // ─── Backup HTTP Poll ───
 async function poll() {
   try {
-    const res = await fetch(`/api/game-state/${userId}?bet=${bet}&room=${room}`);
+    const res = await fetch(`/api/game-state/${userId}?bet=${bet}&room=${room}&_t=${Date.now()}`, {
+      cache: 'no-store'
+    });
     const data = await res.json();
     applyGameState(data);
   } catch (e) {
     console.error('Poll error:', e);
   }
 }
+
+// Auto-recover immediately when network connection is regained
+window.addEventListener('online', () => {
+  console.log('[Network] Internet connection restored, recovering game...');
+  refreshGame(true);
+});
 
 async function leaveGame(){
   try{
@@ -2066,12 +2184,16 @@ preloadAudioCalls();
 initSSE();
 poll();
 
-// Adaptive polling: Runs relaxed sync when SSE is active, or full backup when SSE is reconnecting
+// Adaptive watchdog: Auto-recovers SSE and state if stalled or disconnected during active play
 pollInterval = setInterval(() => {
-  if (!sseActive) {
-    poll(); // Full backup poll if mobile network dropped SSE
+  const isPlaying = document.getElementById('playing-card-area')?.style.display !== 'none';
+  const now = Date.now();
+  if (isPlaying && (now - lastSSEEventTime > 8000)) {
+    refreshGame(true);
+  } else if (!sseActive) {
+    refreshGame(true);
   } else {
-    poll(); // Background sanity check every 15s
+    poll();
   }
 }, 15000);
 </script>

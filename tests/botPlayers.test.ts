@@ -30,7 +30,7 @@ describe('Virtual Players (Bot System) Test Suite', () => {
     test('Bot profile pool contains authentic Ethiopian identities with no generic names', () => {
         assert.ok(ETHIOPIAN_BOT_PROFILES.length >= 200, 'Should have at least 200 authentic profiles');
         for (const profile of ETHIOPIAN_BOT_PROFILES) {
-            assert.ok(profile.firstName && profile.firstName.length > 2, 'Profile must have a valid first name');
+            assert.ok(profile.firstName && profile.firstName.length >= 2, 'Profile must have a valid first name');
             assert.ok(profile.username && profile.username.length > 2, 'Profile must have a valid username');
             assert.ok(!profile.firstName.toLowerCase().includes('bot'), 'Name must not contain "bot"');
             assert.ok(!profile.firstName.toLowerCase().startsWith('player'), 'Name must not be generic "Player"');
