@@ -1705,7 +1705,10 @@ function applyGameState(data) {
     return;
   }
 
-  if (data.isSpectator || (!data.inGame && data.gameState === 'PLAYING')) {
+  // If server reports player is active with valid cards, they are definitively NOT a spectator!
+  if (data.inGame && ((data.cards && data.cards.length > 0) || data.ticket)) {
+    isSpectator = false;
+  } else if (data.isSpectator || (!data.inGame && data.gameState === 'PLAYING')) {
     isSpectator = true;
   }
 

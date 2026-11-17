@@ -483,7 +483,11 @@ document.getElementById('nav-wallet').href=`/wallet.html?userId=${userId}${tokPa
 document.getElementById('nav-profile').href=`/profile.html?userId=${userId}${tokParam}`;
 
 let selectedBoards=[]; // Array of 1 or 2 board numbers
+let confirmedBoards=[]; // Array of board numbers confirmed by the server
+let pendingSelection=null;
 let isJoining=false;
+let currentSyncPromise=null;
+let lastSyncTimestamp=0;
 let cachedBoards=[];
 let targetEndTime=0;
 let countdownActive=false;
@@ -716,54 +720,78 @@ function renderBoards(boardsOrTaken){
   grid.innerHTML=html;
 }
 
-let pendingSelection=null;
-
 async function syncBoardSelection(){
-  if(isJoining) return;
+  if(isJoining) return currentSyncPromise;
   isJoining=true;
-  try{
-    while(pendingSelection !== null){
-      const boardsToSync = pendingSelection;
-      pendingSelection = null;
-      const res = await fetch('/api/join',{
-        method:'POST',
-        headers:{
-          'Content-Type':'application/json',
-          'x-telegram-init-data': window.Telegram?.WebApp?.initData || '',
-          'x-player-token': token || ''
-        },
-        body:JSON.stringify({userId,boards:boardsToSync,bet,room,autoPlay:autoEnabled})
-      });
-      const data = await res.json();
-      if(data.success){
-        if(data.boards && Array.isArray(data.boards)) selectedBoards=data.boards;
-        renderPreviews();
-        updateStakeDisplay();
-        if(window.Telegram?.WebApp?.HapticFeedback) Telegram.WebApp.HapticFeedback.notificationOccurred('success');
-        poll();
-        loadBalance();
-      }else{
-        if(data.msg && data.msg.toLowerCase().includes('in progress')){
-          redirected = true;
-          if(smoothTimer) clearInterval(smoothTimer);
-          window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
-          return;
+  currentSyncPromise = (async () => {
+    try{
+      while(pendingSelection !== null){
+        const boardsToSync = pendingSelection;
+        pendingSelection = null;
+        const res = await fetch('/api/join',{
+          method:'POST',
+          headers:{
+            'Content-Type':'application/json',
+            'x-telegram-init-data': window.Telegram?.WebApp?.initData || '',
+            'x-player-token': token || ''
+          },
+          body:JSON.stringify({userId,boards:boardsToSync,bet,room,autoPlay:autoEnabled})
+        });
+        lastSyncTimestamp = Date.now();
+        const data = await res.json();
+        if(data.success){
+          if(data.boards && Array.isArray(data.boards)){
+            confirmedBoards = [...data.boards];
+            selectedBoards = [...data.boards];
+          }
+          renderPreviews();
+          updateStakeDisplay();
+          if(cachedBoards.length>0) renderBoards(cachedBoards);
+          if(window.Telegram?.WebApp?.HapticFeedback) Telegram.WebApp.HapticFeedback.notificationOccurred('success');
+          poll();
+          loadBalance();
+        }else{
+          // Roll back visual selection to server-confirmed state
+          if(data.boards && Array.isArray(data.boards)){
+            confirmedBoards = [...data.boards];
+          }
+          selectedBoards = [...confirmedBoards];
+          renderPreviews();
+          updateStakeDisplay();
+          if(cachedBoards.length>0) renderBoards(cachedBoards);
+
+          if(data.msg && data.msg.toLowerCase().includes('in progress')){
+            redirected = true;
+            if(smoothTimer) clearInterval(smoothTimer);
+            if(confirmedBoards.length > 0){
+              window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&boards=${confirmedBoards.join(',')}&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
+            }else{
+              window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
+            }
+            return;
+          }
+          alert(data.msg||'Failed to update board selection.');
+          poll();
         }
-        alert(data.msg||'Failed to update board selection.');
-        poll();
+      }
+    }catch(e){
+      console.error('Join error', e);
+    }finally{
+      isJoining=false;
+      currentSyncPromise = null;
+      if(pendingSelection !== null){
+        syncBoardSelection();
       }
     }
-  }catch(e){
-    console.error('Join error', e);
-  }finally{
-    isJoining=false;
-    if(pendingSelection !== null){
-      syncBoardSelection();
-    }
-  }
+  })();
+  return currentSyncPromise;
 }
 
 async function pickBoard(num){
+  if(countdownActive && lastDisplayedSec !== null && lastDisplayedSec >= 0 && lastDisplayedSec <= 2){
+    showToast('⏳ ጨዋታው ሊጀምር ነው! የካርቴላ ምርጫ ተዘግቷል። (Game starting!)');
+    return;
+  }
   let nextBoards=[...selectedBoards];
   if(nextBoards.includes(num)){
     // Tapped an already selected board: deselect it (even if only 1!)
@@ -787,6 +815,10 @@ async function pickBoard(num){
 }
 
 async function removeBoard(num){
+  if(countdownActive && lastDisplayedSec !== null && lastDisplayedSec >= 0 && lastDisplayedSec <= 2){
+    showToast('⏳ ጨዋታው ሊጀምር ነው! የካርቴላ ምርጫ ተዘግቷል። (Game starting!)');
+    return;
+  }
   const nextBoards=selectedBoards.filter(b=>b!==num);
   selectedBoards=nextBoards;
   renderPreviews();
@@ -815,8 +847,8 @@ function updateCountdownTarget(serverSecs){
   const now = Date.now();
   if(s > 0){
     const incomingEndTime = now + (s * 1000);
-    // If not running, or if server drifted significantly (> 2.5s offset, e.g. new game/reset)
-    if(!countdownActive || Math.abs(incomingEndTime - targetEndTime) > 2500){
+    // If not running, or server is closer to zero, or drift > 1.2s
+    if(!countdownActive || incomingEndTime < targetEndTime || Math.abs(incomingEndTime - targetEndTime) > 1200){
       targetEndTime = incomingEndTime;
       countdownActive = true;
     }
@@ -852,8 +884,19 @@ function startSmoothTimer(){
       smoothTimer = null;
       document.getElementById('timer').textContent = '0';
 
-      if(selectedBoards.length > 0 && !redirected){
-        // Player has selected board(s) -> Start game and navigate to game.html
+      // If a board selection sync is currently in-flight, await it up to 1.5s
+      if(isJoining || pendingSelection !== null){
+        try{
+          await Promise.race([
+            currentSyncPromise,
+            new Promise(r => setTimeout(r, 1500))
+          ]);
+        }catch(e){}
+      }
+
+      const boardsToPlay = confirmedBoards.length > 0 ? confirmedBoards : selectedBoards;
+
+      if(boardsToPlay.length > 0 && !redirected){
         redirected = true;
         try{
           await fetch('/api/start-game',{
@@ -861,9 +904,8 @@ function startSmoothTimer(){
             body:JSON.stringify({bet,room})
           });
         }catch(e){}
-        window.location.href = `/game.html?userId=${userId}&bet=${bet}&room=${room}&boards=${selectedBoards.join(',')}&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
+        window.location.href = `/game.html?userId=${userId}&bet=${bet}&room=${room}&boards=${boardsToPlay.join(',')}&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
       } else if (!redirected) {
-        // Player has NO selected boards: smoothly transition to spectator mode!
         redirected = true;
         window.location.href = `/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
       }
@@ -901,6 +943,7 @@ async function loadBalance(){
 }
 
 async function poll(){
+  const pollStart = Date.now();
   try{
     const [boardRes,stateRes]=await Promise.all([
       fetch(`/api/boards?bet=${bet}&room=${room}`),
@@ -909,15 +952,18 @@ async function poll(){
     const boardData=await boardRes.json();
     const stateData=await stateRes.json();
 
-    if(!isJoining){
+    if(!isJoining && pendingSelection === null && pollStart >= lastSyncTimestamp){
       if(stateData.inGame){
         if(stateData.boardNumbers && stateData.boardNumbers.length > 0){
-          selectedBoards=stateData.boardNumbers;
+          confirmedBoards = [...stateData.boardNumbers];
+          selectedBoards = [...stateData.boardNumbers];
         }else if(stateData.boardNumber){
-          selectedBoards=[stateData.boardNumber];
+          confirmedBoards = [stateData.boardNumber];
+          selectedBoards = [stateData.boardNumber];
         }
       }else{
-        selectedBoards=[];
+        confirmedBoards = [];
+        selectedBoards = [];
       }
       renderPreviews();
       updateStakeDisplay();
@@ -947,8 +993,9 @@ async function poll(){
     if(boardData.gameState==='PLAYING' && !redirected){
       redirected = true;
       if(smoothTimer) clearInterval(smoothTimer);
-      if(selectedBoards.length > 0){
-        window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&boards=${selectedBoards.join(',')}&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
+      const boardsToPlay = confirmedBoards.length > 0 ? confirmedBoards : selectedBoards;
+      if(boardsToPlay.length > 0){
+        window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&boards=${boardsToPlay.join(',')}&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;
       } else {
         // Player has NO boards selected: redirect to game as spectator
         window.location.href=`/game.html?userId=${userId}&bet=${bet}&room=${room}&spectator=1&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}&v=${Date.now()}`;

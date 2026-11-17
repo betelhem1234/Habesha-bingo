@@ -197,8 +197,11 @@ export class GameManager {
                 clearTimeout(this.lobbyResetTimeout);
                 this.lobbyResetTimeout = null;
             }
+            const userIdStr = userId.toString();
             if (this.state !== 'WAITING') {
-                return { success: false, msg: 'A game is already in progress. Please wait.', boards: [] };
+                const existingPlayer = this.players.find(p => p.userId.toString() === userIdStr);
+                const existingBoards = existingPlayer && existingPlayer.cards ? existingPlayer.cards.map(c => c.boardNumber) : (existingPlayer?.boardNumber ? [existingPlayer.boardNumber] : []);
+                return { success: false, msg: 'A game is already in progress. Please wait.', boards: existingBoards };
             }
             if (!Array.isArray(boardNumbers) || boardNumbers.length === 0) {
                 await this.removePlayer(userId, false);
@@ -210,8 +213,6 @@ export class GameManager {
             if (boardNumbers.length === 2 && boardNumbers[0] === boardNumbers[1]) {
                 return { success: false, msg: 'Please choose two different boards.', boards: [] };
             }
-
-            const userIdStr = userId.toString();
 
             // Validate board numbers 1-500
             for (const bn of boardNumbers) {
@@ -278,6 +279,28 @@ export class GameManager {
                             }
                         });
                     } catch (e) {}
+                }
+
+                // Defensive check: If room transitioned to PLAYING during async fee DB calls
+                if (this.state !== 'WAITING') {
+                    if (countDiff > 0 && feePerBoard > 0) {
+                        const addFee = countDiff * feePerBoard;
+                        try {
+                            await prisma.user.update({
+                                where: { id: userId },
+                                data: {
+                                    ...(additionalBonusUsed > 0 ? { bonus: { increment: additionalBonusUsed } } : {}),
+                                    ...((addFee - additionalBonusUsed) > 0 ? { balance: { increment: addFee - additionalBonusUsed } } : {}),
+                                    ...(additionalWithdrawableUsed > 0 ? { withdrawableBalance: { increment: additionalWithdrawableUsed } } : {})
+                                }
+                            });
+                        } catch (e) {
+                            console.error('[Game] Error refunding fee after late race condition:', e);
+                        }
+                    }
+                    const existingPlayer = this.players.find(p => p.userId.toString() === userIdStr);
+                    const existingBoards = existingPlayer && existingPlayer.cards ? existingPlayer.cards.map(c => c.boardNumber) : (existingPlayer?.boardNumber ? [existingPlayer.boardNumber] : []);
+                    return { success: false, msg: 'A game is already in progress. Please wait.', boards: existingBoards };
                 }
 
                 const cards: PlayerCard[] = boardNumbers.map(bn => ({
