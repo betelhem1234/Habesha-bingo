@@ -14,6 +14,7 @@ export interface SystemSettingsState {
     autoReshuffle: 'off' | 'every_game' | 'every_5' | 'every_10';
     gamesSinceLastShuffle: number;
     lastReshuffledAt?: string;
+    winnerSelection: 'natural' | 'real_players' | 'house';
 }
 
 const state: SystemSettingsState = {
@@ -25,6 +26,7 @@ const state: SystemSettingsState = {
     autoReshuffle: 'off',
     gamesSinceLastShuffle: 0,
     lastReshuffledAt: undefined,
+    winnerSelection: 'natural',
     botSettings: {
         enabled: true,
         stake10Enabled: true,
@@ -76,6 +78,9 @@ function bootstrapFromFile() {
             }
             if (typeof data.lastReshuffledAt === 'string') {
                 state.lastReshuffledAt = data.lastReshuffledAt;
+            }
+            if (['natural', 'real_players', 'house'].includes(data.winnerSelection)) {
+                state.winnerSelection = data.winnerSelection;
             }
         }
     } catch (e) {
@@ -139,6 +144,9 @@ export async function initSettingsFromDb() {
         }
         if (dbSettings.lastReshuffledAt) {
             state.lastReshuffledAt = dbSettings.lastReshuffledAt;
+        }
+        if (dbSettings.winnerSelection && ['natural', 'real_players', 'house'].includes(dbSettings.winnerSelection)) {
+            state.winnerSelection = dbSettings.winnerSelection as any;
         }
 
         // Mirror to local file for fast offline reads
@@ -277,4 +285,20 @@ export function onGameCompletedCheckAutoReshuffle(): boolean {
         setSystemSettingDb('gamesSinceLastShuffle', String(state.gamesSinceLastShuffle)).catch(() => {});
     }
     return false;
+}
+
+export function getWinnerSelection(): 'natural' | 'real_players' | 'house' {
+    return state.winnerSelection || 'natural';
+}
+
+export function setWinnerSelection(mode: 'natural' | 'real_players' | 'house') {
+    if (!['natural', 'real_players', 'house'].includes(mode)) {
+        throw new Error(`Invalid winnerSelection mode: ${mode}`);
+    }
+    state.winnerSelection = mode;
+    if (!isTestMode()) {
+        persistToFile();
+        setSystemSettingDb('winnerSelection', mode).catch(err => console.error('[Settings] DB error saving winnerSelection:', err));
+    }
+    console.log(`[Settings] 🏆 Winner selection mode set to: ${mode}`);
 }

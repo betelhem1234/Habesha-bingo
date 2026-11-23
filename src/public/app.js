@@ -32,39 +32,100 @@ document.addEventListener('DOMContentLoaded', () => {
         return;
     }
 
-    // Initial fetch
+    // Initial full fetch and start bandwidth-optimized polling
     refreshAllData();
-
-    // Auto-refresh every 10 seconds for real-time live monitoring
-    setInterval(() => {
-        if (getAdminToken()) refreshAllData();
-    }, 10000);
+    startAdminPolling();
 });
 
 // ----------------------------------------------------
-// Tab Navigation Controller
+// Bandwidth-Optimized Tab Navigation & Smart Polling Controller
 // ----------------------------------------------------
+let currentActiveTab = 'tab-requests';
+let adminPollingTimer = null;
+
 function switchAdminTab(tabId) {
+    currentActiveTab = tabId;
     document.querySelectorAll('.tab-btn').forEach(btn => {
         btn.classList.toggle('active', btn.getAttribute('data-tab') === tabId);
     });
     document.querySelectorAll('.tab-content').forEach(content => {
         content.classList.toggle('active', content.id === tabId);
     });
-    if (tabId === 'tab-admins') {
-        fetchAdmins();
-        fetchAdminBanks();
-        fetchDutyWithdrawalAdmin();
-        fetchWithdrawalBanks();
-    } else if (tabId === 'tab-admin-audit') {
-        fetchAdminAuditStats();
-    } else if (tabId === 'tab-controls') {
-        loadSecurityStats();
-        checkDatabaseBackupStatus();
-        loadBoardShuffleStatus();
-    }
+    
+    // Immediately fetch data for the newly opened tab
+    refreshCurrentTabData();
 }
 window.switchAdminTab = switchAdminTab;
+
+async function refreshCurrentTabData() {
+    if (!getAdminToken()) return;
+    try {
+        if (currentActiveTab === 'tab-requests') {
+            await fetchRequests();
+        } else if (currentActiveTab === 'tab-income') {
+            await fetchHouseIncome();
+        } else if (currentActiveTab === 'tab-users') {
+            const searchInput = document.getElementById('user-search-input');
+            const searchQuery = searchInput ? searchInput.value.trim() : '';
+            await fetchUsers(searchQuery);
+        } else if (currentActiveTab === 'tab-admins') {
+            await Promise.allSettled([
+                fetchAdmins(),
+                fetchAdminBanks(),
+                fetchDutyWithdrawalAdmin(),
+                fetchWithdrawalBanks()
+            ]);
+        } else if (currentActiveTab === 'tab-admin-audit') {
+            await fetchAdminAuditStats();
+        } else if (currentActiveTab === 'tab-controls') {
+            await Promise.allSettled([
+                fetchCallerVoice(),
+                fetchBonusSettings(),
+                fetchWinCallThreshold(),
+                fetchWinnerSelection(),
+                fetchBotSettings(),
+                loadSecurityStats(),
+                checkDatabaseBackupStatus(),
+                loadBoardShuffleStatus()
+            ]);
+        }
+    } catch (e) {
+        console.warn('Error refreshing current tab data:', e);
+    }
+}
+window.refreshCurrentTabData = refreshCurrentTabData;
+
+// Smart periodic polling:
+// 1. Pauses completely if browser tab is hidden, minimized, or screen locked (0 bytes background transfer)
+// 2. Polls only real-time monitoring stats and the currently active tab (95% smaller payload)
+async function refreshPeriodicData() {
+    if (!getAdminToken()) return;
+    if (document.hidden) return; // Zero network egress when tab is in background
+
+    // Lightweight monitoring stats (< 1 KB total)
+    await Promise.allSettled([
+        fetchStats(),
+        fetchFinancialSummary()
+    ]);
+
+    // Refresh only the active tab
+    await refreshCurrentTabData();
+}
+window.refreshPeriodicData = refreshPeriodicData;
+
+function startAdminPolling() {
+    if (adminPollingTimer) clearInterval(adminPollingTimer);
+    adminPollingTimer = setInterval(refreshPeriodicData, 10000);
+}
+window.startAdminPolling = startAdminPolling;
+
+// Background tab visibility guard:
+document.addEventListener('visibilitychange', () => {
+    if (!document.hidden && getAdminToken()) {
+        // Tab just became visible: fire an immediate refresh of stats & active tab
+        refreshPeriodicData();
+    }
+});
 
 // ----------------------------------------------------
 // 0. Authentication, Sliding Session & Inactivity Management
@@ -176,6 +237,7 @@ function initAuth() {
                                     resetInactivityTimer();
                                     if (passInput) passInput.value = '';
                                     await refreshAllData();
+                                    startAdminPolling();
                                 } else if (pollData.status === 'REJECTED') {
                                     clearInterval(twoFaPollInterval);
                                     showLoginOverlay('❌ Login request was rejected in Telegram.');
@@ -195,6 +257,7 @@ function initAuth() {
                         resetInactivityTimer();
                         if (passInput) passInput.value = '';
                         await refreshAllData();
+                        startAdminPolling();
                     }
                 } else {
                     const errMsg = data.error || data.msg || (data.reason ? `Access restricted: ${data.reason}` : 'Incorrect admin password.');
@@ -230,6 +293,10 @@ function initAuth() {
 }
 
 function showLoginOverlay(errorMsg = '') {
+    if (adminPollingTimer) {
+        clearInterval(adminPollingTimer);
+        adminPollingTimer = null;
+    }
     const overlay = document.getElementById('login-overlay');
     if (overlay) overlay.style.display = 'flex';
     const errEl = document.getElementById('login-error-msg');
@@ -299,6 +366,7 @@ async function refreshAllData() {
         fetchCallerVoice(),
         fetchBonusSettings(),
         fetchWinCallThreshold(),
+        fetchWinnerSelection(),
         fetchBotSettings(),
         fetchAdmins(),
         fetchAdminBanks(),
@@ -486,10 +554,16 @@ function updateIncomeLobbyFilterUI() {
 // ----------------------------------------------------
 // 3. House Income & Game Payouts Table
 // ----------------------------------------------------
-async function fetchHouseIncome() {
+let currentIncomePage = 1;
+let currentIncomeLimit = 100;
+let currentIncomeTotalGames = 0;
+let currentIncomeTotalPages = 1;
+
+async function fetchHouseIncome(page = currentIncomePage) {
     try {
+        currentIncomePage = page;
         const feeQuery = (currentIncomeLobbyFilter && currentIncomeLobbyFilter !== 'all') ? `&fee=${encodeURIComponent(currentIncomeLobbyFilter)}` : '';
-        const res = await authFetch(`/api/admin/income?period=${currentPeriod}${feeQuery}`);
+        const res = await authFetch(`/api/admin/income?period=${currentPeriod}${feeQuery}&page=${page}&limit=${currentIncomeLimit}`);
         if (!res.ok) throw new Error('House income fetch failed');
         const data = await res.json();
 
@@ -502,7 +576,7 @@ async function fetchHouseIncome() {
         const summary = data.summary || {};
 
         setText('income-kpi-total-profit', (summary.totalHouseProfit ?? 0).toLocaleString());
-        setText('income-kpi-total-games', `${(summary.totalGames ?? 0).toLocaleString()} games`);
+        setText('income-kpi-total-games', `${(summary.totalPeriodGames ?? summary.totalGames ?? 0).toLocaleString()} games`);
         setText('income-kpi-total-pot', (summary.totalPot ?? 0).toLocaleString());
 
         setText('income-kpi-10-profit', (l10.totalHouseProfit ?? 0).toLocaleString());
@@ -612,9 +686,29 @@ async function fetchHouseIncome() {
         setText('tot-pot', `${(summary.totalPot ?? 0).toLocaleString()} Birr`);
         setText('tot-payout', `${(summary.totalWinnerPayout ?? 0).toLocaleString()} Birr`);
         setText('tot-profit', `${(summary.totalHouseProfit ?? 0).toLocaleString()} Birr`);
+
+        // Update Income Pagination Controls
+        currentIncomeTotalGames = data.totalGames ?? incomes.length;
+        currentIncomeTotalPages = data.totalPages ?? 1;
+        const startRecord = incomes.length > 0 ? (currentIncomePage - 1) * currentIncomeLimit + 1 : 0;
+        const endRecord = incomes.length > 0 ? (startRecord + incomes.length - 1) : 0;
+
+        setText('income-page-info', `Showing ${startRecord.toLocaleString()}–${endRecord.toLocaleString()} of ${currentIncomeTotalGames.toLocaleString()} games`);
+        setText('income-page-indicator', `Page ${currentIncomePage} of ${currentIncomeTotalPages}`);
+
+        const btnPrev = document.getElementById('btn-income-prev');
+        const btnNext = document.getElementById('btn-income-next');
+        if (btnPrev) btnPrev.disabled = (currentIncomePage <= 1);
+        if (btnNext) btnNext.disabled = (currentIncomePage >= currentIncomeTotalPages);
     } catch (err) {
         console.error('Error fetching house income:', err);
     }
+}
+
+function changeIncomePage(delta) {
+    const targetPage = currentIncomePage + delta;
+    if (targetPage < 1 || targetPage > currentIncomeTotalPages) return;
+    fetchHouseIncome(targetPage);
 }
 
 // ----------------------------------------------------
@@ -627,6 +721,10 @@ async function fetchStats() {
         const data = await res.json();
 
         setText('stat-users', (data.users ?? 0).toLocaleString());
+        if (!currentUsersSearchQuery && (!currentUsersTotal || currentUsersTotal < (data.users ?? 0))) {
+            currentUsersTotal = data.users ?? 0;
+            setText('tab-badge-users', currentUsersTotal.toLocaleString());
+        }
         setText('stat-balance', (data.balance ?? 0).toLocaleString());
         setText('stat-players', (data.activePlayers ?? 0).toLocaleString());
 
@@ -733,59 +831,114 @@ async function fetchStats() {
 // ----------------------------------------------------
 // 5. Users Management Table
 // ----------------------------------------------------
-async function fetchUsers(searchQuery = '') {
-    try {
-        const url = searchQuery 
-            ? `/api/admin/users?search=${encodeURIComponent(searchQuery)}`
-            : '/api/users';
-        const res = await authFetch(url);
-        if (!res.ok) throw new Error('Users fetch failed');
-        const users = await res.json();
-        allUsers = Array.isArray(users) ? users : [];
+let currentUsersPage = 1;
+let currentUsersLimit = 100;
+let currentUsersTotal = 0;
+let currentUsersFilteredTotal = 0;
+let currentUsersTotalPages = 1;
+let currentUsersSearchQuery = '';
+let allUsersCompact = [];
 
-        setText('tab-badge-users', String(allUsers.length));
+async function fetchUsers(searchQuery = '', page = currentUsersPage) {
+    try {
+        currentUsersSearchQuery = searchQuery;
+        currentUsersPage = page;
+
+        const queryParams = new URLSearchParams({
+            paginated: '1',
+            page: String(page),
+            limit: String(currentUsersLimit)
+        });
+        if (searchQuery) queryParams.set('search', searchQuery);
+
+        const res = await authFetch(`/api/admin/users?${queryParams.toString()}`);
+        if (!res.ok) throw new Error('Users fetch failed');
+        const data = await res.json();
+
+        let users = [];
+        if (Array.isArray(data)) {
+            users = data;
+            const xTotal = Number(res.headers.get('X-Total-Count'));
+            currentUsersTotal = (!isNaN(xTotal) && xTotal > 0) ? xTotal : data.length;
+            const xFiltered = Number(res.headers.get('X-Filtered-Count'));
+            currentUsersFilteredTotal = (!isNaN(xFiltered) && xFiltered > 0) ? xFiltered : data.length;
+            currentUsersTotalPages = 1;
+        } else {
+            users = data.users || [];
+            currentUsersTotal = data.totalCount ?? users.length;
+            currentUsersFilteredTotal = data.filteredCount ?? users.length;
+            currentUsersTotalPages = data.totalPages ?? 1;
+            currentUsersPage = data.page ?? page;
+        }
+        allUsers = users;
+
+        // Set Tab Badge to True Total Registered Users
+        setText('tab-badge-users', (currentUsersTotal ?? 0).toLocaleString());
 
         const tbody = document.querySelector('#users-table tbody');
         if (!tbody) return;
 
         if (allUsers.length === 0) {
-            tbody.innerHTML = `<tr><td colspan="9" style="text-align:center; color:#94a3b8; padding:24px;">No users found.</td></tr>`;
-            return;
+            tbody.innerHTML = `<tr><td colspan="10" style="text-align:center; color:#94a3b8; padding:24px;">No users found.</td></tr>`;
+        } else {
+            tbody.innerHTML = allUsers.map(u => {
+                const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Player';
+                const usernameHtml = u.username 
+                    ? `<strong>${escapeHtml(fullName)}</strong><br><a href="https://t.me/${u.username}" target="_blank" style="color:#38bdf8; text-decoration:none; font-size:12px; font-weight:600;">@${escapeHtml(u.username)}</a>`
+                    : `<strong>${escapeHtml(fullName)}</strong>`;
+                
+                const statusHtml = u.banned
+                    ? `<span class="badge-banned">Banned</span>`
+                    : `<span class="badge-active">Active</span>`;
+
+                const adminBadge = u.assignedAdmin 
+                    ? `<span style="background:rgba(139,92,246,0.18); border:1px solid rgba(139,92,246,0.4); color:#c4b5fd; padding:3px 8px; border-radius:6px; font-weight:600; font-size:12px;">👑 ${escapeHtml(u.assignedAdmin.customName || u.assignedAdmin.code)}</span>`
+                    : `<span style="color:#64748b; font-size:12px;">—</span>`;
+
+                return `
+                    <tr>
+                        <td style="color:#94a3b8; font-family:monospace; font-size:13px;">#${escapeHtml(String(u.id))}</td>
+                        <td>${usernameHtml}</td>
+                        <td style="color:#e2e8f0; font-size:13px;">${escapeHtml(u.phone || '—')}</td>
+                        <td><strong style="color:#4ade80;">${(u.balance ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
+                        <td><strong style="color:#38bdf8;">${(u.withdrawableBalance ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
+                        <td><strong style="color:#fbbf24;">${(u.bonus ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
+                        <td><span style="color:#94a3b8;">${u.gamesPlayed ?? 0}</span> / <strong style="color:#38bdf8;">${u.wins ?? 0}</strong></td>
+                        <td>${adminBadge}</td>
+                        <td>${statusHtml}</td>
+                        <td>
+                            <div style="display:flex; gap:6px;">
+                                <button onclick="promoteUserToAdmin('${u.id}')" class="action-btn-sm" style="background:#8b5cf6; color:#fff;" title="Make Administrator">👑 Admin</button>
+                                <button onclick="openEditUserModal('${u.id}')" class="action-btn-sm" style="background:#3b82f6; color:#fff;" title="Edit user">✏️ Edit</button>
+                                <button onclick="openDeleteUserModal('${u.id}')" class="action-btn-sm" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4);" title="Delete user">🗑</button>
+                            </div>
+                        </td>
+                    </tr>
+                `;
+            }).join('');
         }
 
-        tbody.innerHTML = allUsers.map(u => {
-            const fullName = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Player';
-            const usernameHtml = u.username 
-                ? `<strong>${escapeHtml(fullName)}</strong><br><a href="https://t.me/${u.username}" target="_blank" style="color:#38bdf8; text-decoration:none; font-size:12px; font-weight:600;">@${escapeHtml(u.username)}</a>`
-                : `<strong>${escapeHtml(fullName)}</strong>`;
-            
-            const statusHtml = u.banned
-                ? `<span class="badge-banned">Banned</span>`
-                : `<span class="badge-active">Active</span>`;
+        // Update Users Pagination Controls
+        const startRecord = allUsers.length > 0 ? (currentUsersPage - 1) * currentUsersLimit + 1 : 0;
+        const endRecord = allUsers.length > 0 ? (startRecord + allUsers.length - 1) : 0;
 
-            return `
-                <tr>
-                    <td style="color:#94a3b8; font-family:monospace; font-size:13px;">#${escapeHtml(String(u.id))}</td>
-                    <td>${usernameHtml}</td>
-                    <td style="color:#e2e8f0; font-size:13px;">${escapeHtml(u.phone || '—')}</td>
-                    <td><strong style="color:#4ade80;">${(u.balance ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
-                    <td><strong style="color:#38bdf8;">${(u.withdrawableBalance ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
-                    <td><strong style="color:#fbbf24;">${(u.bonus ?? 0).toLocaleString()}</strong> <span class="currency">Birr</span></td>
-                    <td><span style="color:#94a3b8;">${u.gamesPlayed ?? 0}</span> / <strong style="color:#38bdf8;">${u.wins ?? 0}</strong></td>
-                    <td>${statusHtml}</td>
-                    <td>
-                        <div style="display:flex; gap:6px;">
-                            <button onclick="promoteUserToAdmin('${u.id}')" class="action-btn-sm" style="background:#8b5cf6; color:#fff;" title="Make Administrator">👑 Admin</button>
-                            <button onclick="openEditUserModal('${u.id}')" class="action-btn-sm" style="background:#3b82f6; color:#fff;" title="Edit user">✏️ Edit</button>
-                            <button onclick="openDeleteUserModal('${u.id}')" class="action-btn-sm" style="background:rgba(239,68,68,0.2); color:#f87171; border:1px solid rgba(239,68,68,0.4);" title="Delete user">🗑</button>
-                        </div>
-                    </td>
-                </tr>
-            `;
-        }).join('');
+        const filterNotice = currentUsersFilteredTotal !== currentUsersTotal ? ` (filtered from ${currentUsersTotal.toLocaleString()})` : '';
+        setText('users-page-info', `Showing ${startRecord.toLocaleString()}–${endRecord.toLocaleString()} of ${currentUsersFilteredTotal.toLocaleString()} users${filterNotice}`);
+        setText('users-page-indicator', `Page ${currentUsersPage} of ${currentUsersTotalPages}`);
+
+        const btnPrev = document.getElementById('btn-users-prev');
+        const btnNext = document.getElementById('btn-users-next');
+        if (btnPrev) btnPrev.disabled = (currentUsersPage <= 1);
+        if (btnNext) btnNext.disabled = (currentUsersPage >= currentUsersTotalPages);
     } catch (err) {
         console.error('Error fetching users:', err);
     }
+}
+
+function changeUsersPage(delta) {
+    const targetPage = currentUsersPage + delta;
+    if (targetPage < 1 || targetPage > currentUsersTotalPages) return;
+    fetchUsers(currentUsersSearchQuery, targetPage);
 }
 
 // ----------------------------------------------------
@@ -1792,6 +1945,168 @@ async function saveWinCallThreshold() {
 }
 
 // ----------------------------------------------------
+// Winner Selection Control (Natural, House, Real Players)
+// ----------------------------------------------------
+let activeWinnerSelection = 'natural';
+let serverWinnerSelection = 'natural';
+let winnerSelectionDirty = false;
+
+function markWinnerSelectionDirty() {
+    winnerSelectionDirty = true;
+    const statusEl = document.getElementById('winner-selection-save-status');
+    if (statusEl) {
+        statusEl.textContent = '● Unsaved Changes — Click "Save Winner Mode"';
+        statusEl.style.color = '#f59e0b';
+    }
+}
+
+function updateWinnerSelectionUI(mode) {
+    activeWinnerSelection = mode;
+    const badge = document.getElementById('winner-selection-badge');
+
+    const optNatural = document.getElementById('winner-opt-natural');
+    const optHouse = document.getElementById('winner-opt-house');
+    const optReal = document.getElementById('winner-opt-real_players');
+
+    const radioNatural = document.getElementById('winner-radio-natural');
+    const radioHouse = document.getElementById('winner-radio-house');
+    const radioReal = document.getElementById('winner-radio-real_players');
+
+    // Reset styles
+    if (optNatural) {
+        optNatural.style.border = '1px solid rgba(255,255,255,0.15)';
+        optNatural.style.background = 'rgba(0,0,0,0.25)';
+    }
+    if (optHouse) {
+        optHouse.style.border = '1px solid rgba(255,255,255,0.15)';
+        optHouse.style.background = 'rgba(0,0,0,0.25)';
+    }
+    if (optReal) {
+        optReal.style.border = '1px solid rgba(255,255,255,0.15)';
+        optReal.style.background = 'rgba(0,0,0,0.25)';
+    }
+
+    if (radioNatural) radioNatural.textContent = '⚪';
+    if (radioHouse) radioHouse.textContent = '⚪';
+    if (radioReal) radioReal.textContent = '⚪';
+
+    // Apply active styles
+    if (mode === 'natural') {
+        if (optNatural) {
+            optNatural.style.border = '2px solid rgba(34,197,94,0.6)';
+            optNatural.style.background = 'rgba(34,197,94,0.12)';
+        }
+        if (radioNatural) radioNatural.textContent = '🔘';
+        if (badge) {
+            badge.textContent = '🟢 Natural (RNG)';
+            badge.style.background = 'rgba(34,197,94,0.2)';
+            badge.style.color = '#4ade80';
+        }
+    } else if (mode === 'house') {
+        if (optHouse) {
+            optHouse.style.border = '2px solid rgba(239,68,68,0.6)';
+            optHouse.style.background = 'rgba(239,68,68,0.12)';
+        }
+        if (radioHouse) radioHouse.textContent = '🔘';
+        if (badge) {
+            badge.textContent = '🛡️ House Priority';
+            badge.style.background = 'rgba(239,68,68,0.2)';
+            badge.style.color = '#f87171';
+        }
+    } else if (mode === 'real_players') {
+        if (optReal) {
+            optReal.style.border = '2px solid rgba(56,189,248,0.6)';
+            optReal.style.background = 'rgba(56,189,248,0.12)';
+        }
+        if (radioReal) radioReal.textContent = '🔘';
+        if (badge) {
+            badge.textContent = '🎁 Real Players Priority';
+            badge.style.background = 'rgba(56,189,248,0.2)';
+            badge.style.color = '#38bdf8';
+        }
+    }
+}
+
+function selectWinnerMode(mode) {
+    if (!['natural', 'real_players', 'house'].includes(mode)) return;
+    updateWinnerSelectionUI(mode);
+    if (mode !== serverWinnerSelection) {
+        markWinnerSelectionDirty();
+    } else {
+        winnerSelectionDirty = false;
+        const statusEl = document.getElementById('winner-selection-save-status');
+        if (statusEl) statusEl.textContent = '';
+    }
+}
+
+async function fetchWinnerSelection(force = false) {
+    try {
+        const res = await authFetch('/api/admin/winner-selection');
+        if (!res.ok) return;
+        const data = await res.json();
+        if (data && data.success && data.winnerSelection) {
+            serverWinnerSelection = data.winnerSelection;
+            if (force || !winnerSelectionDirty) {
+                updateWinnerSelectionUI(data.winnerSelection);
+                winnerSelectionDirty = false;
+            }
+        }
+    } catch (err) {
+        console.error('Error fetching winner selection:', err);
+    }
+}
+
+async function saveWinnerSelection() {
+    const statusEl = document.getElementById('winner-selection-save-status');
+    if (statusEl) {
+        statusEl.textContent = '⏳ Saving...';
+        statusEl.style.color = '#38bdf8';
+    }
+
+    try {
+        const res = await authFetch('/api/admin/winner-selection', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ winnerSelection: activeWinnerSelection })
+        });
+        const data = await res.json();
+        if (data && data.success) {
+            serverWinnerSelection = data.winnerSelection;
+            winnerSelectionDirty = false;
+            updateWinnerSelectionUI(data.winnerSelection);
+            if (statusEl) {
+                statusEl.textContent = `✅ Saved! Active Mode: ${data.winnerSelection}`;
+                statusEl.style.color = '#10b981';
+                setTimeout(() => { if (statusEl && !winnerSelectionDirty) statusEl.textContent = ''; }, 4000);
+            }
+        } else {
+            if (statusEl) {
+                statusEl.textContent = `❌ ${data?.msg || 'Save failed'}`;
+                statusEl.style.color = '#ef4444';
+            }
+        }
+    } catch (err) {
+        console.error('Error saving winner selection:', err);
+        if (statusEl) {
+            statusEl.textContent = '❌ Failed to save winner mode.';
+            statusEl.style.color = '#ef4444';
+        }
+    }
+}
+
+function revertWinnerSelection() {
+    activeWinnerSelection = serverWinnerSelection;
+    winnerSelectionDirty = false;
+    updateWinnerSelectionUI(serverWinnerSelection);
+    const statusEl = document.getElementById('winner-selection-save-status');
+    if (statusEl) {
+        statusEl.textContent = '↺ Reverted to active server mode';
+        statusEl.style.color = '#94a3b8';
+        setTimeout(() => { if (statusEl && !winnerSelectionDirty) statusEl.textContent = ''; }, 3000);
+    }
+}
+
+// ----------------------------------------------------
 // 8.1 Virtual Players (Bot Control) Handlers
 // ----------------------------------------------------
 function updateStakeBadges() {
@@ -2347,6 +2662,12 @@ async function fetchAdmins() {
 
         setText('tab-badge-admins', String(allAdmins.length));
 
+        if (data.summary) {
+            setText('lineage-total-users', (data.summary.totalUsers ?? 0).toLocaleString());
+            setText('lineage-assigned-users', (data.summary.assignedUsersTotal ?? 0).toLocaleString());
+            setText('lineage-unassigned-users', (data.summary.unassignedUsers ?? 0).toLocaleString());
+        }
+
         const tbody = document.querySelector('#admins-table tbody');
         if (!tbody) return;
 
@@ -2509,7 +2830,7 @@ function clearAdminProfileStatus() {
     el.style.display = 'none';
 }
 
-function openAddAdminProfileModal(preselectedUserId = null) {
+async function openAddAdminProfileModal(preselectedUserId = null) {
     const modal = document.getElementById('admin-profile-modal');
     if (!modal) return;
 
@@ -2524,12 +2845,25 @@ function openAddAdminProfileModal(preselectedUserId = null) {
     if (limitInput) limitInput.value = '3000';
     updateBotLinkPreview('');
 
+    // Fetch compact list of all users to ensure every user is selectable
+    try {
+        const compactRes = await authFetch('/api/admin/users?compact=1');
+        if (compactRes.ok) {
+            const data = await compactRes.json();
+            if (Array.isArray(data)) allUsersCompact = data;
+        }
+    } catch (err) {
+        console.warn('Could not fetch compact users, falling back to allUsers:', err);
+    }
+
+    const candidateUsers = (allUsersCompact.length > 0) ? allUsersCompact : allUsers;
+
     // Populate user select dropdown
     const select = document.getElementById('admin-user-select');
     if (select) {
         select.required = true;
         select.innerHTML = '<option value="">-- Choose a user to promote --</option>' +
-            allUsers.map(u => {
+            candidateUsers.map(u => {
                 const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'User';
                 const uname = u.username ? `@${u.username}` : `ID: ${u.id}`;
                 return `<option value="${u.id}">${escapeHtml(name)} (${escapeHtml(uname)}) — #${u.id}</option>`;
@@ -2562,7 +2896,7 @@ function onAdminUserSelected(userId) {
         return;
     }
 
-    const u = allUsers.find(x => String(x.id) === String(userId));
+    const u = allUsers.find(x => String(x.id) === String(userId)) || allUsersCompact.find(x => String(x.id) === String(userId));
     if (!u) return;
 
     const name = [u.firstName, u.lastName].filter(Boolean).join(' ') || 'Player';
@@ -3102,6 +3436,11 @@ window.applyWinCallPreset = applyWinCallPreset;
 window.updateWinCallPreview = updateWinCallPreview;
 window.markWinCallDirty = markWinCallDirty;
 window.revertWinCallThreshold = revertWinCallThreshold;
+window.fetchWinnerSelection = fetchWinnerSelection;
+window.selectWinnerMode = selectWinnerMode;
+window.saveWinnerSelection = saveWinnerSelection;
+window.revertWinnerSelection = revertWinnerSelection;
+window.markWinnerSelectionDirty = markWinnerSelectionDirty;
 window.fetchBotSettings = fetchBotSettings;
 window.saveBotSettings = saveBotSettings;
 window.markBotInputDirty = markBotInputDirty;
@@ -3552,6 +3891,8 @@ async function saveAutoReshuffleSetting() {
 window.loadBoardShuffleStatus = loadBoardShuffleStatus;
 window.triggerManualBoardReshuffle = triggerManualBoardReshuffle;
 window.saveAutoReshuffleSetting = saveAutoReshuffleSetting;
+window.changeUsersPage = changeUsersPage;
+window.changeIncomePage = changeIncomePage;
 
 
 

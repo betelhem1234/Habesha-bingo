@@ -53,11 +53,13 @@ const upload = multer({
 export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
     const app = express();
 
-    // Enable gzip/deflate compression for responses, excluding SSE streams
+    // Enable gzip/deflate compression for responses, strictly excluding SSE streams
     app.use(compression({
         threshold: 1024,
         filter: (req, res) => {
-            if (req.headers.accept === 'text/event-stream' || req.path.includes('/events')) {
+            const accept = req.headers.accept || '';
+            const path = req.path || '';
+            if (accept.includes('text/event-stream') || path.includes('/game-stream') || path.includes('/events')) {
                 return false;
             }
             return compression.filter(req, res);
@@ -244,17 +246,19 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             } else if (filePath.endsWith('.js') || filePath.endsWith('.css')) {
                 // Scripts and stylesheets cached for 1 hour with revalidation
                 res.setHeader('Cache-Control', 'public, max-age=3600, must-revalidate');
+            } else if (/\.(png|jpe?g|webp|svg|ico|mp3|wav|ogg|woff2?|ttf)$/i.test(filePath)) {
+                // Media and audio assets cached aggressively for 30 days immutable to preserve Render free-tier bandwidth
+                res.setHeader('Cache-Control', 'public, max-age=2592000, immutable');
             } else {
-                // Media assets (images, audio) cached for 24 hours
                 res.setHeader('Cache-Control', 'public, max-age=86400');
             }
         }
     }));
 
-    // Serve uploaded deposit proofs
+    // Serve uploaded deposit proofs with long-term immutable caching
     app.use('/uploads', express.static(UPLOADS_DIR, {
         setHeaders: (res) => {
-            res.setHeader('Cache-Control', 'public, max-age=3600');
+            res.setHeader('Cache-Control', 'public, max-age=86400, immutable');
         }
     }));
 
@@ -405,11 +409,13 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         res.json({ success: true, banned: true, ip, durationMinutes });
     });
 
-    // Admin stats (Protected)
+    // Admin stats (Protected - optimized with native DB sum aggregation to preserve bandwidth)
     app.get('/api/stats', adminAuthMiddleware, async (req, res) => {
-        const usersCount = await prisma.user.count();
-        const users = await prisma.user.findMany();
-        const totalBalance = users.reduce((acc, u) => acc + u.balance.toNumber(), 0);
+        const [usersCount, balanceAgg] = await Promise.all([
+            prisma.user.count(),
+            prisma.user.aggregate({ _sum: { balance: true } })
+        ]);
+        const totalBalance = balanceAgg._sum.balance ? balanceAgg._sum.balance.toNumber() : 0;
         const admin = gameRooms.getAdminStats();
         
         res.json({
@@ -484,7 +490,6 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             const search = req.query.search ? String(req.query.search).trim() : '';
             const where: any = {};
             if (search) {
-                const searchLower = search.toLowerCase();
                 const numericId = /^\d+$/.test(search) ? BigInt(search) : null;
                 where.OR = [
                     { username: { contains: search, mode: 'insensitive' } },
@@ -496,12 +501,46 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 }
             }
 
-            const users = await prisma.user.findMany({
-                where,
-                orderBy: { balance: 'desc' },
-                take: 150,
-                include: { _count: { select: { referrals: true } } }
-            });
+            // Compact mode for user pickers (e.g. Add Administrator dropdown)
+            if (req.query.compact === '1') {
+                const compactUsers = await prisma.user.findMany({
+                    where,
+                    select: {
+                        id: true,
+                        firstName: true,
+                        lastName: true,
+                        username: true,
+                        phone: true
+                    },
+                    orderBy: [{ firstName: 'asc' }, { id: 'asc' }]
+                });
+                return res.json(compactUsers.map(u => ({
+                    id: u.id.toString(),
+                    username: u.username,
+                    firstName: u.firstName,
+                    lastName: u.lastName,
+                    phone: u.phone
+                })));
+            }
+
+            const isPaginated = req.query.paginated === '1' || req.query.page !== undefined;
+            const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+            const defaultLimit = 100;
+            const parsedLimit = parseInt(req.query.limit as string, 10) || defaultLimit;
+            const limit = Math.max(1, Math.min(500, parsedLimit));
+            const skip = (page - 1) * limit;
+
+            const [totalCount, filteredCount, users] = await Promise.all([
+                prisma.user.count(),
+                prisma.user.count({ where }),
+                prisma.user.findMany({
+                    where,
+                    orderBy: { balance: 'desc' },
+                    skip: isPaginated ? skip : 0,
+                    take: isPaginated ? limit : undefined,
+                    include: { _count: { select: { referrals: true } } }
+                })
+            ]);
             
             const safeUsers = users.map(u => ({
                 id: u.id.toString(),
@@ -518,6 +557,20 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 referrals: u._count.referrals,
                 createdAt: u.createdAt
             }));
+
+            res.setHeader('X-Total-Count', String(totalCount));
+            res.setHeader('X-Filtered-Count', String(filteredCount));
+
+            if (isPaginated) {
+                return res.json({
+                    users: safeUsers,
+                    totalCount,
+                    filteredCount,
+                    page,
+                    limit,
+                    totalPages: Math.max(1, Math.ceil(filteredCount / limit))
+                });
+            }
             
             res.json(safeUsers);
         } catch (e: any) {
@@ -598,10 +651,12 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 inGame: false,
                 callerVoice: gameRooms.getCallerVoice(),
                 gameState: gameManager.state,
+                gameId: gameManager.gameId,
                 drawnNumbers: Array.from(gameManager.drawnNumbers),
                 lastDrawn: Array.from(gameManager.drawnNumbers).at(-1) ?? null,
                 winner: (gameManager.state === 'WAITING' && gameManager.currentWinner) ? gameManager.currentWinner : null,
                 winners: (gameManager.state === 'WAITING' && gameManager.currentWinners.length > 0) ? gameManager.currentWinners : [],
+                winningNumber: (gameManager.state === 'WAITING' && gameManager.currentWinner?.winningNumber) ? gameManager.currentWinner.winningNumber : (Array.from(gameManager.drawnNumbers).at(-1) ?? null),
                 pot: gameManager.getPot(),
                 playerCount: gameManager.players.length,
                 boardCount: gameManager.getTotalBoards(),
@@ -693,6 +748,7 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
             lastDrawn: Array.from(gameManager.drawnNumbers).at(-1) ?? null,
             lobbyCountdown: gameManager.lobbyCountdown,
             playerCount: gameManager.players.length,
+            boardCount: gameManager.getTotalBoards(),
             pot: gameManager.getPot(),
             gameId: gameManager.gameId,
             winner: (gameManager.state === 'WAITING' && gameManager.currentWinner) ? gameManager.currentWinner : null,
@@ -1429,7 +1485,20 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 paymentAccounts: a.paymentAccounts
             }));
 
-            res.json({ admins: safeAdmins });
+            const [totalUsers, unassignedUsers] = await Promise.all([
+                prisma.user.count(),
+                prisma.user.count({ where: { assignedAdminId: null } })
+            ]);
+            const assignedUsersTotal = safeAdmins.reduce((acc, a) => acc + (a.assignedUsersCount || 0), 0);
+
+            res.json({
+                admins: safeAdmins,
+                summary: {
+                    totalUsers,
+                    assignedUsersTotal,
+                    unassignedUsers
+                }
+            });
         } catch (e: any) {
             console.error('Fetch admins error:', e);
             res.status(500).json({ error: 'Failed to fetch administrators' });
@@ -2580,11 +2649,21 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         }
 
         try {
-            const incomes = await prisma.houseIncome.findMany({
-                where,
-                orderBy: { createdAt: 'desc' },
-                take: 200
-            });
+            const page = Math.max(1, parseInt(req.query.page as string, 10) || 1);
+            const defaultLimit = 100;
+            const parsedLimit = parseInt(req.query.limit as string, 10) || defaultLimit;
+            const limit = Math.max(1, Math.min(500, parsedLimit));
+            const skip = (page - 1) * limit;
+
+            const [totalCount, incomes] = await Promise.all([
+                prisma.houseIncome.count({ where }),
+                prisma.houseIncome.findMany({
+                    where,
+                    orderBy: { createdAt: 'desc' },
+                    skip,
+                    take: limit
+                })
+            ]);
 
             // Gather winner usernames and names for both winnerId and winner2Id
             const winnerIds: bigint[] = [];
@@ -2687,13 +2766,20 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
                 };
             });
 
+            const totalPages = Math.max(1, Math.ceil(totalCount / limit));
+
             res.json({
                 period,
                 start,
                 end,
                 filterFee: reqFee ?? null,
+                page,
+                limit,
+                totalGames: totalCount,
+                totalPages,
                 summary: {
                     totalGames: incomes.length,
+                    totalPeriodGames: totalCount,
                     totalPlayers,
                     totalPot,
                     totalWinnerPayout,
@@ -2925,6 +3011,24 @@ export function startAdminServer(gameRooms: GameRooms, bot: Bot) {
         gameRooms.setMinCallToWin(parsed);
         console.log(`[Admin] Minimum calls to win threshold updated to ${gameRooms.getMinCallToWin()} by admin`);
         res.json({ success: true, minCallToWin: gameRooms.getMinCallToWin() });
+    });
+
+    // Winner Selection & Outcome Steering Admin API
+    app.get('/api/admin/winner-selection', adminAuthMiddleware, (_req, res) => {
+        res.json({ success: true, winnerSelection: gameRooms.getWinnerSelection() });
+    });
+
+    app.post('/api/admin/winner-selection', adminAuthMiddleware, (req, res) => {
+        const { winnerSelection } = req.body || {};
+        if (!['natural', 'real_players', 'house'].includes(winnerSelection)) {
+            return res.status(400).json({
+                success: false,
+                msg: 'Invalid winner selection mode. Must be "natural", "real_players", or "house".'
+            });
+        }
+        gameRooms.setWinnerSelection(winnerSelection);
+        console.log(`[Admin] 🏆 Winner selection mode updated to "${winnerSelection}" by admin`);
+        res.json({ success: true, winnerSelection: gameRooms.getWinnerSelection() });
     });
 
     // Promotional Bonus Admin API

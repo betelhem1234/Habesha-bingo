@@ -757,11 +757,24 @@ export class BotService {
                     // Check if this newly drawn ball completed a fresh winning pattern!
                     const winRes = checkWinFreshness(card.ticket, gm.drawnNumbers, num);
                     if (winRes.hasWon && winRes.isFresh) {
-                        // This bot has a winning pattern!
-                        // Simulate human reaction time (configured between botReactionMinMs and botReactionMaxMs)
-                        const reactionDelay = Math.floor(
-                            Math.random() * (this.settings.botReactionMaxMs - this.settings.botReactionMinMs) + this.settings.botReactionMinMs
-                        );
+                        // If winner mode is 'real_players' and there are active human players, suppress bot claims
+                        const hasActiveHumans = gm.players.some(p => !p.isBot && !p.isBlocked);
+                        if (gm.winnerSelection === 'real_players' && hasActiveHumans) {
+                            console.log(`[BotService] 🤖 Bot ${bot.firstName} has winning pattern on #${num}, but Real Players Priority is active. Suppressing bot claim.`);
+                            continue;
+                        }
+
+                        // Determine reaction delay based on winner mode
+                        let reactionDelay: number;
+                        if (gm.winnerSelection === 'house') {
+                            // Crisp prompt reaction delay for house/bot priority
+                            reactionDelay = Math.floor(Math.random() * 800) + 1200; // 1200ms - 2000ms
+                        } else {
+                            // Simulate human reaction time (configured between botReactionMinMs and botReactionMaxMs)
+                            reactionDelay = Math.floor(
+                                Math.random() * (this.settings.botReactionMaxMs - this.settings.botReactionMinMs) + this.settings.botReactionMinMs
+                            );
+                        }
 
                         console.log(`[BotService] 🤖 Bot ${bot.firstName} achieved winning pattern on #${num}! Scheduling claim in ${reactionDelay}ms.`);
 

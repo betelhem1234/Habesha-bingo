@@ -63,6 +63,7 @@ export class GameManager {
     private allNumbers: number[] = [];
     public state: 'WAITING' | 'PLAYING' = 'WAITING';
     public minCallToWin: number = 15;
+    public winnerSelection: 'natural' | 'real_players' | 'house' = 'natural';
     private gameLoopInterval: NodeJS.Timeout | null = null;
     private gameLoopTimeout: NodeJS.Timeout | null = null;
     private gameStartTime: number = 0;
@@ -125,6 +126,7 @@ export class GameManager {
             for (const client of this.sseClients) {
                 try {
                     client.res.write(': ping\n\n');
+                    if (typeof client.res.flush === 'function') client.res.flush();
                 } catch (e) {
                     toDelete.push(client);
                 }
@@ -146,6 +148,7 @@ export class GameManager {
         if (initialData) {
             try {
                 res.write(`event: init\ndata: ${JSON.stringify(initialData)}\n\n`);
+                if (typeof res.flush === 'function') res.flush();
             } catch (e) {}
         }
     }
@@ -159,6 +162,7 @@ export class GameManager {
         for (const client of this.sseClients) {
             try {
                 client.res.write(payload);
+                if (typeof client.res.flush === 'function') client.res.flush();
             } catch (e) {
                 toDelete.push(client);
             }
@@ -881,10 +885,21 @@ export class GameManager {
      * Counts how many distinct players would achieve a winning pattern if candidateNum is drawn.
      */
     private countSimulatedWinners(candidateNum: number): number {
+        const sim = this.getSimulatedWinners(candidateNum);
+        return sim.bots + sim.humans;
+    }
+
+    /**
+     * Categorizes how many distinct bot players and human players would achieve a winning pattern
+     * if candidateNum is drawn.
+     */
+    public getSimulatedWinners(candidateNum: number): { bots: number; humans: number } {
         const simulatedDrawn = new Set(this.drawnNumbers);
         simulatedDrawn.add(candidateNum);
-        let winningPlayerCount = 0;
+        let bots = 0;
+        let humans = 0;
         for (const p of this.players) {
+            if (p.isBlocked) continue;
             const cards = p.cards && p.cards.length > 0
                 ? p.cards
                 : [{ boardNumber: p.boardNumber || 0, ticket: p.ticket, daubed: p.daubed }];
@@ -895,9 +910,36 @@ export class GameManager {
                     break;
                 }
             }
-            if (playerWon) winningPlayerCount++;
+            if (playerWon) {
+                if (p.isBot) bots++;
+                else humans++;
+            }
         }
-        return winningPlayerCount;
+        return { bots, humans };
+    }
+
+    /**
+     * Counts how many active player cards matching filter contain candidateNum.
+     */
+    private countPlayerCardHits(candidateNum: number, filter: (p: Player) => boolean): number {
+        let hits = 0;
+        for (const p of this.players) {
+            if (p.isBlocked || !filter(p)) continue;
+            const cards = p.cards && p.cards.length > 0
+                ? p.cards
+                : [{ boardNumber: p.boardNumber || 0, ticket: p.ticket, daubed: p.daubed }];
+            for (const card of cards) {
+                for (let r = 0; r < 5; r++) {
+                    for (let c = 0; c < 5; c++) {
+                        if (card.ticket[r][c] === candidateNum) {
+                            hits++;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
+        return hits;
     }
 
     private async drawNumber() {
@@ -921,6 +963,9 @@ export class GameManager {
             let num: number;
             // Safe threshold: draws 1 to (minCallToWin - 1) do not complete a winning line for anyone
             const safeThreshold = Math.max(4, this.minCallToWin || 15) - 1;
+            const humanPlayers = this.players.filter(p => !p.isBot && !p.isBlocked);
+            const hasRealHumans = humanPlayers.length > 0;
+
             if (this.drawnNumbers.size < safeThreshold && this.players.length > 0) {
                 const safeIndices: number[] = [];
                 for (let i = 0; i < this.allNumbers.length; i++) {
@@ -936,22 +981,84 @@ export class GameManager {
                     num = this.allNumbers.pop()!;
                 }
             } else if (this.players.length > 0) {
-                // Draw minCallToWin+: select candidate balls that cause <= 2 winners (strictly never 3 or more)
-                const validIndices: number[] = [];
-                for (let i = 0; i < this.allNumbers.length; i++) {
-                    if (this.countSimulatedWinners(this.allNumbers[i]) <= 2) {
-                        validIndices.push(i);
+                let chosenIndex = -1;
+
+                if (this.winnerSelection === 'house' && hasRealHumans) {
+                    // Mode: House / Bot Priority (Real humans must NOT win)
+                    // Priority 1: Uncalled ball that completes a winning line for 1 or 2 bots and 0 humans
+                    const botWinIndices: number[] = [];
+                    // Priority 2: Uncalled balls that cause 0 human wins (safe progression)
+                    const zeroHumanIndices: number[] = [];
+
+                    for (let i = 0; i < this.allNumbers.length; i++) {
+                        const sim = this.getSimulatedWinners(this.allNumbers[i]);
+                        if (sim.humans === 0) {
+                            zeroHumanIndices.push(i);
+                            if (sim.bots > 0 && sim.bots <= 2) {
+                                botWinIndices.push(i);
+                            }
+                        }
+                    }
+
+                    if (botWinIndices.length > 0) {
+                        chosenIndex = botWinIndices[Math.floor(Math.random() * botWinIndices.length)];
+                    } else if (zeroHumanIndices.length > 0) {
+                        // Pick a ball among zero-human balls, preferring ones on bot cards to advance bot lines
+                        const botAdvancingIndices = zeroHumanIndices.filter(idx =>
+                            this.countPlayerCardHits(this.allNumbers[idx], p => !!p.isBot) > 0
+                        );
+                        const pool = botAdvancingIndices.length > 0 ? botAdvancingIndices : zeroHumanIndices;
+                        chosenIndex = pool[Math.floor(Math.random() * pool.length)];
+                    }
+                } else if (this.winnerSelection === 'real_players' && hasRealHumans) {
+                    // Mode: Real Players Priority (Bots must NOT win before real players)
+                    // Priority 1: Uncalled ball that completes a winning line for 1 or 2 humans and 0 bots
+                    const humanWinIndices: number[] = [];
+                    // Priority 2: Uncalled balls that cause 0 bot wins
+                    const zeroBotIndices: number[] = [];
+
+                    for (let i = 0; i < this.allNumbers.length; i++) {
+                        const sim = this.getSimulatedWinners(this.allNumbers[i]);
+                        if (sim.bots === 0) {
+                            zeroBotIndices.push(i);
+                            if (sim.humans > 0 && sim.humans <= 2) {
+                                humanWinIndices.push(i);
+                            }
+                        }
+                    }
+
+                    if (humanWinIndices.length > 0) {
+                        chosenIndex = humanWinIndices[Math.floor(Math.random() * humanWinIndices.length)];
+                    } else if (zeroBotIndices.length > 0) {
+                        // Pick a ball among zero-bot balls, preferring ones on human cards to advance human lines
+                        const humanAdvancingIndices = zeroBotIndices.filter(idx =>
+                            this.countPlayerCardHits(this.allNumbers[idx], p => !p.isBot) > 0
+                        );
+                        const pool = humanAdvancingIndices.length > 0 ? humanAdvancingIndices : zeroBotIndices;
+                        chosenIndex = pool[Math.floor(Math.random() * pool.length)];
                     }
                 }
 
-                if (validIndices.length > 0) {
-                    const pickIndex = validIndices[Math.floor(Math.random() * validIndices.length)];
-                    num = this.allNumbers.splice(pickIndex, 1)[0];
-                } else {
-                    num = this.allNumbers.pop()!;
+                // Standard Natural selection or Fallback if no specific index was picked
+                if (chosenIndex === -1) {
+                    const validIndices: number[] = [];
+                    for (let i = 0; i < this.allNumbers.length; i++) {
+                        const sim = this.getSimulatedWinners(this.allNumbers[i]);
+                        if (sim.bots + sim.humans <= 2) {
+                            validIndices.push(i);
+                        }
+                    }
+
+                    if (validIndices.length > 0) {
+                        chosenIndex = validIndices[Math.floor(Math.random() * validIndices.length)];
+                    } else {
+                        chosenIndex = this.allNumbers.length - 1;
+                    }
                 }
+
+                num = this.allNumbers.splice(chosenIndex, 1)[0];
             } else {
-                // Draw 17+: unrestricted random draw if no active players
+                // Unrestricted random draw if no active players
                 num = this.allNumbers.pop()!;
             }
 

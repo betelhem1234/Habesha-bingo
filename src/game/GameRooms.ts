@@ -7,7 +7,9 @@ import {
     getCallerVoice as getCallerVoiceSetting,
     setCallerVoice as setCallerVoiceSetting,
     getMinCallToWin as getMinCallToWinSetting,
-    setMinCallToWin as setMinCallToWinSetting
+    setMinCallToWin as setMinCallToWinSetting,
+    getWinnerSelection as getWinnerSelectionSetting,
+    setWinnerSelection as setWinnerSelectionSetting
 } from '../settings';
 
 const FEES = [10, 20, 50, 100, 0];
@@ -16,6 +18,7 @@ export class GameRooms {
     private rooms: Map<number, GameManager> = new Map();
     private callerVoice: 'male' | 'female' = 'male';
     private minCallToWin: number = 15;
+    private winnerSelection: 'natural' | 'real_players' | 'house' = 'natural';
     public botService: BotService;
     private settingsFilePath = path.join(process.cwd(), 'data', 'settings.json');
 
@@ -23,6 +26,7 @@ export class GameRooms {
         this.botService = new BotService();
         this.callerVoice = getCallerVoiceSetting();
         this.minCallToWin = getMinCallToWinSetting();
+        this.winnerSelection = getWinnerSelectionSetting();
         // Periodically release boards/fees left by players who abandoned the lobby.
         setInterval(() => this.sweepStalePlayers(), 5000).unref();
         // Auto-seed active rooms for continuous rolling loop on startup (production only)
@@ -34,21 +38,25 @@ export class GameRooms {
     private loadSettings() {
         this.callerVoice = getCallerVoiceSetting();
         this.minCallToWin = getMinCallToWinSetting();
+        this.winnerSelection = getWinnerSelectionSetting();
     }
 
     private saveSettings() {
         setCallerVoiceSetting(this.callerVoice);
         setMinCallToWinSetting(this.minCallToWin);
+        setWinnerSelectionSetting(this.winnerSelection);
     }
 
     public reloadSettings() {
         this.callerVoice = getCallerVoiceSetting();
         this.minCallToWin = getMinCallToWinSetting();
+        this.winnerSelection = getWinnerSelectionSetting();
         this.botService.reloadSettings();
         for (const gm of this.rooms.values()) {
             gm.minCallToWin = this.minCallToWin;
+            gm.winnerSelection = this.winnerSelection;
         }
-        console.log(`[GameRooms] Settings reloaded: voice=${this.callerVoice}, minCall=${this.minCallToWin}, botsEnabled=${this.botService.getSettings().enabled}, stake10Target=${this.botService.getSettings().stake10Target}`);
+        console.log(`[GameRooms] Settings reloaded: voice=${this.callerVoice}, minCall=${this.minCallToWin}, winnerSelection=${this.winnerSelection}, botsEnabled=${this.botService.getSettings().enabled}, stake10Target=${this.botService.getSettings().stake10Target}`);
     }
 
     getCallerVoice(): 'male' | 'female' {
@@ -70,6 +78,18 @@ export class GameRooms {
         setMinCallToWinSetting(val);
         for (const gm of this.rooms.values()) {
             gm.minCallToWin = val;
+        }
+    }
+
+    getWinnerSelection(): 'natural' | 'real_players' | 'house' {
+        return getWinnerSelectionSetting();
+    }
+
+    setWinnerSelection(mode: 'natural' | 'real_players' | 'house') {
+        this.winnerSelection = mode;
+        setWinnerSelectionSetting(mode);
+        for (const gm of this.rooms.values()) {
+            gm.winnerSelection = mode;
         }
     }
 
@@ -102,6 +122,7 @@ export class GameRooms {
         if (!this.rooms.has(key)) {
             const gm = new GameManager(this.bot, this.botService, f, r);
             gm.minCallToWin = this.minCallToWin;
+            gm.winnerSelection = this.winnerSelection;
             this.rooms.set(key, gm);
             if (process.env.NODE_ENV !== 'test' && !process.env.NODE_TEST_CONTEXT) {
                 const botSettings = this.botService.getSettings();

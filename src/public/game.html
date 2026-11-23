@@ -150,14 +150,13 @@ body{
   box-shadow:0 2px 6px rgba(255,122,0,0.4);
 }
 .call-timer-track{
-  width:100%;height:2px;background:rgba(100,4,109,0.15);
-  border-radius:2px;overflow:hidden;margin:1px 0 2px 0;
+  width:100%;height:3px;background:rgba(100,4,109,0.15);
+  border-radius:3px;overflow:hidden;margin:1px 0 2px 0;
 }
 .call-timer-bar{
   height:100%;width:0%;
   background:linear-gradient(90deg, #ff7a00, #ffb300);
-  border-radius:2px;transform-origin:left;
-  transition:width 0.1s linear;
+  border-radius:3px;transform-origin:left;
 }
 
 /* Last 3 Calls Strip */
@@ -1070,37 +1069,48 @@ async function loadAudioBuffer(num){
   return fetchPromise;
 }
 
-// Background preloading: ensures 0ms latency when numbers are drawn
+// Background preloading: ensures 0ms latency when numbers are drawn while protecting Render egress
 async function preloadAudioCalls(){
   if(preloadingStarted) return;
+  // If player has not chosen boards yet, defer preloading until boards are selected
+  if(!myCards || myCards.length === 0) return;
+
   preloadingStarted = true;
   try{
-    // Prioritize numbers on active cards first
+    // Prioritize numbers on active cards first (guarantees instant zero-delay playback on user's card)
     const priority = [];
-    if(myCards && myCards.length){
-      for(const c of myCards){
-        if(c.ticket){
-          for(let r=0; r<5; r++){
-            for(let col=0; col<5; col++){
-              const n = c.ticket[r][col];
-              if(n > 0 && !priority.includes(n)) priority.push(n);
-            }
+    for(const c of myCards){
+      if(c.ticket){
+        for(let r=0; r<5; r++){
+          for(let col=0; col<5; col++){
+            const n = c.ticket[r][col];
+            if(n > 0 && !priority.includes(n)) priority.push(n);
           }
         }
       }
     }
-    const all = [];
-    for(let i=1; i<=75; i++){
-      if(!priority.includes(i)) all.push(i);
-    }
-    const queue = [...priority, ...all];
 
-    // Download in chunks of 8 concurrent requests for fast pre-caching
-    const BATCH = 8;
-    for(let i=0; i<queue.length; i+=BATCH){
-      const chunk = queue.slice(i, i+BATCH);
+    if(priority.length === 0) return;
+
+    // Fast-cache only active board numbers first (max 24 numbers)
+    const BATCH = 4;
+    for(let i=0; i<priority.length; i+=BATCH){
+      const chunk = priority.slice(i, i+BATCH);
       await Promise.all(chunk.map(n => loadAudioBuffer(n)));
     }
+
+    // Lazy background cache for remaining numbers (spaced out to avoid network spikes)
+    const remaining = [];
+    for(let i=1; i<=75; i++){
+      if(!priority.includes(i)) remaining.push(i);
+    }
+    setTimeout(async () => {
+      for(let i=0; i<remaining.length; i+=BATCH){
+        const chunk = remaining.slice(i, i+BATCH);
+        await Promise.all(chunk.map(n => loadAudioBuffer(n)));
+        await new Promise(r => setTimeout(r, 600));
+      }
+    }, 1500);
   }catch(e){}
 }
 
@@ -1693,14 +1703,31 @@ function showAllBlockedOverlay(data){
 
 // ─── Visual 4-Second Clockwork Timer ───
 let timerAnimId = null;
-function startTimerCountdown(nextDrawAt) {
+function startTimerCountdown(durationOrNextDrawAt = 4000) {
   if (timerAnimId) cancelAnimationFrame(timerAnimId);
   const bar = document.getElementById('call-timer-bar');
   if (!bar) return;
-  const total = 4000;
 
-  function tick() {
-    const remaining = Math.max(0, nextDrawAt - Date.now());
+  // Always start from full 100% state for the call interval (clock-skew safe)
+  let total = 4000;
+  if (typeof durationOrNextDrawAt === 'number') {
+    if (durationOrNextDrawAt > 0 && durationOrNextDrawAt <= 10000) {
+      total = durationOrNextDrawAt;
+    } else if (durationOrNextDrawAt > 1e11) {
+      const diff = durationOrNextDrawAt - Date.now();
+      if (diff > 500 && diff <= 4500) {
+        total = diff;
+      }
+    }
+  }
+
+  const startTime = performance.now();
+  bar.style.transition = 'none';
+  bar.style.width = '100%';
+
+  function tick(now) {
+    const elapsed = now - startTime;
+    const remaining = Math.max(0, total - elapsed);
     const pct = Math.min(100, Math.max(0, (remaining / total) * 100));
     bar.style.width = pct + '%';
     if (remaining > 0) {
@@ -1709,7 +1736,7 @@ function startTimerCountdown(nextDrawAt) {
       bar.style.width = '0%';
     }
   }
-  tick();
+  timerAnimId = requestAnimationFrame(tick);
 }
 
 // ─── Process Full Game State ───
@@ -1739,11 +1766,6 @@ function applyGameState(data) {
     document.getElementById('game-id').textContent = data.gameId.toString().slice(-8).toUpperCase();
   }
 
-  if (isSpectator && data.gameState === 'WAITING' && !winnerShown) {
-    window.location.href = `/boards.html?userId=${userId}&bet=${bet}&room=${room}&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}`;
-    return;
-  }
-
   if (data.callerVoice && (data.callerVoice === 'female' || data.callerVoice === 'male')) {
     activeServerVoice = data.callerVoice;
   }
@@ -1752,6 +1774,7 @@ function applyGameState(data) {
   if (data.lastDrawn && incomingCount >= lastDrawnSet.size && data.lastDrawn !== lastDrawn) {
     lastDrawn = data.lastDrawn;
     speakDrawnNumber(lastDrawn);
+    startTimerCountdown(4000);
   }
 
   if (incomingCount >= lastDrawnSet.size || data.gameState === 'WAITING') {
@@ -1823,7 +1846,7 @@ function applyGameState(data) {
     }
   }
 
-  const hasWinners = (data.winners && data.winners.length > 0) || data.winner;
+  const hasWinners = (data.winners && data.winners.length > 0) || Boolean(data.winner);
   if (hasWinners && !winnerShown) {
     const winList = (data.winners && data.winners.length > 0) ? data.winners : [data.winner];
     const firstW = winList[0];
@@ -1837,6 +1860,12 @@ function applyGameState(data) {
       amount: firstW.amount,
       drawnNumbers: data.drawnNumbers || []
     });
+  }
+
+  // Spectator lobby redirect only if no winner is showing and no winner in current data
+  if (isSpectator && data.gameState === 'WAITING' && !winnerShown && !hasWinners) {
+    window.location.href = `/boards.html?userId=${userId}&bet=${bet}&room=${room}&auto=${autoEnabled?'1':'0'}&sound=${soundEnabled?'1':'0'}`;
+    return;
   }
 }
 
@@ -2186,16 +2215,18 @@ poll();
 
 // Adaptive watchdog: Auto-recovers SSE and state if stalled or disconnected during active play
 pollInterval = setInterval(() => {
-  const isPlaying = document.getElementById('playing-card-area')?.style.display !== 'none';
+  const isPlaying = (document.getElementById('playing-card-area')?.style.display !== 'none') || (lastDrawnSet.size > 0);
   const now = Date.now();
-  if (isPlaying && (now - lastSSEEventTime > 8000)) {
+  const timeSinceSSE = now - lastSSEEventTime;
+
+  if (!sseActive) {
     refreshGame(true);
-  } else if (!sseActive) {
+  } else if (isPlaying && timeSinceSSE > 9000) {
     refreshGame(true);
-  } else {
+  } else if (isPlaying && timeSinceSSE >= 3500) {
     poll();
   }
-}, 15000);
+}, 2000);
 </script>
 <audio id="caller-audio" preload="auto" playsinline style="display:none"></audio>
 </body>

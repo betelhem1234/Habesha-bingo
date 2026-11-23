@@ -335,7 +335,13 @@
 
         load();
         loadBanks();
-        setInterval(load, 5000);
+        // Bandwidth protection: 15s polling, paused when tab is in background
+        setInterval(() => {
+            if (!document.hidden) load();
+        }, 15000);
+        document.addEventListener('visibilitychange', () => {
+            if (!document.hidden) load();
+        });
     </script>
 </body>
 </html>
