@@ -122,4 +122,87 @@ describe('Minimum Calls to Win Threshold Tests', () => {
         // countSimulatedWinners also reports 1 winner
         assert.equal((gm as any).countSimulatedWinners(winningBall), 1);
     });
+
+    it('uses a per-game randomized effectiveMin >= minCallToWin that stays fixed within a game', () => {
+        const gm = new GameManager(mockBot, null, 10, 1);
+        gm.minCallToWin = 15;
+
+        const seenEffectiveMins = new Set<number>();
+        for (let g = 0; g < 30; g++) {
+            gm.drawnNumbers.clear();
+            (gm as any).minCallOffset = null;
+
+            const first = (gm as any).getEffectiveMinCallToWin();
+            assert.ok(first >= 15 && first <= 23, `effectiveMin ${first} must be in [15, 23]`);
+
+            // Simulating subsequent draws in the same game must keep the same effectiveMin
+            gm.drawnNumbers.add(1);
+            const second = (gm as any).getEffectiveMinCallToWin();
+            assert.equal(second, first, 'effectiveMin must remain constant during the same game');
+
+            seenEffectiveMins.add(first);
+        }
+
+        assert.ok(seenEffectiveMins.size > 1, 'effectiveMin should vary across games');
+    });
+
+    it('steered modes (house / real_players) do not force immediate win when non-winning advancing balls exist', async () => {
+        const ticket = generateTicket(7);
+        const row0 = ticket[0];
+        const winningBall = row0[4];
+        const nonWinningCardBall = ticket[1][0] !== row0[0] ? ticket[1][0] : ticket[1][1];
+
+        for (const mode of ['house', 'real_players'] as const) {
+            let sawNonWinningPick = false;
+            const isBot = mode === 'house';
+
+            for (let attempt = 0; attempt < 25; attempt++) {
+                const gm = new GameManager(mockBot, null, 10, 1);
+                gm.winnerSelection = mode;
+                gm.state = 'PLAYING';
+                gm.minCallToWin = 4;
+                (gm as any).minCallOffset = 0;
+
+                gm.drawnNumbers = new Set(row0.slice(0, 4));
+                const daubed = new Set(gm.drawnNumbers);
+
+                gm.players = [
+                    {
+                        userId: 1001n,
+                        ticket,
+                        cards: [{ boardNumber: 7, ticket, daubed }],
+                        daubed: new Set(daubed),
+                        fee: 10,
+                        lastSeen: Date.now(),
+                        isBot
+                    },
+                    {
+                        userId: 1002n,
+                        ticket: generateTicket(8),
+                        cards: [{ boardNumber: 8, ticket: generateTicket(8), daubed: new Set() }],
+                        daubed: new Set(),
+                        fee: 10,
+                        lastSeen: Date.now(),
+                        isBot: !isBot
+                    }
+                ];
+
+                // Pool contains both a winning ball and a non-winning advancing ball for the prioritized player
+                (gm as any).allNumbers = [winningBall, nonWinningCardBall];
+                await (gm as any).drawNumber();
+
+                const drawnBall = Array.from(gm.drawnNumbers).at(-1)!;
+                if (drawnBall === nonWinningCardBall) {
+                    sawNonWinningPick = true;
+                    break;
+                }
+            }
+
+            assert.equal(
+                sawNonWinningPick,
+                true,
+                `${mode} mode should draw from advancing non-winning balls too rather than always forcing winningBall`
+            );
+        }
+    });
 });

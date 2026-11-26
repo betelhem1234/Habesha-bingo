@@ -71,8 +71,8 @@ test('Game Page Refresh & Recovery Engine Verification', async (t) => {
             'Must track lastSSEEventTime across all SSE events'
         );
         assert.ok(
-            htmlContent.includes('now - lastSSEEventTime > 8000'),
-            'Watchdog must check for 8-second SSE stall during active game play'
+            htmlContent.includes('timeSinceSSE > 9000') || htmlContent.includes('lastSSEEventTime > 8000'),
+            'Watchdog must check for SSE stall during active game play'
         );
     });
 

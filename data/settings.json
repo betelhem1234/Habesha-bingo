@@ -5,9 +5,9 @@
   "referralBonus": 10,
   "boardShuffleSeed": 1782369303,
   "autoReshuffle": "off",
-  "gamesSinceLastShuffle": 1546,
+  "gamesSinceLastShuffle": 1744,
   "lastReshuffledAt": "2026-11-18T03:31:16.767Z",
-  "winnerSelection": "natural",
+  "winnerSelection": "house",
   "botSettings": {
     "enabled": true,
     "stake10Enabled": true,

@@ -63,6 +63,7 @@ export class GameManager {
     private allNumbers: number[] = [];
     public state: 'WAITING' | 'PLAYING' = 'WAITING';
     public minCallToWin: number = 15;
+    private minCallOffset: number | null = null;
     public winnerSelection: 'natural' | 'real_players' | 'house' = 'natural';
     private gameLoopInterval: NodeJS.Timeout | null = null;
     private gameLoopTimeout: NodeJS.Timeout | null = null;
@@ -525,6 +526,7 @@ export class GameManager {
         this.pendingReservations.clear();
         this.lobbyCountdown = 0;
         this.drawnNumbers.clear();
+        this.minCallOffset = null;
         await this.refundAll();
         this.players = [];
         this.currentWinner = null;
@@ -552,6 +554,7 @@ export class GameManager {
         this.players = [];
         this.pendingReservations.clear();
         this.drawnNumbers.clear();
+        this.minCallOffset = null;
         this.gameId = '';
         if (this.gameLoopInterval) {
             clearInterval(this.gameLoopInterval);
@@ -809,6 +812,7 @@ export class GameManager {
         this.currentWinners = [];
         this.gameId = Math.random().toString(36).slice(2, 10).toUpperCase();
         this.drawnNumbers.clear();
+        this.minCallOffset = null;
         this.allNumbers = Array.from({ length: 75 }, (_, i) => i + 1).sort(() => Math.random() - 0.5);
         const pot = this.getPot();
 
@@ -942,6 +946,50 @@ export class GameManager {
         return hits;
     }
 
+    /**
+     * Computes the per-game effective minimum call threshold (>= minCallToWin)
+     * using a randomized offset chosen once per game so wins do not cluster
+     * on the exact configured minCallToWin boundary.
+     */
+    private getEffectiveMinCallToWin(): number {
+        if (this.drawnNumbers.size === 0 || this.minCallOffset === null) {
+            this.minCallOffset = Math.floor(Math.random() * 9);
+        }
+        const baseMin = Math.max(4, this.minCallToWin || 15);
+        return Math.min(75, baseMin + this.minCallOffset);
+    }
+
+    /**
+     * Picks an uncalled ball index that avoids completing a winning line for the
+     * non-prioritized group without forcing an immediate win on the first eligible call.
+     */
+    private pickSteeredBallIndex(targetBots: boolean): number {
+        const preferredPool: number[] = [];
+        const fallbackPool: number[] = [];
+
+        for (let i = 0; i < this.allNumbers.length; i++) {
+            const sim = this.getSimulatedWinners(this.allNumbers[i]);
+            const disallowedCount = targetBots ? sim.humans : sim.bots;
+            const targetCount = targetBots ? sim.bots : sim.humans;
+
+            if (disallowedCount === 0) {
+                fallbackPool.push(i);
+                if (targetCount <= 2) {
+                    preferredPool.push(i);
+                }
+            }
+        }
+
+        const zeroOppPool = preferredPool.length > 0 ? preferredPool : fallbackPool;
+        if (zeroOppPool.length === 0) return -1;
+
+        const advancingPool = zeroOppPool.filter(idx =>
+            this.countPlayerCardHits(this.allNumbers[idx], p => targetBots ? !!p.isBot : !p.isBot) > 0
+        );
+        const pool = advancingPool.length > 0 ? advancingPool : zeroOppPool;
+        return pool[Math.floor(Math.random() * pool.length)];
+    }
+
     private async drawNumber() {
         if (this.state !== 'PLAYING' || this.pendingWinners.length > 0 || this.isDrawing) return;
         this.isDrawing = true;
@@ -961,8 +1009,8 @@ export class GameManager {
             }
 
             let num: number;
-            // Safe threshold: draws 1 to (minCallToWin - 1) do not complete a winning line for anyone
-            const safeThreshold = Math.max(4, this.minCallToWin || 15) - 1;
+            // Safe threshold: draws 1 to (effectiveMin - 1) do not complete a winning line for anyone
+            const safeThreshold = this.getEffectiveMinCallToWin() - 1;
             const humanPlayers = this.players.filter(p => !p.isBot && !p.isBlocked);
             const hasRealHumans = humanPlayers.length > 0;
 
@@ -985,58 +1033,10 @@ export class GameManager {
 
                 if (this.winnerSelection === 'house' && hasRealHumans) {
                     // Mode: House / Bot Priority (Real humans must NOT win)
-                    // Priority 1: Uncalled ball that completes a winning line for 1 or 2 bots and 0 humans
-                    const botWinIndices: number[] = [];
-                    // Priority 2: Uncalled balls that cause 0 human wins (safe progression)
-                    const zeroHumanIndices: number[] = [];
-
-                    for (let i = 0; i < this.allNumbers.length; i++) {
-                        const sim = this.getSimulatedWinners(this.allNumbers[i]);
-                        if (sim.humans === 0) {
-                            zeroHumanIndices.push(i);
-                            if (sim.bots > 0 && sim.bots <= 2) {
-                                botWinIndices.push(i);
-                            }
-                        }
-                    }
-
-                    if (botWinIndices.length > 0) {
-                        chosenIndex = botWinIndices[Math.floor(Math.random() * botWinIndices.length)];
-                    } else if (zeroHumanIndices.length > 0) {
-                        // Pick a ball among zero-human balls, preferring ones on bot cards to advance bot lines
-                        const botAdvancingIndices = zeroHumanIndices.filter(idx =>
-                            this.countPlayerCardHits(this.allNumbers[idx], p => !!p.isBot) > 0
-                        );
-                        const pool = botAdvancingIndices.length > 0 ? botAdvancingIndices : zeroHumanIndices;
-                        chosenIndex = pool[Math.floor(Math.random() * pool.length)];
-                    }
+                    chosenIndex = this.pickSteeredBallIndex(true);
                 } else if (this.winnerSelection === 'real_players' && hasRealHumans) {
                     // Mode: Real Players Priority (Bots must NOT win before real players)
-                    // Priority 1: Uncalled ball that completes a winning line for 1 or 2 humans and 0 bots
-                    const humanWinIndices: number[] = [];
-                    // Priority 2: Uncalled balls that cause 0 bot wins
-                    const zeroBotIndices: number[] = [];
-
-                    for (let i = 0; i < this.allNumbers.length; i++) {
-                        const sim = this.getSimulatedWinners(this.allNumbers[i]);
-                        if (sim.bots === 0) {
-                            zeroBotIndices.push(i);
-                            if (sim.humans > 0 && sim.humans <= 2) {
-                                humanWinIndices.push(i);
-                            }
-                        }
-                    }
-
-                    if (humanWinIndices.length > 0) {
-                        chosenIndex = humanWinIndices[Math.floor(Math.random() * humanWinIndices.length)];
-                    } else if (zeroBotIndices.length > 0) {
-                        // Pick a ball among zero-bot balls, preferring ones on human cards to advance human lines
-                        const humanAdvancingIndices = zeroBotIndices.filter(idx =>
-                            this.countPlayerCardHits(this.allNumbers[idx], p => !p.isBot) > 0
-                        );
-                        const pool = humanAdvancingIndices.length > 0 ? humanAdvancingIndices : zeroBotIndices;
-                        chosenIndex = pool[Math.floor(Math.random() * pool.length)];
-                    }
+                    chosenIndex = this.pickSteeredBallIndex(false);
                 }
 
                 // Standard Natural selection or Fallback if no specific index was picked
